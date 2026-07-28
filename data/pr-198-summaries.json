@@ -1,0 +1,596 @@
+{
+  "change": {
+    "title": "Move alpha releases to Xcode Cloud",
+    "number": 198,
+    "url": "https://github.com/itsjling/u-do-app/pull/198",
+    "summary": "Moves iOS alpha builds to Xcode Cloud and gates experimental Convex APIs by email allowlist.",
+    "why": "Local release scripts could select mutable builds and depended on local Apple credentials. The new flow pins commits and tags, blocks stable backend drift, and requires an exact App Store build.",
+    "highlights": [
+      "GitHub verifies an immutable `next` commit, deploys only safe backend changes, then creates an `alpha/<sha>` tag for Xcode Cloud.",
+      "Xcode Cloud builds the checked-in iOS project; a separate command starts its Default workflow from an exact production tag.",
+      "Experimental Convex queries and mutations deny access unless the signed-in user's email is in `EXPERIMENTAL_TESTER_EMAILS`."
+    ],
+    "risks": [
+      "Xcode Cloud must have the Alpha and Default workflows, signing, release variables, and a next build number of 55.",
+      "An App Store submission now fails unless the requested version and build identify one `APP_STORE_ELIGIBLE` build."
+    ]
+  },
+  "files": {
+    ".asc/workflow-automatic.json": {
+      "title": "Exact App Store submission workflow",
+      "what": "Leaves `release-store-promote` as the only local ASC workflow.",
+      "why": "Alpha and candidate builds now start in Xcode Cloud, while store submission must name one known build.",
+      "details": [
+        "Requires `VERSION` and `BUILD_NUMBER`; it never falls back to the latest build.",
+        "Finds exactly one build, requires `APP_STORE_ELIGIBLE`, checks the App Store version, validates it, then submits only with `CONFIRM=1`."
+      ],
+      "risks": [
+        "The version must already exist in App Store Connect, and internal-only alpha builds cannot pass the audience check."
+      ]
+    },
+    ".asc/workflow.json": {
+      "title": "Retired local release workflow",
+      "what": "Removes the old local beta build, build-only, and store workflow file.",
+      "why": "The replacement keeps local ASC use to exact App Store submission and moves builds to Xcode Cloud.",
+      "details": [
+        "Deletes mutable build-number selection, local archiving, IPA upload, and beta-group distribution steps."
+      ],
+      "risks": [
+        "Any direct call to `.asc/workflow.json` now fails."
+      ]
+    },
+    ".env.schema": {
+      "title": "Experimental tester allowlist setting",
+      "what": "Declares `EXPERIMENTAL_TESTER_EMAILS` as a backend release setting.",
+      "why": "Experimental Convex wrappers need a server-side list of approved app-user emails.",
+      "details": [
+        "It accepts comma-separated emails and says to set it in the Convex deployment environment; an empty value denies every call."
+      ],
+      "risks": [
+        "Putting this setting in an Expo build environment would expose the access policy to clients."
+      ]
+    },
+    ".fallowrc.jsonc": {
+      "title": "iOS drift-check entry point",
+      "what": "Registers `check-ios-config-drift.mjs` as a Fallow entry point.",
+      "why": "Xcode Cloud and release docs invoke it through shell commands that Fallow cannot trace.",
+      "details": [
+        "Prevents the release check from being reported as unused."
+      ],
+      "risks": []
+    },
+    ".github/workflows/release-alpha.yml": {
+      "title": "Immutable alpha handoff",
+      "what": "Adds a gated GitHub Actions handoff from `next` to an `alpha/<sha>` Xcode Cloud tag.",
+      "why": "Alpha builds must verify one commit and avoid deploying a changed branch tip.",
+      "details": [
+        "Runs automatically only when `ALPHA_AUTOMATION_ENABLED` is `true`, or by manual dispatch with a SHA.",
+        "Checks reachability and backend paths before and after `pnpm verify:ci`, deploys Convex only for a ready tag, then pushes the immutable tag.",
+        "Keeps queued jobs alive, but marks stale pushes as no-ops and never polls Xcode Cloud."
+      ],
+      "risks": [
+        "It needs GitHub `contents: write` and `CONVEX_DEPLOY_KEY`; a bad or missing Xcode Cloud tag setup stops the handoff after the tag push."
+      ]
+    },
+    "README.md": {
+      "title": "Release command guide",
+      "what": "Replaces local alpha and beta guidance with alpha, candidate, and store commands.",
+      "why": "Maintainers need to know which service builds each release and where varlock still applies.",
+      "details": [
+        "`release:alpha` dispatches a checked `next` SHA, `release:candidate` starts Xcode Cloud Default from a production tag, and `release:store` retains masked local ASC logs."
+      ],
+      "risks": []
+    },
+    "apps/frontend/.gitignore": {
+      "title": "Tracked iOS project",
+      "what": "Stops ignoring the `ios` directory at the frontend root.",
+      "why": "Xcode Cloud must build the checked-in Expo-generated iOS workspace.",
+      "details": [
+        "The new `ios/.gitignore` excludes Pods, build output, user data, and local Xcode files."
+      ],
+      "risks": [
+        "Native config changes can now create reviewable project-file diffs."
+      ]
+    },
+    "apps/frontend/docs/AUTOMATIC_CODE_SIGNING.md": {
+      "title": "Retired local signing guide",
+      "what": "Removes instructions for local ASC API-key signing setup.",
+      "why": "Xcode Cloud now owns signing for alpha and candidate archives.",
+      "details": [
+        "The removed guide described `.env.codesign` and local `release-beta-auto` runs."
+      ],
+      "risks": [
+        "Teams must configure signing in Xcode Cloud rather than following this removed guide."
+      ]
+    },
+    "apps/frontend/docs/RELEASE_AUTOMATION.md": {
+      "title": "Retired release automation guide",
+      "what": "Removes the old local iOS release guide.",
+      "why": "Its beta-centric local build flow no longer matches the supported release path.",
+      "details": [
+        "The current procedure lives in `docs/DEPLOYMENT_FLOW.md`."
+      ],
+      "risks": [
+        "External links to this path will break."
+      ]
+    },
+    "apps/frontend/ios/.gitignore": {
+      "title": "iOS local-file exclusions",
+      "what": "Adds ignore rules for Xcode, CocoaPods, bundles, and build output.",
+      "why": "The project itself is tracked, but machine-specific and derived files are not.",
+      "details": [
+        "Excludes `Pods/`, `build/`, `xcuserdata`, `DerivedData`, `.xcode.env*`, `sentry.properties`, and IPAs."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/ExportOptions-Automatic.plist": {
+      "title": "Automatic App Store export options",
+      "what": "Adds an Xcode export plist for App Store Connect archives.",
+      "why": "The native project needs a fixed export profile when an archive is exported outside Xcode Cloud.",
+      "details": [
+        "Uses automatic signing for team `2M44US8WCT`, `app-store-connect`, symbol upload, and no automatic version or build-number change."
+      ],
+      "risks": [
+        "Changing the team or export method can make an archive ineligible for upload."
+      ]
+    },
+    "apps/frontend/ios/Podfile": {
+      "title": "Expo and React Native pod setup",
+      "what": "Adds the `UDo` CocoaPods definition for Expo modules and React Native.",
+      "why": "The checked-in iOS project needs reproducible native dependency installation in Xcode Cloud.",
+      "details": [
+        "Targets iOS 15.1, enables Hermes from Expo settings, runs Expo autolinking, and pins `PeriscopeKit` to commit `984be197b42cc51544546bf33884d79336614f74`."
+      ],
+      "risks": [
+        "The pinned PeriscopeKit commit and pod graph can break installation if their upstream assumptions change."
+      ]
+    },
+    "apps/frontend/ios/Podfile.lock": {
+      "title": "Resolved iOS pod graph",
+      "what": "Adds the CocoaPods lockfile for the new UDo workspace.",
+      "why": "Xcode Cloud and local `pod install --deployment` must resolve the same native dependencies.",
+      "details": [
+        "Locks Expo, React Native, and the Podfile's git-sourced PeriscopeKit dependency."
+      ],
+      "risks": [
+        "A Podfile change needs a matching lockfile refresh."
+      ]
+    },
+    "apps/frontend/ios/TestFlight/WhatToTest.en-US.txt": {
+      "title": "TestFlight notes placeholder",
+      "what": "Adds the English TestFlight notes file consumed by Xcode Cloud.",
+      "why": "The post-build hook needs a tracked destination for per-archive test notes.",
+      "details": [
+        "Its placeholder says Xcode Cloud replaces it with source-commit details."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo.xcodeproj/project.pbxproj": {
+      "title": "UDo Xcode project",
+      "what": "Adds the generated UDo app project and its build settings.",
+      "why": "Xcode Cloud needs the native target, resources, signing, and CocoaPods integration in source control.",
+      "details": [
+        "Defines automatic signing for team `2M44US8WCT`, bundle ID `com.jling.udoapp`, iOS 15.1, version 1.6.0, build 54, iPhone-only targeting, assets, splash screen, privacy manifest, and Apple Sign In entitlement."
+      ],
+      "risks": [
+        "`app.json` and this generated project must agree; the new drift check catches archive-critical mismatches."
+      ]
+    },
+    "apps/frontend/ios/UDo.xcodeproj/xcshareddata/xcschemes/UDo.xcscheme": {
+      "title": "Shared UDo build scheme",
+      "what": "Adds the shared scheme for the UDo app and its test target.",
+      "why": "Xcode Cloud needs a checked-in target definition for Debug tests and Release archives.",
+      "details": [
+        "Build, launch, profile, analyze, and archive actions reference the `UDo` target; the test action references `UDoTests`."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo.xcworkspace/contents.xcworkspacedata": {
+      "title": "UDo CocoaPods workspace",
+      "what": "Adds the Xcode workspace file.",
+      "why": "The archive must open UDo alongside the generated Pods project.",
+      "details": [
+        "References `UDo.xcodeproj` and `Pods/Pods.xcodeproj`."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/AppDelegate.swift": {
+      "title": "Expo iOS app delegate",
+      "what": "Adds the Swift startup and linking bridge for the Expo React Native app.",
+      "why": "The native target must start module `main`, load the Metro bundle in Debug and `main.jsbundle` in Release, and forward deep links.",
+      "details": [
+        "Uses `ExpoAppDelegate`, `ExpoReactNativeFactory`, `RCTAppDependencyProvider`, and `RCTLinkingManager` for URL and universal-link handling."
+      ],
+      "risks": [
+        "A mismatch between the module name or release bundle name prevents startup before app code runs."
+      ]
+    },
+    "apps/frontend/ios/UDo/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png": {
+      "title": "1024px App Store icon",
+      "what": "Adds the binary universal iOS app-icon image.",
+      "why": "The Xcode asset catalog needs the App Store icon referenced by its manifest.",
+      "details": [
+        "PNG asset for the 1024×1024 universal iOS slot."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Images.xcassets/AppIcon.appiconset/Contents.json": {
+      "title": "App icon catalog entry",
+      "what": "Maps the 1024px PNG into the universal iOS AppIcon set.",
+      "why": "Xcode needs asset metadata to include the tracked App Store icon.",
+      "details": [
+        "Uses Expo-authored catalog format version 1."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Images.xcassets/Contents.json": {
+      "title": "Asset catalog root",
+      "what": "Adds the root metadata for `Images.xcassets`.",
+      "why": "Xcode needs the catalog root that contains app and splash assets.",
+      "details": [
+        "Records Expo as the author and catalog format version 1."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Images.xcassets/SplashScreenBackground.colorset/Contents.json": {
+      "title": "Splash background color",
+      "what": "Adds the named sRGB splash background color.",
+      "why": "The launch storyboard needs a catalog color before React Native draws.",
+      "details": [
+        "Defines a universal opaque color with RGB values 0.2745, 0.1882, and 0.4627."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Images.xcassets/SplashScreenLogo.imageset/Contents.json": {
+      "title": "Splash logo scale map",
+      "what": "Maps the splash logo PNGs to 1x, 2x, and 3x universal slots.",
+      "why": "iOS picks the right launch image density from this catalog entry.",
+      "details": [
+        "References `image.png`, `image@2x.png`, and `image@3x.png`."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Images.xcassets/SplashScreenLogo.imageset/image.png": {
+      "title": "1x splash logo",
+      "what": "Adds the binary base-density splash logo PNG.",
+      "why": "It fills the 1x slot in the tracked launch-image set.",
+      "details": [
+        "PNG source for the universal 1x splash image."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Images.xcassets/SplashScreenLogo.imageset/image@2x.png": {
+      "title": "2x splash logo",
+      "what": "Adds the binary 2x splash logo PNG.",
+      "why": "It fills the Retina-density slot in the tracked launch-image set.",
+      "details": [
+        "PNG source for the universal 2x splash image."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Images.xcassets/SplashScreenLogo.imageset/image@3x.png": {
+      "title": "3x splash logo",
+      "what": "Adds the binary 3x splash logo PNG.",
+      "why": "It fills the highest-density slot in the tracked launch-image set.",
+      "details": [
+        "PNG source for the universal 3x splash image."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Info.plist": {
+      "title": "UDo iOS bundle settings",
+      "what": "Adds the app's iOS metadata, URL schemes, launch screen, and native privacy prompts.",
+      "why": "The archive needs an App Store-ready bundle configuration generated from the Expo app setup.",
+      "details": [
+        "Sets display name `U Do`, version 1.6.0, build 54, `udo` and `com.jling.udoapp` URL schemes, Face ID and local-network text, arm64, portrait orientations, and `RCTNewArchEnabled`."
+      ],
+      "risks": [
+        "The bundle version, URL schemes, and permission text must stay aligned with the product and `app.json`."
+      ]
+    },
+    "apps/frontend/ios/UDo/PrivacyInfo.xcprivacy": {
+      "title": "Apple required-reason manifest",
+      "what": "Adds the iOS privacy manifest for accessed system APIs.",
+      "why": "Apple requires declared reasons for the native APIs used by the app and its libraries.",
+      "details": [
+        "Declares file timestamps, user defaults, disk space, and system boot time; it declares no collected data and no tracking."
+      ],
+      "risks": [
+        "A dependency that accesses another required-reason API needs a matching manifest change before App Store review."
+      ]
+    },
+    "apps/frontend/ios/UDo/SplashScreen.storyboard": {
+      "title": "Native launch screen",
+      "what": "Adds the iOS storyboard shown while the React Native app starts.",
+      "why": "iOS needs a native launch view before the JavaScript bundle is available.",
+      "details": [
+        "Centers a 200×200 `SplashScreenLogo` on `SplashScreenBackground` with Auto Layout."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/Supporting/Expo.plist": {
+      "title": "Expo native runtime settings",
+      "what": "Adds the iOS Expo updates configuration.",
+      "why": "The native Expo runtime needs explicit settings in the tracked project.",
+      "details": [
+        "Disables Expo updates, keeps the launch check mode as `ALWAYS`, and waits zero milliseconds."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/UDo-Bridging-Header.h": {
+      "title": "Swift bridge header placeholder",
+      "what": "Adds the Objective-C bridging header referenced by the UDo target.",
+      "why": "The generated Swift target has a stable place for any public Objective-C imports it needs.",
+      "details": [
+        "The file currently contains only the generated header comment."
+      ],
+      "risks": []
+    },
+    "apps/frontend/ios/UDo/UDo.entitlements": {
+      "title": "Apple Sign In entitlement",
+      "what": "Adds the UDo entitlement file with Apple Sign In enabled.",
+      "why": "The Expo Apple-authentication plugin requires the signed target to declare this capability.",
+      "details": [
+        "Sets `com.apple.developer.applesignin` to `Default`."
+      ],
+      "risks": [
+        "The provisioning profile must include Apple Sign In."
+      ]
+    },
+    "apps/frontend/ios/ci_scripts/ci_post_clone.sh": {
+      "title": "Xcode Cloud dependency setup",
+      "what": "Adds the post-clone script that prepares the checked-in iOS workspace.",
+      "why": "Xcode Cloud must use the pinned Node major, pnpm lockfile, and locked Pods before it archives.",
+      "details": [
+        "Installs Homebrew Node 24 when needed, enables Corepack, runs `pnpm install --frozen-lockfile` and `pod install --deployment`, then runs `sync-ios-version.mjs` only for the `Default` workflow with `CI_TAG`."
+      ],
+      "risks": [
+        "A missing Homebrew, wrong active Node major, or Default run without `CI_TAG` stops the cloud build."
+      ]
+    },
+    "apps/frontend/ios/ci_scripts/ci_post_xcodebuild.sh": {
+      "title": "TestFlight build notes hook",
+      "what": "Adds the Xcode Cloud post-build hook that writes TestFlight notes.",
+      "why": "Internal testers need the exact source and build link for each archive.",
+      "details": [
+        "Writes the commit title, SHA, GitHub commit URL, and `CI_BUILD_URL` to `TestFlight/WhatToTest.en-US.txt`."
+      ],
+      "risks": []
+    },
+    "apps/frontend/scripts/check-ios-config-drift.mjs": {
+      "title": "Archive-critical iOS drift check",
+      "what": "Adds a pre-release check that compares Expo config with checked-in native files.",
+      "why": "The project archives the tracked iOS workspace, so a changed `app.json` must not silently leave native settings stale.",
+      "details": [
+        "Checks the marketing version, bundle ID, iPhone-only target family, and Apple Sign In entitlement against `app.json`; exits nonzero with each mismatch."
+      ],
+      "risks": [
+        "Valid Expo config changes require the native project to be regenerated or synchronized before release."
+      ]
+    },
+    "docs/DEPLOYMENT_FLOW.md": {
+      "title": "Xcode Cloud release procedure",
+      "what": "Replaces the broad local beta guide with the alpha, candidate, and exact-store submission flow.",
+      "why": "Operators need one procedure that matches the immutable GitHub-to-Xcode-Cloud handoff.",
+      "details": [
+        "Documents `alpha/<sha>` tags, the `ALPHA_AUTOMATION_ENABLED` gate, experimental-backend limits, Alpha and Default Xcode Cloud settings, build number 55, and required cloud variables.",
+        "States that store submission requires an exact App Store-eligible build and that no external TestFlight beta promotion remains."
+      ],
+      "risks": [
+        "The documented Alpha and Default workflow settings must exist in Xcode Cloud before automation is enabled."
+      ]
+    },
+    "docs/production-compatibility.md": {
+      "title": "Experimental API boundary",
+      "what": "Defines the rules for APIs under `convex/experimental/`.",
+      "why": "Experimental work may change faster than the stable mobile-client support contract, but it still needs server-side access control.",
+      "details": [
+        "Requires registration in `experimental/api.ts` and `experimentalQuery` or `experimentalMutation`; the email allowlist denies access when unset.",
+        "Says client feature flags can hide features but do not replace the server allowlist."
+      ],
+      "risks": [
+        "Moving an experimental API into the stable surface requires the normal compatibility support window."
+      ]
+    },
+    "docs/sentry.md": {
+      "title": "Xcode Cloud Sentry guidance",
+      "what": "Moves native Sentry archive guidance from local release scripts to Xcode Cloud.",
+      "why": "The cloud archive runs the Expo Sentry plugin and must receive its settings as cloud secrets.",
+      "details": [
+        "Calls out Hermes source-map and dSYM upload during Xcode's bundle phase and says not to source a local `.env` file."
+      ],
+      "risks": []
+    },
+    "docs/testing/pre-release-agent-runbook.md": {
+      "title": "Current release metadata references",
+      "what": "Points the release-metadata check at the alpha GitHub workflow instead of the deleted automation guide.",
+      "why": "The pre-release runbook must name the files that now govern release validation.",
+      "details": [
+        "Keeps `.asc/workflow-automatic.json` and `docs/DEPLOYMENT_FLOW.md`, adds `.github/workflows/release-alpha.yml`, and refreshes the review date to 2026-07-24."
+      ],
+      "risks": []
+    },
+    "package.json": {
+      "title": "Release command split",
+      "what": "Routes alpha and candidate releases to new handoff scripts and removes `release:beta`.",
+      "why": "Local machines should dispatch immutable work, not create and upload iOS archives.",
+      "details": [
+        "`release:alpha` runs `dispatch-release-handoff.sh alpha`; `release:candidate` runs `run-xcode-candidate.sh`; `release:store` still invokes the varlock-backed ASC workflow with version, build number, and confirmation."
+      ],
+      "risks": [
+        "Automation that calls `release:beta` must switch to the supported alpha, candidate, or store path."
+      ]
+    },
+    "packages/backend/convex/_generated/api.d.ts": {
+      "title": "Generated experimental API bindings",
+      "what": "Adds generated module entries for the experimental API, wrappers, and guard.",
+      "why": "Convex type generation must know about the new experimental source modules.",
+      "details": [
+        "Imports and indexes `experimental/api`, `experimental/customFunctions`, and `experimental/guard`."
+      ],
+      "risks": [
+        "This generated file should be refreshed with Convex generation when the experimental module set changes."
+      ]
+    },
+    "packages/backend/convex/experimental/api.ts": {
+      "title": "Experimental API registration point",
+      "what": "Creates the public registration module for experimental Convex functions.",
+      "why": "Keeping exports in one module avoids repeated generated API-index churn as experiments are added.",
+      "details": [
+        "Exports only the `ExperimentalApi = never` placeholder and directs callers to the guarded wrappers."
+      ],
+      "risks": []
+    },
+    "packages/backend/convex/experimental/customFunctions.ts": {
+      "title": "Guarded experimental function wrappers",
+      "what": "Adds `experimentalQuery` and `experimentalMutation` on top of the shared actor wrappers.",
+      "why": "Every experimental handler needs the same signed-in tester check before its code runs.",
+      "details": [
+        "Each wrapper calls `assertExperimentalTester` after actor resolution, then invokes the original handler while preserving the `actorQuery` and `actorMutation` call types."
+      ],
+      "risks": [
+        "An experimental endpoint that bypasses these wrappers bypasses the tester allowlist."
+      ]
+    },
+    "packages/backend/convex/experimental/guard.test.ts": {
+      "title": "Experimental tester guard tests",
+      "what": "Tests allowlist parsing and the guarded query and mutation paths with Convex test fixtures.",
+      "why": "The experimental boundary must fail closed for missing, unknown, and denied users.",
+      "details": [
+        "Checks trimming and case folding, denies an unset allowlist, allows the matching shared actor, and rejects both wrappers before their handlers run."
+      ],
+      "risks": []
+    },
+    "packages/backend/convex/experimental/guard.ts": {
+      "title": "Server-side experimental access guard",
+      "what": "Adds the email allowlist parser and `assertExperimentalTester` guard.",
+      "why": "Experimental APIs need an access boundary that does not trust a client feature flag.",
+      "details": [
+        "Normalizes comma-separated emails, loads the actor's user record, and throws Convex error `experimental_access_denied` unless that email is allowed."
+      ],
+      "risks": [
+        "An unset or empty `EXPERIMENTAL_TESTER_EMAILS` blocks every experimental request by design."
+      ]
+    },
+    "packages/backend/convex/experimental/wrapperTestFunctions.test.ts": {
+      "title": "Guarded wrapper test functions",
+      "what": "Supplies test-only experimental query and mutation functions that return their actor subject.",
+      "why": "The guard tests need real Convex handlers to prove the wrappers permit and block calls correctly.",
+      "details": [
+        "Loads only when `guard.test.ts` sets its global support flag; otherwise it runs a small module-load test."
+      ],
+      "risks": []
+    },
+    "scripts/dispatch-release-handoff.sh": {
+      "title": "Alpha handoff dispatcher",
+      "what": "Adds the local command that dispatches an exact reachable `next` SHA to `release-alpha.yml`.",
+      "why": "A manual alpha release must hand GitHub an immutable commit rather than a local checkout or branch name.",
+      "details": [
+        "Accepts only `alpha`, fetches `origin/next`, validates a 40-character SHA and ancestry, supports `UDO_RELEASE_DRY_RUN=1`, then calls `gh workflow run` with the SHA."
+      ],
+      "risks": [
+        "A user-supplied SHA must exist locally and remain reachable from `origin/next`."
+      ]
+    },
+    "scripts/release-beta-auto.sh": {
+      "title": "Retired automatic beta wrapper",
+      "what": "Removes the wrapper that loaded `.env.codesign` and ran `release-beta-auto` locally.",
+      "why": "Xcode Cloud now signs and builds alpha archives.",
+      "details": [
+        "Deletes the local credentials-file dependency and ASC workflow launch."
+      ],
+      "risks": [
+        "Scripts that invoke this file need to use the new alpha handoff."
+      ]
+    },
+    "scripts/release-beta.sh": {
+      "title": "Retired local beta builder",
+      "what": "Removes the one-shot local TestFlight build and distribution script.",
+      "why": "The old path mutated build settings, built an IPA, and selected the latest uploaded build outside the new release gates.",
+      "details": [
+        "Deletes local Xcode archive and export steps, automatic build-number lookup, ASC upload, and beta-group assignment."
+      ],
+      "risks": [
+        "There is no direct replacement for external beta promotion."
+      ]
+    },
+    "scripts/release-handoff.mjs": {
+      "title": "Immutable release validator",
+      "what": "Adds the validator used before GitHub deploys Convex or creates an alpha tag.",
+      "why": "The handoff must reject unreachable commits and stable backend changes, while allowing safe experimental work.",
+      "details": [
+        "Requires SHA, branch, event, and base; recognizes `[skip alpha]`; marks stale pushes; permits only `convex/experimental/` changes plus matching generated bindings; permits release-only version bumps after a selected push."
+      ],
+      "risks": [
+        "A stable backend diff from `origin/main`, or generated bindings without experimental source changes, blocks the alpha handoff."
+      ]
+    },
+    "scripts/run-xcode-candidate.sh": {
+      "title": "Tagged Xcode Cloud candidate runner",
+      "what": "Adds a command that starts Xcode Cloud Default from one stable production tag.",
+      "why": "Candidate archives must build a known `main` commit, never an implicit branch tip.",
+      "details": [
+        "Requires `TAG` in `vX.Y.Z` form, confirms its commit reaches `origin/main`, resolves exactly one Default workflow and its `refs/tags/<tag>` reference through ASC, then starts it without polling."
+      ],
+      "risks": [
+        "It fails if Xcode Cloud has not synchronized the requested tag reference."
+      ]
+    },
+    "scripts/setup-automatic-signing.sh": {
+      "title": "Retired local signing bootstrap",
+      "what": "Removes the interactive script that created `.env.codesign` and rewrote the ASC workflow.",
+      "why": "Release signing now belongs in configured Xcode Cloud workflows, not a developer machine.",
+      "details": [
+        "Deletes API-key discovery, issuer-ID prompts, local credentials output, and generated beta workflow setup."
+      ],
+      "risks": [
+        "Apple credentials must be configured in Xcode Cloud before the first alpha or candidate build."
+      ]
+    },
+    "scripts/test/build-safety.bats": {
+      "title": "Release command safety check",
+      "what": "Changes the root-script test to expect alpha dispatch and tagged candidate commands, not beta release commands.",
+      "why": "The safety suite must catch a return to local IPA building or uploading.",
+      "details": [
+        "Asserts `release:alpha` calls `dispatch-release-handoff.sh alpha`, `release:candidate` calls `run-xcode-candidate.sh`, and `release:beta` is absent."
+      ],
+      "risks": []
+    },
+    "scripts/test/dispatch-release-handoff.bats": {
+      "title": "Alpha dispatcher tests",
+      "what": "Tests the local alpha dispatcher in a temporary Git repository.",
+      "why": "The command must select the immutable `next` SHA and reject other handoff names.",
+      "details": [
+        "Checks dry-run output for the current `next` commit and exit 64 for `candidate`."
+      ],
+      "risks": []
+    },
+    "scripts/test/release-handoff.bats": {
+      "title": "Release validator and workflow tests",
+      "what": "Adds focused tests for commit selection, backend limits, stale pushes, and alpha workflow guardrails.",
+      "why": "A bad handoff could deploy the wrong commit or stable backend code before a TestFlight build begins.",
+      "details": [
+        "Covers reachability, `[skip alpha]`, experimental-only changes, generated bindings, stable-path rejection, semantic-release advances, dry-run immutability, no Xcode Cloud polling, and `origin/main` verification refs."
+      ],
+      "risks": []
+    },
+    "scripts/test/release-store-workflow.bats": {
+      "title": "Store workflow fail-closed tests",
+      "what": "Adds structural tests for the remaining local ASC workflow.",
+      "why": "Store submission must not regain alpha or beta behavior, latest-build fallback, or an unchecked audience.",
+      "details": [
+        "Checks that `release-store-promote` is the sole workflow, needs exact version and build inputs, and checks `APP_STORE_ELIGIBLE` before submission."
+      ],
+      "risks": []
+    },
+    "scripts/test/run-xcode-candidate.bats": {
+      "title": "Tagged candidate runner tests",
+      "what": "Tests the Xcode Cloud candidate launcher with mocked ASC commands.",
+      "why": "The launcher must resolve one stable tag and fail before starting a vague or missing cloud reference.",
+      "details": [
+        "Checks dry runs make no ASC calls, prerelease tags fail, Default and the exact tag ref are resolved, `--wait` is absent, and a missing tag ref stops before `xcode-cloud run`."
+      ],
+      "risks": []
+    }
+  }
+}

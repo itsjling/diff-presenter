@@ -1,0 +1,851 @@
+#!/usr/bin/env node
+
+import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { summaryPath } from './summary-path.mjs';
+
+const args = process.argv.slice(2);
+const fail = (message) => {
+  console.error(message);
+  process.exit(2);
+};
+const option = (name) => {
+  const index = args.indexOf(name);
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (!value || value.startsWith('--')) fail(`${name} needs a value`);
+  return value;
+};
+const has = (name) => args.includes(name);
+
+if (has('--help')) {
+  console.log(`Usage: node scripts/build-diff-data.mjs [target] [options]
+
+Targets:
+  --pr NUMBER|URL     Fetch and show a GitHub pull request
+  --branch NAME       Fetch and show a remote branch
+  --base REF --head REF
+                      Show an exact local Git range
+  (no target)         Show worktree changes against HEAD
+
+Options:
+  --repo PATH         Local Git workspace (default: current directory)
+  --remote NAME|URL   Remote for --pr or --branch (default: origin)
+  --base REF          Remote base branch with --branch
+  --summaries FILE    Agent note file
+  --output FILE       JSON output
+  --cache-dir PATH    Bare cache for fetched Git objects
+  --watch             Keep the data current`);
+  process.exit(0);
+}
+
+const repo = resolve(option('--repo') || process.cwd());
+const output = resolve(option('--output') || 'public/diff-data.json');
+const baseOption = option('--base');
+const headOption = option('--head');
+const prOption = option('--pr');
+const branchOption = option('--branch');
+const remoteOption = option('--remote') || 'origin';
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const summariesPath = summaryPath({
+  projectRoot,
+  callerDirectory: process.cwd(),
+  repo,
+  explicit: option('--summaries'),
+  pr: prOption,
+  branch: branchOption,
+  base: baseOption,
+  head: headOption,
+  remote: remoteOption,
+});
+const cacheOption = option('--cache-dir');
+const cacheRoot = cacheOption
+  ? resolve(cacheOption)
+  : resolve(projectRoot, '.cache/git');
+const remoteMode = Boolean(prOption || branchOption);
+const watching = has('--watch');
+
+if (prOption && branchOption) fail('--pr and --branch cannot be used together');
+if (prOption && (baseOption || headOption)) fail('--pr cannot be used with --base or --head');
+if (branchOption && headOption) fail('--branch cannot be used with --head');
+if (!prOption && !branchOption && Boolean(baseOption) !== Boolean(headOption)) {
+  fail('--base and --head must be used together');
+}
+
+const repoPath = (file) => {
+  const path = relative(repo, file).replaceAll('\\', '/');
+  return path && path !== '..' && !path.startsWith('../') ? path : undefined;
+};
+const excludedPaths = new Set(
+  [repoPath(summariesPath), repoPath(output)].filter(Boolean),
+);
+
+function command(commandName, commandArgs, options = {}) {
+  return execFileSync(commandName, commandArgs, {
+    cwd: options.cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+const runRepo = (gitArgs) => command('git', ['-C', repo, ...gitArgs]);
+const tryRepo = (gitArgs) => {
+  try {
+    return runRepo(gitArgs).trim();
+  } catch {
+    return '';
+  }
+};
+const runRepoWithDiffExit = (gitArgs) => {
+  const result = spawnSync('git', ['-C', repo, ...gitArgs], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0 && result.status !== 1) {
+    throw new Error(result.stderr.trim() || `git ${gitArgs[0]} failed`);
+  }
+  return result.stdout;
+};
+const readJson = (file, fallback) => {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } catch {
+    return fallback;
+  }
+};
+const cleanText = (value, fallback) =>
+  typeof value === 'string' && value.trim() ? value.trim() : fallback;
+const cleanList = (value) =>
+  Array.isArray(value)
+    ? value
+        .filter((item) => typeof item === 'string' && item.trim())
+        .map((item) => item.trim())
+    : [];
+const completeList = (value) =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
+const completeText = (value) =>
+  typeof value === 'string' && Boolean(value.trim());
+const completeFileSummary = (value) =>
+  value &&
+  completeText(value.title) &&
+  completeText(value.what) &&
+  completeText(value.why) &&
+  completeList(value.details) &&
+  completeList(value.risks);
+const completeChangeSummary = (value) =>
+  value &&
+  completeText(value.title) &&
+  completeText(value.summary) &&
+  completeText(value.why) &&
+  completeList(value.highlights) &&
+  completeList(value.risks);
+
+function fileSummary(path, value) {
+  return {
+    title: cleanText(value?.title, path),
+    what: cleanText(value?.what, 'Shows the current Git patch.'),
+    why: cleanText(
+      value?.why,
+      'Start Diff Presenter with --agent to generate this note.',
+    ),
+    details: cleanList(value?.details),
+    risks: cleanList(value?.risks),
+  };
+}
+
+function changeSummary(value, defaults = {}) {
+  const number = Number.isInteger(value?.number)
+    ? value.number
+    : defaults.number;
+  const url =
+    typeof value?.url === 'string' && value.url ? value.url : defaults.url;
+  return {
+    title: cleanText(value?.title, defaults.title || 'Local changes'),
+    ...(Number.isInteger(number) ? { number } : {}),
+    ...(url ? { url } : {}),
+    summary: cleanText(
+      value?.summary,
+      defaults.summary || 'Changes in the selected Git range.',
+    ),
+    why: cleanText(value?.why, defaults.why || 'Shows the current review set.'),
+    highlights: cleanList(value?.highlights || defaults.highlights),
+    risks: cleanList(value?.risks || defaults.risks),
+  };
+}
+
+function parseNameStatus(raw) {
+  const fields = raw.split('\0').filter(Boolean);
+  const files = [];
+  for (let index = 0; index < fields.length; ) {
+    const code = fields[index++];
+    const kind = code[0];
+    if (kind === 'R' || kind === 'C') {
+      const oldPath = fields[index++];
+      files.push({ path: fields[index++], oldPath, status: 'renamed' });
+    } else {
+      files.push({
+        path: fields[index++],
+        status:
+          kind === 'A' ? 'added' : kind === 'D' ? 'deleted' : 'modified',
+      });
+    }
+  }
+  return files;
+}
+
+function parseNumstat(raw) {
+  const out = new Map();
+  const fields = raw.split('\0').filter(Boolean);
+  for (let index = 0; index < fields.length; ) {
+    const row = fields[index++];
+    const [add, del, inlinePath] = row.split('\t');
+    let oldPath;
+    let path = inlinePath;
+    if (!path) {
+      oldPath = fields[index++];
+      path = fields[index++];
+    }
+    out.set(path, {
+      additions: add === '-' ? 0 : Number(add),
+      deletions: del === '-' ? 0 : Number(del),
+      isBinary: add === '-' || del === '-',
+      oldPath,
+    });
+  }
+  return out;
+}
+
+function compactSnippet(patch, limit = 180) {
+  const lines = patch.split('\n');
+  if (lines.length <= limit) return patch;
+  const header = lines
+    .filter(
+      (line) =>
+        !line.startsWith('@@') &&
+        !line.startsWith('+') &&
+        !line.startsWith('-') &&
+        !line.startsWith(' '),
+    )
+    .slice(0, 8);
+  const hunks = [];
+  let open = false;
+  for (const line of lines) {
+    if (line.startsWith('@@')) {
+      if (hunks.length >= 72) break;
+      open = true;
+      hunks.push(line);
+      continue;
+    }
+    if (open && hunks.length < 72) hunks.push(line);
+  }
+  return [
+    ...header,
+    ...hunks,
+    '... diff truncated; see patch for full content ...',
+  ].join('\n');
+}
+
+function normalizeBranch(value, remoteName) {
+  let branch = value;
+  if (branch.startsWith('refs/heads/')) branch = branch.slice(11);
+  if (branch.startsWith(`${remoteName}/`)) {
+    branch = branch.slice(remoteName.length + 1);
+  }
+  const result = spawnSync('git', ['check-ref-format', `refs/heads/${branch}`], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0) throw new Error(`Invalid remote branch: ${value}`);
+  return branch;
+}
+
+function resolveRemote() {
+  const configured = tryRepo(['remote', 'get-url', remoteOption]);
+  if (configured) return { name: remoteOption, url: configured };
+  if (remoteOption === 'origin') {
+    throw new Error(`Git remote "origin" was not found in ${repo}`);
+  }
+  return { name: remoteOption, url: remoteOption };
+}
+
+function bareCache(remoteUrl) {
+  const key = createHash('sha256').update(remoteUrl).digest('hex').slice(0, 20);
+  const path = resolve(cacheRoot, key);
+  if (!existsSync(resolve(path, 'HEAD'))) {
+    mkdirSync(cacheRoot, { recursive: true });
+    command('git', ['init', '--bare', '--quiet', path]);
+  }
+  const run = (gitArgs) => command('git', ['--git-dir', path, ...gitArgs]);
+  return { path, run };
+}
+
+function fetchInto(cache, remoteUrl, refspecs) {
+  try {
+    cache.run([
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      '--no-write-fetch-head',
+      '--no-auto-maintenance',
+      '--force',
+      remoteUrl,
+      ...refspecs,
+    ]);
+  } catch (error) {
+    const detail = error?.stderr?.toString().trim();
+    throw new Error(
+      `Could not fetch the remote target${detail ? `: ${detail}` : ''}`,
+    );
+  }
+}
+
+function uniqueMergeBase(runGit, base, head) {
+  let raw;
+  try {
+    raw = runGit(['merge-base', '--all', base, head]).trim();
+  } catch {
+    throw new Error('The target branch and base branch have no common commit');
+  }
+  const bases = raw.split('\n').filter(Boolean);
+  if (bases.length !== 1) {
+    throw new Error(
+      bases.length
+        ? 'The target has more than one merge base'
+        : 'The target branch and base branch have no common commit',
+    );
+  }
+  return bases[0];
+}
+
+function remoteDefaultBranch(remoteUrl) {
+  let raw;
+  try {
+    raw = runRepo(['ls-remote', '--symref', remoteUrl, 'HEAD']);
+  } catch {
+    throw new Error('Could not read the remote default branch');
+  }
+  const match = raw.match(/^ref:\s+refs\/heads\/([^\t\n]+)\s+HEAD$/m);
+  if (!match) {
+    throw new Error('The remote has no default branch; pass --base NAME');
+  }
+  return match[1];
+}
+
+function githubRepository(remoteUrl) {
+  if (!remoteUrl) return undefined;
+  let host;
+  let path;
+  const scp = remoteUrl.match(/^(?:[^@]+@)?([^:/]+):(.+)$/);
+  if (scp && !remoteUrl.includes('://')) {
+    host = scp[1];
+    path = scp[2];
+  } else {
+    try {
+      const parsed = new URL(remoteUrl);
+      host = parsed.hostname;
+      path = parsed.pathname.replace(/^\/+/, '');
+    } catch {
+      return undefined;
+    }
+  }
+  const parts = path.replace(/\.git$/, '').split('/').filter(Boolean);
+  if (!host || parts.length < 2) return undefined;
+  const ownerRepo = `${parts.at(-2)}/${parts.at(-1)}`;
+  return {
+    selector: host === 'github.com' ? ownerRepo : `${host}/${ownerRepo}`,
+    webUrl: `https://${host}/${ownerRepo}`,
+  };
+}
+
+function pullRequestInfo(pr, remote) {
+  const repository = githubRepository(remote.url);
+  const fields = [
+    'number',
+    'title',
+    'url',
+    'state',
+    'updatedAt',
+    'isCrossRepository',
+    'baseRefName',
+    'baseRefOid',
+    'headRefName',
+    'headRefOid',
+    'headRepository',
+    'headRepositoryOwner',
+  ].join(',');
+  const ghArgs = ['pr', 'view', pr, '--json', fields];
+  if (repository?.selector) ghArgs.push('--repo', repository.selector);
+  try {
+    const value = JSON.parse(command('gh', ghArgs, { cwd: repo }));
+    for (const key of [
+      'number',
+      'title',
+      'url',
+      'baseRefName',
+      'baseRefOid',
+      'headRefName',
+      'headRefOid',
+    ]) {
+      if (value[key] === undefined || value[key] === '') {
+        throw new Error(`gh returned no ${key}`);
+      }
+    }
+    return { value, repository };
+  } catch (error) {
+    const detail = error?.stderr?.toString().trim() || error?.message;
+    throw new Error(
+      `Could not read pull request ${pr} with gh${detail ? `: ${detail}` : ''}. Check gh auth status.`,
+    );
+  }
+}
+
+function resolveBranchTarget() {
+  const remote = resolveRemote();
+  const branch = normalizeBranch(branchOption, remote.name);
+  const baseBranch = normalizeBranch(
+    baseOption || remoteDefaultBranch(remote.url),
+    remote.name,
+  );
+  const cache = bareCache(remote.url);
+  const key = createHash('sha256')
+    .update(`${baseBranch}\0${branch}`)
+    .digest('hex')
+    .slice(0, 16);
+  const baseRef = `refs/beautiful-diffs/branch/${key}/base`;
+  const headRef = `refs/beautiful-diffs/branch/${key}/head`;
+  fetchInto(cache, remote.url, [
+    `+refs/heads/${baseBranch}:${baseRef}`,
+    `+refs/heads/${branch}:${headRef}`,
+  ]);
+  const baseOid = cache.run(['rev-parse', `${baseRef}^{commit}`]).trim();
+  const headOid = cache.run(['rev-parse', `${headRef}^{commit}`]).trim();
+  const mergeBaseOid = uniqueMergeBase(cache.run, baseOid, headOid);
+  const repository = githubRepository(remote.url);
+  return {
+    kind: 'branch',
+    runGit: cache.run,
+    range: [mergeBaseOid, headOid],
+    base: mergeBaseOid,
+    head: headOid,
+    branch,
+    baseBranch,
+    remote,
+    sourceRepositoryUrl: repository?.webUrl,
+    baseRepositoryUrl: repository?.webUrl,
+    target: {
+      kind: 'branch',
+      remote: remote.name,
+      base: { ref: baseBranch, oid: baseOid },
+      head: { ref: branch, oid: headOid },
+      mergeBaseOid,
+    },
+    changeDefaults: {
+      title: `Compare ${branch} to ${baseBranch}`,
+      summary: `Shows changes on ${branch} since it split from ${baseBranch}.`,
+      why: 'Reviews the remote branch without changing the local checkout.',
+      highlights: [],
+      risks: [],
+    },
+  };
+}
+
+function resolvePullRequestTarget() {
+  const remote = resolveRemote();
+  const { value: pr, repository } = pullRequestInfo(prOption, remote);
+  const cache = bareCache(remote.url);
+  const key = createHash('sha256')
+    .update(String(pr.number))
+    .digest('hex')
+    .slice(0, 16);
+  const baseRef = `refs/beautiful-diffs/pr/${key}/base`;
+  const headRef = `refs/beautiful-diffs/pr/${key}/head`;
+  fetchInto(cache, remote.url, [
+    `+refs/heads/${pr.baseRefName}:${baseRef}`,
+    `+refs/pull/${pr.number}/head:${headRef}`,
+  ]);
+  try {
+    cache.run(['cat-file', '-e', `${pr.baseRefOid}^{commit}`]);
+    cache.run(['cat-file', '-e', `${pr.headRefOid}^{commit}`]);
+  } catch {
+    throw new Error('The pull request changed while it was being read; run again');
+  }
+  const mergeBaseOid = uniqueMergeBase(
+    cache.run,
+    pr.baseRefOid,
+    pr.headRefOid,
+  );
+  const headRepository =
+    pr.headRepository?.nameWithOwner ||
+    (pr.headRepositoryOwner?.login && pr.headRepository?.name
+      ? `${pr.headRepositoryOwner.login}/${pr.headRepository.name}`
+      : undefined);
+  const repositoryOrigin = repository?.webUrl
+    ? new URL(repository.webUrl).origin
+    : 'https://github.com';
+  return {
+    kind: 'pull-request',
+    runGit: cache.run,
+    range: [mergeBaseOid, pr.headRefOid],
+    base: mergeBaseOid,
+    head: pr.headRefOid,
+    branch: pr.headRefName,
+    baseBranch: pr.baseRefName,
+    remote,
+    sourceRepositoryUrl: headRepository
+      ? `${repositoryOrigin}/${headRepository}`
+      : repository?.webUrl ||
+        pr.url.replace(/\/pull\/\d+(?:\/.*)?$/, ''),
+    baseRepositoryUrl:
+      repository?.webUrl || pr.url.replace(/\/pull\/\d+(?:\/.*)?$/, ''),
+    target: {
+      kind: 'pull-request',
+      remote: remote.name,
+      repository: repository?.selector,
+      pullRequest: {
+        number: pr.number,
+        url: pr.url,
+        state: pr.state,
+        updatedAt: pr.updatedAt,
+        isCrossRepository: pr.isCrossRepository,
+      },
+      base: { ref: pr.baseRefName, oid: pr.baseRefOid },
+      head: {
+        ref: pr.headRefName,
+        oid: pr.headRefOid,
+        ...(headRepository ? { repository: headRepository } : {}),
+      },
+      mergeBaseOid,
+    },
+    changeDefaults: {
+      title: pr.title,
+      number: pr.number,
+      url: pr.url,
+      summary: `Shows pull request #${pr.number} from ${pr.headRefName} into ${pr.baseRefName}.`,
+      why: 'Reviews the remote pull request without changing the local checkout.',
+      highlights: [],
+      risks: [],
+    },
+  };
+}
+
+function resolveLocalTarget() {
+  const currentHead = tryRepo(['rev-parse', '--verify', 'HEAD']);
+  const worktree = !baseOption && !headOption;
+  let range;
+  if (worktree) {
+    range = currentHead ? [currentHead] : [runRepo(['mktree']).trim()];
+  } else {
+    range = [
+      runRepo(['rev-parse', `${baseOption}^{commit}`]).trim(),
+      runRepo(['rev-parse', `${headOption}^{commit}`]).trim(),
+    ];
+  }
+  const resolvedBase = range[0];
+  const resolvedHead = worktree ? currentHead || 'WORKTREE' : range[1];
+  const remoteUrl = tryRepo(['remote', 'get-url', 'origin']) || undefined;
+  return {
+    kind: worktree ? 'worktree' : 'range',
+    runGit: runRepo,
+    range,
+    base: resolvedBase,
+    head: resolvedHead,
+    branch: tryRepo(['branch', '--show-current']) || undefined,
+    remote: remoteUrl ? { name: 'origin', url: remoteUrl } : undefined,
+    sourceRepositoryUrl: worktree
+      ? undefined
+      : githubRepository(remoteUrl)?.webUrl,
+    baseRepositoryUrl: worktree
+      ? undefined
+      : githubRepository(remoteUrl)?.webUrl,
+    target: worktree
+      ? { kind: 'worktree', base: { ref: 'HEAD', oid: currentHead || null } }
+      : {
+          kind: 'range',
+          base: { ref: baseOption, oid: resolvedBase },
+          head: { ref: headOption, oid: resolvedHead },
+        },
+    changeDefaults: {},
+  };
+}
+
+function resolveTarget() {
+  if (prOption) return resolvePullRequestTarget();
+  if (branchOption) return resolveBranchTarget();
+  return resolveLocalTarget();
+}
+
+function filePatch(file, target) {
+  if (file.untracked) {
+    return runRepoWithDiffExit([
+      'diff',
+      '--no-index',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--binary',
+      '--',
+      '/dev/null',
+      file.path,
+    ]);
+  }
+  const pathspec = file.oldPath ? [file.oldPath, file.path] : [file.path];
+  return target.runGit([
+    'diff',
+    '--no-ext-diff',
+    '--no-textconv',
+    '--binary',
+    '--find-renames',
+    ...target.range,
+    '--',
+    ...pathspec,
+  ]);
+}
+
+function untrackedStat(path) {
+  const raw = runRepoWithDiffExit([
+    'diff',
+    '--no-index',
+    '--no-ext-diff',
+    '--no-textconv',
+    '--numstat',
+    '--',
+    '/dev/null',
+    path,
+  ]).trim();
+  const [add = '0', del = '0'] = raw.split('\t');
+  return {
+    additions: add === '-' ? 0 : Number(add),
+    deletions: del === '-' ? 0 : Number(del),
+    isBinary: add === '-' || del === '-',
+  };
+}
+
+function githubFileUrl(repositoryUrl, ref, path) {
+  if (!repositoryUrl || !ref || ref === 'WORKTREE') return undefined;
+  const filePath = path.split('/').map(encodeURIComponent).join('/');
+  return `${repositoryUrl}/blob/${encodeURIComponent(ref)}/${filePath}`;
+}
+
+function build() {
+  runRepo(['rev-parse', '--is-inside-work-tree']);
+  const target = resolveTarget();
+  const summaryDoc = readJson(summariesPath, {}) || {};
+  const nameStatus = parseNameStatus(
+    target.runGit([
+      'diff',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--name-status',
+      '-z',
+      '--find-renames',
+      ...target.range,
+    ]),
+  ).filter((file) => !excludedPaths.has(file.path));
+  const numstat = parseNumstat(
+    target.runGit([
+      'diff',
+      '--no-ext-diff',
+      '--no-textconv',
+      '--numstat',
+      '-z',
+      '--find-renames',
+      ...target.range,
+    ]),
+  );
+
+  if (target.kind === 'worktree') {
+    const trackedPaths = new Set(nameStatus.map((file) => file.path));
+    const untracked = tryRepo([
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+    ])
+      .split('\0')
+      .filter((path) => path && !excludedPaths.has(path));
+    for (const path of untracked) {
+      if (!trackedPaths.has(path)) {
+        nameStatus.push({ path, status: 'added', untracked: true });
+      }
+    }
+    nameStatus.sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  const filesWithoutSummaries = nameStatus.map((file) => {
+    const stat = file.untracked
+      ? untrackedStat(file.path)
+      : numstat.get(file.path) || {
+          additions: 0,
+          deletions: 0,
+          isBinary: false,
+        };
+    const patch = filePatch(file, target);
+    const binary =
+      stat.isBinary ||
+      patch.includes('Binary files ') ||
+      patch.includes('GIT binary patch');
+    const textPatch = binary ? '' : patch;
+    const sourceUrl = githubFileUrl(
+      file.status === 'deleted'
+        ? target.baseRepositoryUrl
+        : target.sourceRepositoryUrl,
+      file.status === 'deleted' ? target.base : target.head,
+      file.path,
+    );
+    return {
+      path: file.path,
+      ...(file.oldPath ? { oldPath: file.oldPath } : {}),
+      status: binary ? 'binary' : file.status,
+      additions: stat.additions,
+      deletions: stat.deletions,
+      isBinary: binary,
+      isTruncated: !binary && textPatch.split('\n').length > 180,
+      totalDiffLines: textPatch ? textPatch.split('\n').length - 1 : 0,
+      patch: textPatch,
+      snippet: binary ? '' : compactSnippet(textPatch),
+      ...(sourceUrl ? { sourceUrl } : {}),
+    };
+  });
+
+  const reviewFingerprint = createHash('sha256')
+    .update(
+      JSON.stringify({
+        repo: {
+          base: target.base,
+          head: target.head,
+          branch: target.branch,
+          baseBranch: target.baseBranch,
+          remote: target.remote?.name,
+          targetKind: target.kind,
+        },
+        files: filesWithoutSummaries.map((file) => ({
+          path: file.path,
+          oldPath: file.oldPath,
+          status: file.status,
+          additions: file.additions,
+          deletions: file.deletions,
+          isBinary: file.isBinary,
+          patch: file.patch,
+        })),
+      }),
+    )
+    .digest('hex');
+  const generatedFor =
+    typeof summaryDoc.meta?.reviewFingerprint === 'string'
+      ? summaryDoc.meta.reviewFingerprint
+      : undefined;
+  const summariesAreFresh = !generatedFor || generatedFor === reviewFingerprint;
+  const sourceSummaries = summariesAreFresh ? summaryDoc : {};
+  const summariesAreComplete =
+    summariesAreFresh &&
+    completeChangeSummary(sourceSummaries.change) &&
+    filesWithoutSummaries.every((file) =>
+      completeFileSummary(sourceSummaries.files?.[file.path]),
+    );
+  const files = filesWithoutSummaries.map((file) => ({
+    ...file,
+    summary: fileSummary(file.path, sourceSummaries.files?.[file.path]),
+  }));
+  const change = changeSummary(sourceSummaries.change, target.changeDefaults);
+  const content = {
+    repo: {
+      name: repo.split('/').pop(),
+      root: repo,
+      base: target.base,
+      head: target.head,
+      ...(target.branch ? { branch: target.branch } : {}),
+      ...(target.baseBranch ? { baseBranch: target.baseBranch } : {}),
+      ...(target.remote
+        ? { remote: target.remote.name, remoteUrl: target.remote.url }
+        : {}),
+      target: target.target,
+    },
+    change,
+    files,
+    notes: {
+      reviewFingerprint,
+      ...(generatedFor ? { generatedFor } : {}),
+      fresh: summariesAreFresh,
+      complete: summariesAreComplete,
+    },
+  };
+  const version = createHash('sha256')
+    .update(JSON.stringify(content))
+    .digest('hex')
+    .slice(0, 12);
+  const payload = {
+    version,
+    generatedAt: new Date().toISOString(),
+    ...content,
+  };
+  const old = readJson(output, null);
+  if (old) {
+    const prior = { ...old };
+    const next = { ...payload };
+    delete prior.generatedAt;
+    delete next.generatedAt;
+    if (JSON.stringify(prior) === JSON.stringify(next)) return false;
+  }
+  mkdirSync(dirname(output), { recursive: true });
+  const temp = `${output}.${process.pid}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(payload, null, 2)}\n`);
+  renameSync(temp, output);
+  return true;
+}
+
+function fingerprint() {
+  let summariesTime = '';
+  try {
+    summariesTime = String(statSync(summariesPath).mtimeMs);
+  } catch {}
+  if (remoteMode) return summariesTime;
+  if (baseOption && headOption) {
+    return [
+      tryRepo(['rev-parse', baseOption]),
+      tryRepo(['rev-parse', headOption]),
+      summariesTime,
+    ].join('|');
+  }
+  return [
+    tryRepo(['rev-parse', 'HEAD']),
+    tryRepo(['status', '--porcelain=v1', '--untracked-files=all']),
+    summariesTime,
+  ].join('|');
+}
+
+const refresh = () => {
+  try {
+    const wrote = build();
+    console.log(wrote ? `Wrote ${output}` : 'No diff-data changes');
+    return true;
+  } catch (error) {
+    console.error(error.message);
+    if (!watching) process.exitCode = 1;
+    return false;
+  }
+};
+
+refresh();
+if (watching) {
+  let last = fingerprint();
+  let remoteWait = 0;
+  setInterval(() => {
+    const next = fingerprint();
+    remoteWait += 2_000;
+    const remoteDue = remoteMode && remoteWait >= 30_000;
+    if (next !== last || remoteDue) {
+      last = next;
+      remoteWait = 0;
+      refresh();
+    }
+  }, 2_000);
+}
