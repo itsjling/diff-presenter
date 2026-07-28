@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-28T15:33:27Z",
+  "title": "Design System: Diff Presenter",
+  "extensions": {
+    "colorMeta": {
+      "desk-canvas": {
+        "role": "neutral",
+        "displayName": "Desk Canvas",
+        "canonical": "#e9e2d5",
+        "tonalRamp": ["oklch(15% 0.019 83.1)", "oklch(27% 0.019 83.1)", "oklch(39% 0.019 83.1)", "oklch(51% 0.019 83.1)", "oklch(63% 0.019 83.1)", "oklch(75% 0.019 83.1)", "oklch(87% 0.019 83.1)", "oklch(95% 0.019 83.1)"]
+      },
+      "reading-paper": {
+        "role": "neutral",
+        "displayName": "Reading Paper",
+        "canonical": "#fbf8f0",
+        "tonalRamp": ["oklch(15% 0.011 89.7)", "oklch(27% 0.011 89.7)", "oklch(39% 0.011 89.7)", "oklch(51% 0.011 89.7)", "oklch(63% 0.011 89.7)", "oklch(75% 0.011 89.7)", "oklch(87% 0.011 89.7)", "oklch(95% 0.011 89.7)"]
+      },
+      "reading-paper-deep": {
+        "role": "neutral",
+        "displayName": "Deep Reading Paper",
+        "canonical": "#f1ebdf",
+        "tonalRamp": ["oklch(15% 0.017 84.6)", "oklch(27% 0.017 84.6)", "oklch(39% 0.017 84.6)", "oklch(51% 0.017 84.6)", "oklch(63% 0.017 84.6)", "oklch(75% 0.017 84.6)", "oklch(87% 0.017 84.6)", "oklch(95% 0.017 84.6)"]
+      },
+      "carbon-ink": {
+        "role": "primary",
+        "displayName": "Carbon Ink",
+        "canonical": "#20231f",
+        "tonalRamp": ["oklch(15% 0.009 137.8)", "oklch(27% 0.009 137.8)", "oklch(39% 0.009 137.8)", "oklch(51% 0.009 137.8)", "oklch(63% 0.009 137.8)", "oklch(75% 0.009 137.8)", "oklch(87% 0.009 137.8)", "oklch(95% 0.009 137.8)"]
+      },
+      "muted-ink": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#73766d",
+        "tonalRamp": ["oklch(15% 0.014 121.9)", "oklch(27% 0.014 121.9)", "oklch(39% 0.014 121.9)", "oklch(51% 0.014 121.9)", "oklch(63% 0.014 121.9)", "oklch(75% 0.014 121.9)", "oklch(87% 0.014 121.9)", "oklch(95% 0.014 121.9)"]
+      },
+      "quiet-ink": {
+        "role": "neutral",
+        "displayName": "Quiet Ink",
+        "canonical": "#aaa99f",
+        "tonalRamp": ["oklch(15% 0.014 102.1)", "oklch(27% 0.014 102.1)", "oklch(39% 0.014 102.1)", "oklch(51% 0.014 102.1)", "oklch(63% 0.014 102.1)", "oklch(75% 0.014 102.1)", "oklch(87% 0.014 102.1)", "oklch(95% 0.014 102.1)"]
+      },
+      "divider": {
+        "role": "neutral",
+        "displayName": "Divider",
+        "canonical": "#d8d1c4",
+        "tonalRamp": ["oklch(15% 0.019 83.1)", "oklch(27% 0.019 83.1)", "oklch(39% 0.019 83.1)", "oklch(51% 0.019 83.1)", "oklch(63% 0.019 83.1)", "oklch(75% 0.019 83.1)", "oklch(87% 0.019 83.1)", "oklch(95% 0.019 83.1)"]
+      },
+      "dark-divider": {
+        "role": "neutral",
+        "displayName": "Dark Divider",
+        "canonical": "#333831",
+        "tonalRamp": ["oklch(15% 0.014 136.7)", "oklch(27% 0.014 136.7)", "oklch(39% 0.014 136.7)", "oklch(51% 0.014 136.7)", "oklch(63% 0.014 136.7)", "oklch(75% 0.014 136.7)", "oklch(87% 0.014 136.7)", "oklch(95% 0.014 136.7)"]
+      },
+      "addition-green": {
+        "role": "secondary",
+        "displayName": "Addition Green",
+        "canonical": "#2f6c4d",
+        "tonalRamp": ["oklch(15% 0.081 158.9)", "oklch(27% 0.081 158.9)", "oklch(39% 0.081 158.9)", "oklch(51% 0.081 158.9)", "oklch(63% 0.081 158.9)", "oklch(75% 0.081 158.9)", "oklch(87% 0.081 158.9)", "oklch(95% 0.081 158.9)"]
+      },
+      "addition-wash": {
+        "role": "secondary",
+        "displayName": "Addition Wash",
+        "canonical": "#dce9dc",
+        "tonalRamp": ["oklch(15% 0.022 145.4)", "oklch(27% 0.022 145.4)", "oklch(39% 0.022 145.4)", "oklch(51% 0.022 145.4)", "oklch(63% 0.022 145.4)", "oklch(75% 0.022 145.4)", "oklch(87% 0.022 145.4)", "oklch(95% 0.022 145.4)"]
+      },
+      "deletion-red": {
+        "role": "secondary",
+        "displayName": "Deletion Red",
+        "canonical": "#a14f45",
+        "tonalRamp": ["oklch(15% 0.111 28.5)", "oklch(27% 0.111 28.5)", "oklch(39% 0.111 28.5)", "oklch(51% 0.111 28.5)", "oklch(63% 0.111 28.5)", "oklch(75% 0.111 28.5)", "oklch(87% 0.111 28.5)", "oklch(95% 0.111 28.5)"]
+      },
+      "deletion-wash": {
+        "role": "secondary",
+        "displayName": "Deletion Wash",
+        "canonical": "#f1ddda",
+        "tonalRamp": ["oklch(15% 0.023 27.8)", "oklch(27% 0.023 27.8)", "oklch(39% 0.023 27.8)", "oklch(51% 0.023 27.8)", "oklch(63% 0.023 27.8)", "oklch(75% 0.023 27.8)", "oklch(87% 0.023 27.8)", "oklch(95% 0.023 27.8)"]
+      },
+      "review-blue": {
+        "role": "primary",
+        "displayName": "Review Blue",
+        "canonical": "#426b7c",
+        "tonalRamp": ["oklch(15% 0.053 226.3)", "oklch(27% 0.053 226.3)", "oklch(39% 0.053 226.3)", "oklch(51% 0.053 226.3)", "oklch(63% 0.053 226.3)", "oklch(75% 0.053 226.3)", "oklch(87% 0.053 226.3)", "oklch(95% 0.053 226.3)"]
+      },
+      "review-wash": {
+        "role": "primary",
+        "displayName": "Review Wash",
+        "canonical": "#dce9ed",
+        "tonalRamp": ["oklch(15% 0.015 218.1)", "oklch(27% 0.015 218.1)", "oklch(39% 0.015 218.1)", "oklch(51% 0.015 218.1)", "oklch(63% 0.015 218.1)", "oklch(75% 0.015 218.1)", "oklch(87% 0.015 218.1)", "oklch(95% 0.015 218.1)"]
+      },
+      "risk-amber": {
+        "role": "tertiary",
+        "displayName": "Risk Amber",
+        "canonical": "#9c7027",
+        "tonalRamp": ["oklch(15% 0.104 76.2)", "oklch(27% 0.104 76.2)", "oklch(39% 0.104 76.2)", "oklch(51% 0.104 76.2)", "oklch(63% 0.104 76.2)", "oklch(75% 0.104 76.2)", "oklch(87% 0.104 76.2)", "oklch(95% 0.104 76.2)"]
+      },
+      "risk-wash": {
+        "role": "tertiary",
+        "displayName": "Risk Wash",
+        "canonical": "#eee3c7",
+        "tonalRamp": ["oklch(15% 0.039 89.1)", "oklch(27% 0.039 89.1)", "oklch(39% 0.039 89.1)", "oklch(51% 0.039 89.1)", "oklch(63% 0.039 89.1)", "oklch(75% 0.039 89.1)", "oklch(87% 0.039 89.1)", "oklch(95% 0.039 89.1)"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Empty-state messages and rare page-level statements."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The main agent summary for the selected file."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "File headings and local section titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Agent notes, summaries, and supporting text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Eyebrows and compact section labels."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Unified diffs, paths, counts, and shortcuts."
+      }
+    },
+    "shadows": [
+      {
+        "name": "reader-ambient",
+        "value": "0 28px 80px rgb(56 45 30 / 14%)",
+        "purpose": "The full review sheet only."
+      },
+      {
+        "name": "modal-ambient",
+        "value": "0 40px 100px rgb(18 20 17 / 32%)",
+        "purpose": "The file-picker dialog over its dark backdrop."
+      },
+      {
+        "name": "active-row-inset",
+        "value": "inset 2px 0 #20231f",
+        "purpose": "The selected file row."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-fast",
+        "value": "160ms ease",
+        "purpose": "Hover color and background changes."
+      },
+      {
+        "name": "directional-page",
+        "value": "360ms cubic-bezier(0.22, 0.78, 0.28, 1)",
+        "purpose": "Moving between adjacent files."
+      },
+      {
+        "name": "picked-page",
+        "value": "300ms cubic-bezier(0.22, 0.78, 0.28, 1)",
+        "purpose": "Opening a file chosen from the picker."
+      },
+      {
+        "name": "modal-entry",
+        "value": "240ms cubic-bezier(0.22, 0.78, 0.28, 1)",
+        "purpose": "File-picker entry."
+      },
+      {
+        "name": "live-ring",
+        "value": "2.2s ease-out",
+        "purpose": "Watching-state pulse."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stacked-reader",
+        "value": "980px"
+      },
+      {
+        "name": "compact-reader",
+        "value": "680px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Brand Mark",
+      "kind": "custom",
+      "description": "The sharp split-color DP mark used in the top bar.",
+      "html": "<div class=\"ds-brand-mark\" aria-label=\"Diff Presenter\"><span>D</span><span>P</span></div>",
+      "css": ".ds-brand-mark { border: 1px solid var(--ink, #20231f); color: var(--ink, #20231f); display: grid; font: 700 10px/1 var(--font-geist-mono, monospace); grid-template-columns: 1fr 1fr; height: 38px; letter-spacing: -0.06em; width: 38px; } .ds-brand-mark span { align-items: center; display: flex; justify-content: center; } .ds-brand-mark span:first-child { background: var(--ink, #20231f); color: var(--paper, #fbf8f0); }"
+    },
+    {
+      "name": "Reader Navigation",
+      "kind": "nav",
+      "refersTo": "reader-toolbar",
+      "description": "Dark file navigation with fixed arrow controls and a truncating path.",
+      "html": "<nav class=\"ds-reader-nav\" aria-label=\"Changed files\"><button class=\"ds-nav-button\" aria-label=\"Previous file\">←</button><button class=\"ds-current-file\"><small>12 / 57</small><span>app/components/review.tsx</span></button><button class=\"ds-nav-button\" aria-label=\"Next file\">→</button></nav>",
+      "css": ".ds-reader-nav { align-items: stretch; background: var(--ink, #20231f); border-radius: 15px 15px 0 0; color: #f8f4ea; display: grid; grid-template-columns: 60px minmax(0, 1fr) 60px; height: 60px; overflow: hidden; } .ds-nav-button, .ds-current-file { background: transparent; border: 0; color: inherit; cursor: pointer; } .ds-nav-button { font: 400 22px/1 var(--font-geist-mono, monospace); transition: background 160ms ease, color 160ms ease; } .ds-nav-button:hover { background: rgb(255 255 255 / 9%); color: #fff; } .ds-nav-button:focus-visible, .ds-current-file:focus-visible { outline: 2px solid var(--blue, #426b7c); outline-offset: -3px; } .ds-current-file { align-items: center; display: flex; gap: 13px; min-width: 0; padding: 0 20px; text-align: left; } .ds-current-file small { color: #bcbcb3; font: 600 10px/1 var(--font-geist-mono, monospace); } .ds-current-file span { color: #e6e2d9; font: 520 12px/1.2 var(--font-geist-mono, monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }"
+    },
+    {
+      "name": "Text Action",
+      "kind": "button",
+      "refersTo": "text-button",
+      "description": "A low-weight action for expanding diffs and opening source links.",
+      "html": "<button class=\"ds-text-action\">Show full patch</button>",
+      "css": ".ds-text-action { background: transparent; border: 0; color: var(--ink, #20231f); cursor: pointer; font: 650 10px/1.2 var(--font-geist-sans, Arial, sans-serif); padding: 7px 0; text-decoration: underline; text-decoration-color: #aaa99f; text-underline-offset: 4px; } .ds-text-action:hover { text-decoration-color: var(--ink, #20231f); } .ds-text-action:focus-visible { outline: 2px solid var(--blue, #426b7c); outline-offset: 3px; } .ds-text-action:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "A compact uppercase file-status label.",
+      "html": "<span class=\"ds-status-chip ds-status-chip--added\">Added</span>",
+      "css": ".ds-status-chip { border: 1px solid #525751; border-radius: 99px; color: #c7cbc4; display: inline-flex; font: 600 10px/1 var(--font-geist-mono, monospace); letter-spacing: 0.04em; padding: 6px 9px; text-transform: uppercase; } .ds-status-chip--added { border-color: rgb(113 183 140 / 45%); color: #a8d4b7; }"
+    },
+    {
+      "name": "File Search",
+      "kind": "input",
+      "refersTo": "file-picker-input",
+      "description": "The mono search field used in the changed-file picker.",
+      "html": "<label class=\"ds-file-search\"><span aria-hidden=\"true\">⌕</span><input type=\"search\" placeholder=\"Filter by path…\" aria-label=\"Filter changed files\"><small>ESC</small></label>",
+      "css": ".ds-file-search { align-items: center; border-bottom: 1px solid var(--line, #d8d1c4); border-top: 1px solid var(--line, #d8d1c4); color: var(--ink, #20231f); display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; padding: 0 3px; } .ds-file-search > span { color: var(--muted, #73766d); font-size: 22px; } .ds-file-search input { background: transparent; border: 0; color: inherit; font: 500 13px/1 var(--font-geist-mono, monospace); height: 52px; min-width: 0; outline: 0; } .ds-file-search input::placeholder { color: #a6a49b; } .ds-file-search small { color: var(--muted, #73766d); font: 500 9px/1 var(--font-geist-mono, monospace); } .ds-file-search:focus-within { border-color: var(--blue, #426b7c); }"
+    },
+    {
+      "name": "Changed File Row",
+      "kind": "nav",
+      "description": "A searchable file-picker row with status and line totals.",
+      "html": "<button class=\"ds-file-row\"><span class=\"ds-file-index\">07</span><i class=\"ds-status-pin\"></i><span class=\"ds-file-path\">app/page.tsx</span><span class=\"ds-change-count\"><i>+42</i><b>−8</b></span></button>",
+      "css": ".ds-file-row { align-items: center; background: transparent; border: 0; border-radius: 7px; color: var(--ink, #20231f); cursor: pointer; display: grid; gap: 11px; grid-template-columns: 30px 8px minmax(0, 1fr) auto; min-height: 43px; padding: 0 14px; text-align: left; width: 100%; } .ds-file-row:hover { background: #ece7dc; } .ds-file-row:focus-visible { background: #ece7dc; box-shadow: inset 2px 0 var(--ink, #20231f); outline: 2px solid var(--blue, #426b7c); outline-offset: 2px; } .ds-file-index { color: var(--quiet, #aaa99f); font: 500 9px/1 var(--font-geist-mono, monospace); } .ds-status-pin { background: #71b78c; border-radius: 999px; height: 7px; width: 7px; } .ds-file-path { font: 520 11px/1.2 var(--font-geist-mono, monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-change-count { display: flex; font: 600 9px/1 var(--font-geist-mono, monospace); gap: 9px; } .ds-change-count i { color: var(--green, #2f6c4d); font-style: normal; } .ds-change-count b { color: var(--red, #a14f45); font-weight: 600; }"
+    },
+    {
+      "name": "Diff Change Rows",
+      "kind": "custom",
+      "refersTo": "diff-row-added",
+      "description": "The signature old-line, new-line, marker, and code grid for additions and deletions.",
+      "html": "<div class=\"ds-diff\"><div class=\"ds-diff-row ds-diff-row--add\"><span>12</span><span>12</span><b>+</b><code>const clear = summarize(diff);</code></div><div class=\"ds-diff-row ds-diff-row--delete\"><span>13</span><span></span><b>−</b><code>const summary = rawText;</code></div></div>",
+      "css": ".ds-diff { background: var(--paper, #fbf8f0); color: var(--ink, #20231f); font: 450 11.5px/1.6 var(--font-geist-mono, monospace); overflow: auto; } .ds-diff-row { display: grid; grid-template-columns: 42px 42px 26px minmax(320px, 1fr); min-height: 21px; } .ds-diff-row > span { color: #aaa89f; font-size: 10px; padding-right: 10px; text-align: right; } .ds-diff-row > b { font-weight: 650; text-align: center; } .ds-diff-row > code { padding: 1px 18px 0 6px; white-space: pre; } .ds-diff-row--add { background: linear-gradient(90deg, var(--green-soft, #dce9dc), #e7f0e4 82%, transparent); } .ds-diff-row--add b, .ds-diff-row--add code { color: var(--green, #2f6c4d); } .ds-diff-row--delete { background: linear-gradient(90deg, var(--red-soft, #f1ddda), #f5e5e1 82%, transparent); } .ds-diff-row--delete b, .ds-diff-row--delete code { color: var(--red, #a14f45); } .ds-diff-row:hover { filter: brightness(0.985); }"
+    },
+    {
+      "name": "Risk Callout",
+      "kind": "card",
+      "refersTo": "risk-callout",
+      "description": "The only rounded note inside the summary pane, reserved for risks.",
+      "html": "<section class=\"ds-risk\"><p>CHECK CLOSELY</p><ul><li>The branch may change before the review finishes.</li></ul></section>",
+      "css": ".ds-risk { background: #eee5d8; border: 1px solid #d6c9b7; border-radius: 8px; color: #454942; font-family: var(--font-geist-sans, Arial, sans-serif); padding: 17px 18px 14px; } .ds-risk > p { color: #805a22; font: 650 9px/1.2 var(--font-geist-mono, monospace); letter-spacing: 0.12em; margin: 0; } .ds-risk ul { list-style: none; margin: 11px 0 0; padding: 0; } .ds-risk li { font-size: 12px; line-height: 1.55; padding: 5px 0 5px 18px; position: relative; } .ds-risk li::before { background: var(--amber, #9c7027); content: ''; height: 1px; left: 0; position: absolute; top: 14px; width: 8px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Review Desk",
+    "overview": "Diff Presenter uses a measured, editorial system built for close reading. Warm paper surfaces, dark ink, compact mono labels, and a strong split between source evidence and agent notes make the interface feel ordered without making it stark.\n\nThe system stays mostly flat. Borders, tone shifts, and spacing separate regions; shadows mark only the main reader and the file picker. The diff remains the main work area, while the narrower note pane adds context in a quieter reading rhythm.",
+    "keyCharacteristics": [
+      "Warm paper and ink palette",
+      "Two-pane review layout",
+      "Sans type for explanation and mono type for evidence",
+      "Flat structure led by borders and tonal layers",
+      "Semantic color for additions, deletions, review markers, and risks",
+      "Brief directional motion with a reduced-motion path"
+    ],
+    "rules": [
+      {
+        "name": "The Meaningful Color Rule",
+        "body": "Use green, red, blue, and amber to convey change or review state; do not use them as decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Rule",
+        "body": "Use Geist Mono for code, paths, counts, shortcuts, metadata, and short labels; keep full explanations in Geist.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-by-Default Rule",
+        "body": "Use borders and tonal layers inside the reader; reserve ambient shadows for the full sheet and modal overlays.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep the warm paper and Carbon Ink base on review surfaces.",
+      "Do reserve semantic colors for additions, deletions, review structure, and risks.",
+      "Do use Geist Mono for code and compact evidence, and Geist for explanation.",
+      "Do use borders and tonal layers before adding a shadow.",
+      "Do keep the diff wider than the note pane on large screens.",
+      "Do honor both responsive breakpoints and `prefers-reduced-motion`."
+    ],
+    "donts": [
+      "Don't use semantic green, red, blue, or amber as general decoration.",
+      "Don't turn every inner region into a rounded card.",
+      "Don't add ambient shadows to rows, notes, or routine controls.",
+      "Don't replace the code grid with a proportional font.",
+      "Don't let secondary metadata crowd navigation on small screens."
+    ]
+  }
+}
