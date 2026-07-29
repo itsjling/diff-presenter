@@ -707,7 +707,25 @@ function resolveTarget() {
   return resolveLocalTarget();
 }
 
-function filePatch(file, target) {
+function trackedPatches(files, target) {
+  const raw = target.runGit([
+    'diff',
+    '--no-ext-diff',
+    '--no-textconv',
+    '--binary',
+    '--find-renames',
+    ...target.range,
+  ]);
+  const patches = raw
+    .split(/(?=^diff --git )/m)
+    .filter((patch) => patch.startsWith('diff --git '));
+  if (patches.length !== files.length) return undefined;
+  return new Map(
+    files.map((file, index) => [file.path, patches[index]]),
+  );
+}
+
+function filePatch(file, target, patches) {
   if (file.untracked) {
     return runRepoWithDiffExit([
       'diff',
@@ -720,6 +738,8 @@ function filePatch(file, target) {
       file.path,
     ]);
   }
+  const combined = patches?.get(file.path);
+  if (combined !== undefined) return combined;
   const pathspec = file.oldPath ? [file.oldPath, file.path] : [file.path];
   return target.runGit([
     'diff',
@@ -767,7 +787,7 @@ function build() {
   const target = resolveTarget();
   const remoteRepository = githubRepository(target.remote?.url);
   const summaryDoc = readJson(summariesPath, {}) || {};
-  const nameStatus = parseNameStatus(
+  const allTrackedFiles = parseNameStatus(
     target.runGit([
       'diff',
       '--no-ext-diff',
@@ -777,7 +797,10 @@ function build() {
       '--find-renames',
       ...target.range,
     ]),
-  ).filter((file) => !excludedPaths.has(file.path));
+  );
+  const nameStatus = allTrackedFiles.filter(
+    (file) => !excludedPaths.has(file.path),
+  );
   const numstat = parseNumstat(
     target.runGit([
       'diff',
@@ -789,6 +812,7 @@ function build() {
       ...target.range,
     ]),
   );
+  const patches = trackedPatches(allTrackedFiles, target);
 
   if (target.kind === 'worktree' || target.kind === 'checkout') {
     const trackedPaths = new Set(nameStatus.map((file) => file.path));
@@ -816,7 +840,7 @@ function build() {
           deletions: 0,
           isBinary: false,
         };
-    const patch = filePatch(file, target);
+    const patch = filePatch(file, target, patches);
     const binary =
       stat.isBinary ||
       patch.includes('Binary files ') ||
