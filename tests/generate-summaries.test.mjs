@@ -235,13 +235,16 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
   }
 });
 
-test("generates notes with Claude, Copilot, and OpenCode", async () => {
-  for (const agent of ["claude", "copilot", "opencode"]) {
+test("generates notes with Claude, Copilot, Cursor, and OpenCode", async () => {
+  for (const agent of ["claude", "copilot", "cursor", "opencode"]) {
     const repo = await makeRepo();
     const summaries = join(repo, `${agent}-notes.json`);
     const output = join(repo, `${agent}-diff-data.json`);
     const binDirectory = join(repo, "bin");
-    const bin = join(binDirectory, agent);
+    const bin = join(
+      binDirectory,
+      agent === "cursor" ? "cursor-agent" : agent,
+    );
     const response = notes({
       "added.txt": {
         title: "Add a text file",
@@ -268,6 +271,11 @@ const agent = ${JSON.stringify(agent)};
 const response = ${JSON.stringify(response)};
 if (agent === "claude") {
   process.stdout.write(JSON.stringify({ structured_output: response }));
+} else if (agent === "cursor") {
+  process.stdout.write(JSON.stringify({
+    type: "result",
+    result: JSON.stringify(response),
+  }));
 } else if (agent === "opencode") {
   process.stdout.write(JSON.stringify({
     type: "text",

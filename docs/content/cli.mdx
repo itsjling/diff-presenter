@@ -87,7 +87,7 @@ npx diffsplain \
 | `--branch NAME` | Compare a remote branch with its default branch. |
 | `--worktree` | Review tracked and untracked changes against `HEAD`. |
 | `--base REF --head REF` | Review an exact local range. |
-| `--agent NAME` | Use `codex`, `claude`, `copilot`, or `opencode`. |
+| `--agent NAME` | Use `codex`, `claude`, `copilot`, `cursor`, or `opencode`. |
 | `--no-agent` | Show the diff without agent notes. |
 | `--model NAME` | Choose the model used for notes. |
 | `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
@@ -101,5 +101,5 @@ npx diffsplain \
 
 Remote repos need `--branch` or `--pr`. You cannot combine two target options.
 When you omit `--port`, Diffsplain increments from `2299` until it finds a free
-port. When you omit `--agent`, Diffsplain tries Codex, Claude, Copilot, then
-OpenCode. It stops with an error if none are installed.
+port. When you omit `--agent`, Diffsplain tries Codex, Claude, Copilot, Cursor,
+then OpenCode. It stops with an error if none are installed.

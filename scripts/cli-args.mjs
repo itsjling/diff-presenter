@@ -49,7 +49,7 @@ Targets:
 Options:
   --repo PATH|URL|OWNER/NAME
                       Repo to review (default: current repo)
-  --agent NAME        Use codex, claude, copilot, or opencode
+  --agent NAME        Use codex, claude, copilot, cursor, or opencode
   --no-agent          Do not write agent notes
   --model NAME        Model for agent notes
   --reasoning LEVEL   Agent reasoning effort when supported
@@ -62,7 +62,7 @@ Options:
   -v, --version       Show the installed version
 
 Agent fallback:
-  codex, claude, copilot, opencode
+  codex, claude, copilot, cursor, opencode
 
 Examples:
   diffsplain

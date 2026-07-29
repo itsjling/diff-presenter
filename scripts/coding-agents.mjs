@@ -1,8 +1,20 @@
 import { constants } from 'node:fs';
 import { access } from 'node:fs/promises';
-import { delimiter, dirname, isAbsolute, join } from 'node:path';
+import {
+  basename,
+  delimiter,
+  dirname,
+  isAbsolute,
+  join,
+} from 'node:path';
 
-export const codingAgents = ['codex', 'claude', 'copilot', 'opencode'];
+export const codingAgents = [
+  'codex',
+  'claude',
+  'copilot',
+  'cursor',
+  'opencode',
+];
 
 async function executable(path) {
   try {
@@ -78,6 +90,7 @@ export function codingAgentBinary(
   } = {},
 ) {
   if (agent === 'codex') return codexBin || env.CODEX_BIN || agent;
+  if (agent === 'cursor') return env.CURSOR_BIN || 'cursor-agent';
   return env[`${agent.toUpperCase()}_BIN`] || agent;
 }
 
@@ -115,6 +128,14 @@ export function parseAgentResponse(agent, stdout) {
       .filter((event) => event?.type === 'text' && event.part?.text)
       .map((event) => event.part.text);
     if (parts.length) return parseJsonText(parts.join(''), 'OpenCode');
+  }
+
+  if (agent === 'cursor') {
+    const envelope = parseJsonText(stdout, 'Cursor');
+    if (typeof envelope?.result === 'string') {
+      return parseJsonText(envelope.result, 'Cursor');
+    }
+    return envelope;
   }
 
   const label = agent === 'copilot' ? 'Copilot' : 'Codex';
@@ -191,6 +212,20 @@ export function agentCommand({
       `${prompt}\n\nRead the snapshot from @${inputPath}. Return JSON that matches this schema:\n${schemaText}`,
     );
     return { command: binary, args, input: 'none' };
+  }
+
+  if (agent === 'cursor') {
+    const args = ['--print', '--output-format', 'json'];
+    if (model) args.push('--model', model);
+    args.push(
+      `${prompt}\n\nRead the snapshot from @${basename(inputPath)}. Return only JSON that matches this schema:\n${JSON.stringify(schema)}`,
+    );
+    return {
+      command: binary,
+      args,
+      input: 'none',
+      cwd: dirname(inputPath),
+    };
   }
 
   const args = [

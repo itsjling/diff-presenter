@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   agentCommand,
+  codingAgentBinary,
   parseAgentResponse,
   selectCodingAgent,
 } from '../scripts/coding-agents.mjs';
@@ -59,6 +60,16 @@ test('builds non-interactive commands for each coding agent', () => {
   assert.ok(copilot.args.includes('--no-ask-user'));
   assert.match(copilot.args.at(-1), /@\/tmp\/input\.json/);
 
+  const cursor = agentCommand({ ...common, agent: 'cursor' });
+  assert.deepEqual(cursor.args.slice(0, 3), [
+    '--print',
+    '--output-format',
+    'json',
+  ]);
+  assert.ok(cursor.args.includes('--model'));
+  assert.match(cursor.args.at(-1), /@input\.json/);
+  assert.equal(cursor.cwd, '/tmp');
+
   const opencode = agentCommand({ ...common, agent: 'opencode' });
   assert.deepEqual(opencode.args.slice(0, 4), [
     'run',
@@ -89,6 +100,16 @@ test('reads structured output from each coding agent', () => {
   );
   assert.deepEqual(
     parseAgentResponse(
+      'cursor',
+      JSON.stringify({
+        type: 'result',
+        result: `\`\`\`json\n${JSON.stringify(response)}\n\`\`\``,
+      }),
+    ),
+    response,
+  );
+  assert.deepEqual(
+    parseAgentResponse(
       'opencode',
       `${JSON.stringify({
         type: 'text',
@@ -96,5 +117,15 @@ test('reads structured output from each coding agent', () => {
       })}\n`,
     ),
     response,
+  );
+});
+
+test('uses the Cursor Agent binary name and allows an override', () => {
+  assert.equal(codingAgentBinary('cursor', { env: {} }), 'cursor-agent');
+  assert.equal(
+    codingAgentBinary('cursor', {
+      env: { CURSOR_BIN: '/custom/cursor-agent' },
+    }),
+    '/custom/cursor-agent',
   );
 });

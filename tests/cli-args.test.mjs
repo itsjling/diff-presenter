@@ -106,7 +106,7 @@ test('rejects remote repos without a branch or pull request', () => {
 });
 
 test('accepts each supported coding agent', () => {
-  for (const agent of ['codex', 'claude', 'copilot', 'opencode']) {
+  for (const agent of ['codex', 'claude', 'copilot', 'cursor', 'opencode']) {
     const parsed = parseCliArgs(['--agent', agent], {
       callerDirectory: cwd,
       pathExists: missing,
