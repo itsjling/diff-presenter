@@ -270,7 +270,8 @@ function scheduleAgent(fingerprint) {
     return;
   }
   clearTimeout(agentTimer);
-  agentTimer = setTimeout(() => runAgent(selectedFingerprint), 2_500);
+  const delay = agentFingerprint ? 300 : 0;
+  agentTimer = setTimeout(() => runAgent(selectedFingerprint), delay);
 }
 
 if (agentEnabled && feed.stdout) {
