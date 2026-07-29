@@ -171,10 +171,19 @@ test("builds live data for tracked and untracked workspace files", async () => {
     git("config", "user.email", "diffsplain@example.test");
     git("config", "user.name", "Diffsplain");
     await writeFile(join(repo, "tracked.txt"), "before\n");
-    git("add", "tracked.txt");
+    await writeFile(
+      join(repo, "other file.txt"),
+      "other before\n".repeat(10),
+    );
+    git("add", "tracked.txt", "other file.txt");
     git("commit", "-qm", "base");
 
     await writeFile(join(repo, "tracked.txt"), "after\n");
+    git("mv", "other file.txt", "renamed file.txt");
+    await writeFile(
+      join(repo, "renamed file.txt"),
+      `${"other before\n".repeat(10)}renamed after\n`,
+    );
     await writeFile(join(repo, "new.txt"), "new line\n");
     await mkdir(join(repo, ".diffsplain"));
     await writeFile(
@@ -221,11 +230,14 @@ test("builds live data for tracked and untracked workspace files", async () => {
     const first = JSON.parse(await readFile(output, "utf8"));
     assert.deepEqual(
       first.files.map((file) => file.path),
-      ["new.txt", "tracked.txt"],
+      ["new.txt", "renamed file.txt", "tracked.txt"],
     );
     assert.equal(first.files[0].status, "added");
     assert.match(first.files[0].patch, /new line/);
     assert.equal(first.files[0].summary.title, "New note");
+    assert.match(first.files[1].patch, /renamed after/);
+    assert.doesNotMatch(first.files[1].patch, /\+after$/m);
+    assert.match(first.files[2].patch, /\+after$/m);
 
     const oldVersion = first.version;
     const summaries = JSON.parse(
