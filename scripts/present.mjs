@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { helpText, parseCliArgs } from './cli-args.mjs';
 
@@ -186,21 +187,12 @@ function scheduleAgent(fingerprint) {
 }
 
 if (agentEnabled && feed.stdout) {
-  let feedOutput = '';
-  feed.stdout.on('data', (chunk) => {
-    const text = chunk.toString();
-    process.stdout.write(text);
-    feedOutput += text;
-    const lines = feedOutput.split('\n');
-    feedOutput = lines.pop() || '';
-    if (
-      lines.some(
-        (line) =>
-          line.startsWith('Wrote ') || line === 'No diff-data changes',
-      )
-    ) {
+  const feedLines = createInterface({ input: feed.stdout });
+  feedLines.on('line', (line) => {
+    if (line.startsWith('Wrote ') || line === 'No diff-data changes') {
       scheduleAgent();
     }
+    if (line !== 'No diff-data changes') console.log(line);
   });
 }
 
