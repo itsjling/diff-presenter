@@ -60,6 +60,14 @@ npm install
 npm run dev
 ```
 
+Run the public CLI from this checkout:
+
+```sh
+npm run diffsplain -- --worktree
+npm run diffsplain -- doctor
+npm run doctor
+```
+
 Run the checks:
 
 ```sh

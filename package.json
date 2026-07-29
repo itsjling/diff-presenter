@@ -38,6 +38,8 @@
     "docs:build": "cd docs && blume build",
     "docs:check": "cd docs && blume check && blume validate",
     "docs:preview": "cd docs && blume preview",
+    "diffsplain": "node scripts/present.mjs",
+    "doctor": "node scripts/present.mjs doctor",
     "present": "node scripts/present.mjs",
     "release": "node scripts/release.mjs",
     "summarize": "node scripts/generate-summaries.mjs",

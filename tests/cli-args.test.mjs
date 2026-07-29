@@ -215,5 +215,13 @@ test('publishes the diffsplain executable', async () => {
   assert.equal(packageJson.private, undefined);
   assert.equal(packageJson.bin['diffsplain'], 'scripts/present.mjs');
   assert.ok(packageJson.files.includes('dist'));
+  assert.equal(
+    packageJson.scripts.diffsplain,
+    'node scripts/present.mjs',
+  );
+  assert.equal(
+    packageJson.scripts.doctor,
+    'node scripts/present.mjs doctor',
+  );
   assert.ok(packageJson.scripts.prepack);
 });
