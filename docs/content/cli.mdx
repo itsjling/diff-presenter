@@ -78,10 +78,24 @@ npx diffsplain \
   --head HEAD_REF
 ```
 
+## Check your setup
+
+Run the doctor command to see Node, Git, GitHub CLI, and coding agent paths and
+versions:
+
+```sh
+npx diffsplain doctor
+```
+
+The report lists every supported agent, even when it is not installed. Its
+status says when no agent is available and whether pull request lookup can use
+`gh`.
+
 ## Options
 
 | Argument | Use |
 | --- | --- |
+| `doctor` | Show dependency paths, versions, and readiness. |
 | `REPO`, `--repo PATH\|URL\|OWNER/REPO` | Select a local path, Git URL, or GitHub repo. |
 | `--pr NUMBER\|URL` | Review a GitHub pull request. |
 | `--branch NAME` | Compare a remote branch with its default branch. |

@@ -28,7 +28,7 @@ async function executable(path) {
   }
 }
 
-export async function commandAvailable(
+export async function findCommand(
   command,
   {
     env = process.env,
@@ -40,7 +40,7 @@ export async function commandAvailable(
     command.includes('/') ||
     command.includes('\\')
   ) {
-    return executable(command);
+    return (await executable(command)) ? command : undefined;
   }
 
   const extensions =
@@ -51,11 +51,15 @@ export async function commandAvailable(
   for (const directory of directories) {
     for (const extension of extensions) {
       if (await executable(join(directory, `${command}${extension}`))) {
-        return true;
+        return join(directory, `${command}${extension}`);
       }
     }
   }
-  return false;
+  return undefined;
+}
+
+export async function commandAvailable(command, options) {
+  return Boolean(await findCommand(command, options));
 }
 
 export async function selectCodingAgent(

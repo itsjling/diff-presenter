@@ -131,6 +131,14 @@ test('accepts short help and version flags', () => {
   assert.deepEqual(parseCliArgs(['-v']), { version: true });
 });
 
+test('accepts the doctor command without review options', () => {
+  assert.deepEqual(parseCliArgs(['doctor']), { doctor: true });
+  assert.throws(
+    () => parseCliArgs(['doctor', '--no-agent']),
+    /doctor does not take arguments or options/i,
+  );
+});
+
 test('passes agent model, reasoning, and batch settings through', () => {
   const parsed = parseCliArgs(
     [

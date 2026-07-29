@@ -26,10 +26,17 @@ npx diffsplain --worktree
 npx diffsplain --base BASE_REF --head HEAD_REF
 ```
 
+Check Git, the GitHub CLI, and each supported coding agent:
+
+```sh
+npx diffsplain doctor
+```
+
 Arguments:
 
 | Argument | Use |
 | --- | --- |
+| `doctor` | Show dependency paths, versions, and readiness. |
 | `REPO`, `--repo PATH\|URL\|OWNER/REPO` | Select a local or remote repo. |
 | `--pr NUMBER\|URL` | Review a GitHub pull request. |
 | `--branch NAME` | Compare a remote branch with its default branch. |

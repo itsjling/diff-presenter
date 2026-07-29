@@ -18,6 +18,7 @@ import {
   commandAvailable,
   selectCodingAgent,
 } from './coding-agents.mjs';
+import { doctorReport } from './doctor.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callerDirectory = process.cwd();
@@ -40,6 +41,11 @@ if (cli.version) {
   );
   console.log(`diffsplain ${packageJson.version}`);
   process.exit(0);
+}
+if (cli.doctor) {
+  const report = await doctorReport();
+  console.log(report.text);
+  process.exit(report.ready ? 0 : 1);
 }
 
 const { agentEnabled, port } = cli;

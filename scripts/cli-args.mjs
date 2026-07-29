@@ -39,6 +39,9 @@ export const helpText = `Usage: diffsplain [REPO] [options]
 Show the current checkout against its default branch:
   diffsplain
 
+Commands:
+  doctor              Check Git, GitHub CLI, and coding agents
+
 Targets:
   --branch NAME       Show a remote branch against its default branch
   --pr NUMBER|URL     Show a GitHub pull request
@@ -66,6 +69,7 @@ Agent fallback:
 
 Examples:
   diffsplain
+  diffsplain doctor
   diffsplain --repo owner/project --pr 42
   diffsplain owner/project --branch feature/search
   diffsplain --agent claude`;
@@ -118,6 +122,11 @@ export function parseCliArgs(
     pathExists = existsSync,
   } = {},
 ) {
+  if (rawArgs[0] === 'doctor') {
+    if (rawArgs.length > 1) fail('doctor does not take arguments or options');
+    return { doctor: true };
+  }
+
   const options = new Map();
   const positionals = [];
   let agent;

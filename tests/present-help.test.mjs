@@ -13,6 +13,7 @@ test('prints help with either help flag', () => {
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Usage: diffsplain/m);
+    assert.match(result.stdout, /doctor\s+Check Git/);
     assert.match(result.stdout, /-v, --version/);
   }
 });
