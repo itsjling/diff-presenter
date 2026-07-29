@@ -1,0 +1,41 @@
+---
+title: Introduction
+description: Review a Git diff one file at a time with context beside the code.
+sidebar:
+  order: 1
+---
+
+Diff Presenter opens a local review page for a checkout, branch, pull request,
+worktree, or exact Git range. It shows one changed file at a time, with the
+patch on the left and a short Codex note on the right.
+
+## Start a review
+
+You need Node.js 22.13 or newer and a signed-in Codex CLI.
+
+```sh
+npx diff-presenter
+```
+
+The command compares the current checkout with its default branch and opens
+`http://localhost:3000`.
+
+For a pull request:
+
+```sh
+npx diff-presenter --pr 198
+```
+
+Pull request reviews also need the GitHub CLI. Run `gh auth login` first if
+needed.
+
+## What the command changes
+
+Diff Presenter reads the selected Git data and writes its own cache. It does
+not switch branches or change the target checkout, index, local refs, or
+`FETCH_HEAD`.
+
+Use the arrow buttons or the left and right arrow keys to move through files.
+Press `Cmd+K` or `Ctrl+K` to search the file list.
+
+See [CLI usage](/cli) for every target and option.

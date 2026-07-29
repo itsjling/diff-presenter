@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   todoDemoChange,
   todoDemoFiles,
-} from "../docs/todo-demo.js";
+} from "../site/todo-demo.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const generatedAt = "2026-07-29T06:30:00.000Z";

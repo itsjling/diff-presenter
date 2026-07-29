@@ -1,0 +1,99 @@
+---
+title: CLI usage
+description: Select a review target and control the local Diff Presenter page.
+sidebar:
+  order: 2
+---
+
+## Current checkout
+
+With no target, Diff Presenter compares the current checkout with its default
+branch. The result includes local commits plus staged, unstaged, and untracked
+work.
+
+```sh
+npx diff-presenter
+```
+
+## Pull requests
+
+Use a pull request number in the current repo:
+
+```sh
+npx diff-presenter --pr 198
+```
+
+Pass the repo when you run the command elsewhere:
+
+```sh
+npx diff-presenter owner/repo --pr 198
+npx diff-presenter --repo https://github.com/owner/repo --pr 198
+```
+
+A full pull request URL carries the repo:
+
+```sh
+npx diff-presenter --pr https://github.com/owner/repo/pull/198
+```
+
+## Branches
+
+Compare a branch with the remote default branch:
+
+```sh
+npx diff-presenter --branch feature/my-change
+npx diff-presenter owner/repo --branch feature/my-change
+```
+
+Choose a different base or remote when needed:
+
+```sh
+npx diff-presenter \
+  --repo /path/to/repo \
+  --branch feature/my-change \
+  --base next \
+  --remote upstream
+```
+
+## Worktree changes
+
+Use `--worktree` to show only tracked and untracked changes against `HEAD`:
+
+```sh
+npx diff-presenter --worktree
+```
+
+The watcher refreshes the page as the worktree changes. It keeps notes for
+files whose patches did not change and asks Codex only about new or changed
+files.
+
+## Exact local ranges
+
+Pass two refs that exist in the chosen repo:
+
+```sh
+npx diff-presenter \
+  --repo /path/to/repo \
+  --base BASE_REF \
+  --head HEAD_REF
+```
+
+## Options
+
+| Argument | Use |
+| --- | --- |
+| `REPO`, `--repo PATH\|URL\|OWNER/REPO` | Select a local path, Git URL, or GitHub repo. |
+| `--pr NUMBER\|URL` | Review a GitHub pull request. |
+| `--branch NAME` | Compare a remote branch with its default branch. |
+| `--worktree` | Review tracked and untracked changes against `HEAD`. |
+| `--base REF --head REF` | Review an exact local range. |
+| `--agent [codex]` | Write Codex notes. This is the default. |
+| `--no-agent` | Show the diff without agent notes. |
+| `--model NAME` | Choose the Codex model used for notes. |
+| `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
+| `--batch-size COUNT` | Set files per Codex pass, from `1` to `50`. |
+| `--remote NAME\|URL` | Choose the Git remote. The default is `origin`. |
+| `--port NUMBER` | Choose the local page port. The default is `3000`. |
+| `--help` | Show command help. |
+
+Remote repos need `--branch` or `--pr`. You cannot combine two target options.

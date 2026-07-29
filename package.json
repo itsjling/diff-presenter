@@ -14,6 +14,10 @@
   },
   "scripts": {
     "dev": "vite --port 3000",
+    "docs:dev": "cd docs && blume dev",
+    "docs:build": "cd docs && blume build",
+    "docs:check": "cd docs && blume check && blume validate",
+    "docs:preview": "cd docs && blume preview",
     "present": "node scripts/present.mjs",
     "summarize": "node scripts/generate-summaries.mjs",
     "snapshot": "node scripts/build-diff-data.mjs",
@@ -30,6 +34,7 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
+    "blume": "^1.2.0",
     "eslint": "10.8.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",

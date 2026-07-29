@@ -4,6 +4,8 @@ const eslintConfig = defineConfig([
   globalIgnores([
     ".agents/**",
     "dist/**",
+    "docs/.blume/**",
+    "docs/dist/**",
     "node_modules/**",
     "**/*.ts",
     "**/*.tsx",

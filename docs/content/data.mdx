@@ -1,0 +1,89 @@
+---
+title: Diff data
+description: Understand the live snapshot, demo data, Git targets, and update cycle.
+sidebar:
+  order: 4
+---
+
+`scripts/build-diff-data.mjs` writes the ignored `.cache/diff-data.json`
+snapshot for the review page. The local server exposes it at
+`/diff-data.json`.
+
+Build a pull request snapshot:
+
+```sh
+node scripts/build-diff-data.mjs --repo /path/to/repo --pr 42
+```
+
+The script also accepts a checkout, refs, a remote branch, or worktree changes
+against `HEAD`.
+
+## Snapshot contents
+
+The JSON file has:
+
+- a content version and generation time;
+- repo, base, head, branch, and target data;
+- one summary for the whole change;
+- a list of changed files.
+
+Each file records its path, status, line counts, full unified patch, short
+snippet, binary state, and agent note. The writer gives each snapshot a content
+hash and replaces the file only when its contents change.
+
+`repo.base` and `repo.head` hold the exact commits used for the diff.
+`repo.target` records the target kind, remote refs, remote tips, and merge
+base.
+
+## Watch for changes
+
+Add `--watch` to check Git state and the note file every two seconds:
+
+```sh
+node scripts/build-diff-data.mjs \
+  --repo /path/to/repo \
+  --worktree \
+  --watch
+```
+
+`npx diff-presenter --worktree` starts the watcher and local page together.
+The page checks the live JSON every 1.5 seconds and keeps the selected file
+when the snapshot changes.
+
+In watch mode, remote pull requests and branches update every 30 seconds.
+
+## Remote targets
+
+Pull requests and remote branches do not depend on the current checkout:
+
+```sh
+node scripts/build-diff-data.mjs \
+  --repo /path/to/repo \
+  --branch topic \
+  --base main \
+  --remote origin
+```
+
+The script fetches Git objects into `.cache/git`, finds the merge base, and
+reads the diff from that bare cache. It does not change the chosen checkout,
+index, refs, or `FETCH_HEAD`.
+
+## Demo data
+
+`site/todo-demo.js` holds the ten sample files used by the landing page and
+`public/demo-diff-data.json`. Rebuild the checked-in demo after changing it:
+
+```sh
+node scripts/write-todo-demo.mjs
+```
+
+You can also build the demo from an exact range and note file:
+
+```sh
+node scripts/build-diff-data.mjs \
+  --repo /path/to/repo \
+  --base BASE \
+  --head HEAD \
+  --summaries data/todo-demo-summaries.json \
+  --output .cache/diff-data.json
+```

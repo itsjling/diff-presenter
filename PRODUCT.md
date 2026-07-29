@@ -41,7 +41,8 @@ Use the name “Diff Presenter” for now. Describe it as an open-source develop
 
 ## Evidence on Hand
 
-- `README.md` documents the current product, supported review targets, commands, and data flow.
+- `README.md` documents command use and local development.
+- `docs/content/` documents review targets, agent notes, and data flow.
 - `app/page.tsx` contains the working review interface and its loading, empty, search, navigation, and long-diff states.
 - `public/demo-diff-data.json` contains a ten-file todo-list demo with change and file notes.
 - `data/todo-demo-summaries.json` contains the agent notes used by the demo.

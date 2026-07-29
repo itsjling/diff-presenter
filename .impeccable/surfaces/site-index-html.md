@@ -1,11 +1,11 @@
 ---
 version: 1
-slug: "docs-index-html"
-primary_target: "docs/index.html"
-related_targets: ["docs/styles.css","docs/script.js"]
+slug: "site-index-html"
+primary_target: "site/index.html"
+related_targets: ["site/styles.css","site/script.js"]
 ---
 
-Scope: A static GitHub Pages landing page in `docs/`. Visitor mode: Persuade.
+Scope: A static GitHub Pages landing page in `site/`. Visitor mode: Persuade.
 
 Audience and job: Developers reviewing pull requests should understand the tool in seconds, see its one-file review model, and open the repo or run it locally.
 

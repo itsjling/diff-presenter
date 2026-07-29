@@ -8,8 +8,8 @@ import {
   shouldHandleFileArrow,
   swipeDirection,
   wrapDemoIndex,
-} from "../docs/demo-controller.js";
-import { todoDemoFiles } from "../docs/todo-demo.js";
+} from "../site/demo-controller.js";
+import { todoDemoFiles } from "../site/todo-demo.js";
 
 test("wraps file navigation in both directions", () => {
   assert.equal(wrapDemoIndex(10, 10), 0);

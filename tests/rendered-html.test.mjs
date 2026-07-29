@@ -25,7 +25,7 @@ test("builds the static Diff Presenter entry page", async () => {
 
 test("ships the ten-file todo-list demo", async () => {
   const [{ todoDemoFiles }, payloadText] = await Promise.all([
-    import("../docs/todo-demo.js"),
+    import("../site/todo-demo.js"),
     readFile(new URL("../public/demo-diff-data.json", import.meta.url), "utf8"),
   ]);
   const payload = JSON.parse(payloadText);
@@ -93,9 +93,9 @@ test("keeps live review data out of built assets", async () => {
 
 test("makes the landing-page demo interactive", async () => {
   const [html, script, styles] = await Promise.all([
-    readFile(new URL("../docs/index.html", import.meta.url), "utf8"),
-    readFile(new URL("../docs/script.js", import.meta.url), "utf8"),
-    readFile(new URL("../docs/styles.css", import.meta.url), "utf8"),
+    readFile(new URL("../site/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../site/script.js", import.meta.url), "utf8"),
+    readFile(new URL("../site/styles.css", import.meta.url), "utf8"),
   ]);
 
   assert.match(html, /<script src="\.\/script\.js" type="module">/);

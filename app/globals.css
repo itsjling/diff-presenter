@@ -5,7 +5,7 @@
   font-family: "Geist";
   font-style: normal;
   font-weight: 100 900;
-  src: url("../docs/fonts/geist-latin.woff2") format("woff2");
+  src: url("../site/fonts/geist-latin.woff2") format("woff2");
 }
 
 @font-face {
@@ -13,7 +13,7 @@
   font-family: "Geist Mono";
   font-style: normal;
   font-weight: 100 900;
-  src: url("../docs/fonts/geist-mono-latin.woff2") format("woff2");
+  src: url("../site/fonts/geist-mono-latin.woff2") format("woff2");
 }
 
 :root {

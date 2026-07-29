@@ -1,0 +1,74 @@
+---
+title: Development
+description: Run the app, refresh demo data, build the docs, and check changes.
+sidebar:
+  order: 5
+---
+
+## Run the app
+
+Install packages and start Vite:
+
+```sh
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. Without live review data, the page uses the
+checked-in todo-list demo from `public/demo-diff-data.json`.
+
+## Run checks
+
+```sh
+npm run lint
+npm test
+```
+
+`npm test` builds the app and runs the Node test suite.
+
+## Refresh the demo
+
+`site/todo-demo.js` holds the ten sample files used by the landing page and the
+app demo. After changing it, rebuild the checked-in data:
+
+```sh
+node scripts/write-todo-demo.mjs
+```
+
+To build a live snapshot from another repo:
+
+```sh
+npm run snapshot -- --repo /path/to/repo
+```
+
+The writer stores live data in the ignored `.cache/diff-data.json`. The local
+server exposes it at `/diff-data.json`.
+
+## Run the docs
+
+The docs use [Blume](https://useblume.dev/) and live under `docs/`.
+
+```sh
+npm run docs:dev
+```
+
+Build or preview the static output:
+
+```sh
+npm run docs:build
+npm run docs:preview
+```
+
+Blume writes its output to `docs/dist/`. Set `deployment.site` in
+`docs/blume.config.ts` when the production docs URL is known.
+
+## Project paths
+
+| Path | Purpose |
+| --- | --- |
+| `app/` | React review page. |
+| `scripts/` | CLI, Git data writer, note writer, and local server. |
+| `public/` | Checked-in app demo data. |
+| `site/` | Static GitHub Pages landing page. |
+| `docs/` | Blume product docs. |
+| `data/` | Checked-in demo notes. |

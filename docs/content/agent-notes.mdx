@@ -1,0 +1,75 @@
+---
+title: Agent notes
+description: Control Codex notes, refresh them, or supply notes from another task.
+sidebar:
+  order: 3
+---
+
+Codex writes short notes for each changed file by default. Diff Presenter sends
+the selected diff to the Codex CLI under its current login.
+
+Use a plain diff when you do not want notes:
+
+```sh
+npx diff-presenter --no-agent
+```
+
+Choose how Codex runs:
+
+```sh
+npx diff-presenter \
+  --model MODEL_NAME \
+  --reasoning low \
+  --batch-size 2
+```
+
+The default batch size is four files. Smaller batches add the first notes to
+the open page sooner.
+
+## Run one note pass
+
+Generate or revise notes without starting the page:
+
+```sh
+npm run summarize -- --repo /path/to/repo --pr 198
+```
+
+The same command accepts branch, worktree, checkout, and exact-range targets.
+`summarize` always asks for a new pass. The presenter reuses complete notes
+when the diff has not changed.
+
+## Note files
+
+Worktree notes default to:
+
+```text
+/path/to/repo/.beautiful-diffs/summaries.json
+```
+
+Other targets use separate files in Diff Presenter’s ignored
+`.cache/summaries/` folder. Pass `--summaries FILE` to use another path.
+
+The file has one change note and notes keyed by file path:
+
+```json
+{
+  "change": {
+    "title": "Short change title",
+    "summary": "What the whole change does.",
+    "why": "Why the change is needed.",
+    "highlights": ["One key result."],
+    "risks": ["One point to check."]
+  },
+  "files": {
+    "src/example.ts": {
+      "title": "Short file title",
+      "what": "What changed in this file.",
+      "why": "Why this file had to change.",
+      "details": ["One useful detail."],
+      "risks": []
+    }
+  }
+}
+```
+
+Missing notes get a plain fallback, so new files still appear at once.
