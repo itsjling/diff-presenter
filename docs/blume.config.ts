@@ -8,7 +8,9 @@ export default defineConfig({
     root: "content",
   },
   deployment: {
+    base: "/diffsplain/docs",
     output: "static",
+    site: "https://itsjling.github.io",
   },
   github: {
     dir: "docs",
