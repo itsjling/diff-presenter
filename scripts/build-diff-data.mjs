@@ -79,6 +79,7 @@ const cacheRoot = cacheOption
   : resolve(projectRoot, '.cache/git');
 const remoteMode = Boolean(prOption || branchOption);
 const watching = has('--watch');
+const ignoreSummaryWatch = has('--ignore-summary-watch');
 
 if (prOption && branchOption) fail('--pr and --branch cannot be used together');
 if (prOption && (baseOption || headOption)) fail('--pr cannot be used with --base or --head');
@@ -954,9 +955,11 @@ function build() {
 
 function fingerprint() {
   let summariesTime = '';
-  try {
-    summariesTime = String(statSync(summariesPath).mtimeMs);
-  } catch {}
+  if (!ignoreSummaryWatch) {
+    try {
+      summariesTime = String(statSync(summariesPath).mtimeMs);
+    } catch {}
+  }
   if (remoteMode) return summariesTime;
   if (baseOption && headOption) {
     return [

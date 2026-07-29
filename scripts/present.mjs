@@ -79,6 +79,10 @@ const outputPath = resolve(
   callerDirectory,
   feedArgs[feedArgs.indexOf('--output') + 1],
 );
+if (agentEnabled) {
+  feedArgs.push('--ignore-summary-watch');
+  agentArgs.push('--snapshot', outputPath);
+}
 
 const builtPage = resolve(root, 'dist/index.html');
 if (!existsSync(builtPage)) {

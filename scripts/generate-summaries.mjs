@@ -41,6 +41,7 @@ const valueFlags = new Set([
   '--model',
   '--reasoning',
   '--batch-size',
+  '--snapshot',
 ]);
 const booleanFlags = new Set(['--checkout', '--force', '--worktree']);
 
@@ -135,6 +136,7 @@ const branch = option('--branch');
 const checkout = rawArgs.includes('--checkout');
 const remote = option('--remote') || 'origin';
 const force = rawArgs.includes('--force');
+const snapshotPath = option('--snapshot');
 
 if (range && (base || head)) {
   fail('--range cannot be used with --base or --head');
@@ -481,6 +483,69 @@ function writeJsonAtomic(file, value) {
   renameSync(temporary, file);
 }
 
+function publishSnapshot(snapshot, summaries) {
+  const current = readJson(outputPath, null);
+  const reviewFingerprint = snapshot.notes?.reviewFingerprint;
+  if (
+    !reviewFingerprint ||
+    (current?.notes?.reviewFingerprint &&
+      current.notes.reviewFingerprint !== reviewFingerprint)
+  ) {
+    throw new Error('The diff changed while agent notes were being written');
+  }
+
+  const complete =
+    completeChangeNote(summaries.change) &&
+    snapshot.files.every((file) =>
+      completeFileNote(summaries.files?.[file.path]),
+    );
+  const files = snapshot.files.map((file) => {
+    const note = summaries.files?.[file.path];
+    return completeFileNote(note)
+      ? { ...file, summary: note, noteReady: true }
+      : { ...file, noteReady: false };
+  });
+  const content = {
+    ...snapshot,
+    ...(completeChangeNote(summaries.change)
+      ? { change: { ...snapshot.change, ...summaries.change } }
+      : {}),
+    files,
+    notes: {
+      ...snapshot.notes,
+      generatedFor: reviewFingerprint,
+      fresh: true,
+      complete,
+      status: complete
+        ? 'complete'
+        : summaries.meta?.status || 'generating',
+      completedFiles: files.filter((file) => file.noteReady).length,
+      totalFiles: files.length,
+      ...(model ? { model } : {}),
+      ...(reasoning ? { reasoning } : {}),
+    },
+  };
+  delete content.version;
+  delete content.generatedAt;
+  const version = createHash('sha256')
+    .update(JSON.stringify(content))
+    .digest('hex')
+    .slice(0, 12);
+  writeJsonAtomic(outputPath, {
+    version,
+    generatedAt: new Date().toISOString(),
+    ...content,
+  });
+}
+
+function publish(snapshot, summaries) {
+  if (snapshotPath) {
+    publishSnapshot(snapshot, summaries);
+  } else {
+    runBuilder(outputPath);
+  }
+}
+
 function readJson(file, fallback) {
   try {
     return JSON.parse(readFileSync(file, 'utf8'));
@@ -548,9 +613,10 @@ let workingSnapshot;
 
 try {
   const rawSnapshotPath = resolve(temporaryDirectory, 'diff-data.json');
-  runBuilder(rawSnapshotPath, true);
-
-  const rawSnapshot = JSON.parse(readFileSync(rawSnapshotPath, 'utf8'));
+  if (!snapshotPath) runBuilder(rawSnapshotPath, true);
+  const rawSnapshot = JSON.parse(
+    readFileSync(snapshotPath || rawSnapshotPath, 'utf8'),
+  );
   const snapshot = cleanSnapshot(rawSnapshot);
   const paths = snapshot.files.map((file) => file.path);
   const previousSummaries = readJson(summariesPath, {});
@@ -571,7 +637,7 @@ try {
       },
     };
     writeJsonAtomic(summariesPath, workingSummaries);
-    runBuilder(outputPath);
+    publish(rawSnapshot, workingSummaries);
     console.log('No changed files to summarize.');
   } else {
     const startedAt = new Date().toISOString();
@@ -631,7 +697,7 @@ try {
       },
     };
     writeJsonAtomic(summariesPath, workingSummaries);
-    runBuilder(outputPath);
+    publish(rawSnapshot, workingSummaries);
 
     const batches = [];
     for (let index = 0; index < changedPaths.length; index += batchSize) {
@@ -716,7 +782,7 @@ try {
         },
       };
       writeJsonAtomic(summariesPath, workingSummaries);
-      runBuilder(outputPath);
+      publish(rawSnapshot, workingSummaries);
       if (batchPaths.length) {
         console.log(
           `Wrote ${Object.keys(workingSummaries.files).length} of ${paths.length} agent notes to ${summariesPath}`,
@@ -742,7 +808,7 @@ try {
         },
       };
       writeJsonAtomic(summariesPath, workingSummaries);
-      runBuilder(outputPath);
+      publish(workingSnapshot, workingSummaries);
     } catch {}
   }
   console.error(error instanceof Error ? error.message : String(error));
