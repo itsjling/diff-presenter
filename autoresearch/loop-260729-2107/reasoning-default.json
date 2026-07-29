@@ -1,0 +1,15 @@
+{
+  "reasoning": "default",
+  "runs": 3,
+  "medianMs": 26616.1,
+  "samplesMs": [
+    26616.1,
+    24989.8,
+    26692.6
+  ],
+  "titles": [
+    "Raise module values by 10",
+    "Raise module values by 10",
+    "Raise module values by 10"
+  ]
+}

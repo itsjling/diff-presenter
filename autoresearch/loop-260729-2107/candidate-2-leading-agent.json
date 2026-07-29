@@ -1,0 +1,47 @@
+{
+  "fixture": "working",
+  "files": 60,
+  "runs": 5,
+  "batchSize": 4,
+  "present": {
+    "snapshot": {
+      "minMs": 944.5,
+      "medianMs": 972.3,
+      "p95Ms": 1000.3,
+      "maxMs": 1801.4,
+      "samplesMs": [
+        1801.4,
+        944.5,
+        972.3,
+        1000.3,
+        946.3
+      ]
+    },
+    "asking": {
+      "minMs": 974.8,
+      "medianMs": 1036,
+      "p95Ms": 1039,
+      "maxMs": 1142.9,
+      "samplesMs": [
+        974.8,
+        1039,
+        1142.9,
+        1036,
+        992.2
+      ]
+    },
+    "snapshotToAsking": {
+      "minMs": 35.5,
+      "medianMs": 36.4,
+      "p95Ms": 36.4,
+      "maxMs": 37.1,
+      "samplesMs": [
+        35.7,
+        36.4,
+        36.4,
+        37.1,
+        35.5
+      ]
+    }
+  }
+}

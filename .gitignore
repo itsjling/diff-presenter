@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+.impeccable/live
 
 # misc
 .DS_Store

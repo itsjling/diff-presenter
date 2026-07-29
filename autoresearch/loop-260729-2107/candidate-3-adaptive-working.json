@@ -1,0 +1,35 @@
+{
+  "fixture": "working",
+  "files": 60,
+  "runs": 5,
+  "batchSize": 12,
+  "summary": {
+    "minMs": 1205.8,
+    "medianMs": 1213.7,
+    "p95Ms": 1216.3,
+    "maxMs": 1725.5,
+    "samplesMs": [
+      1725.5,
+      1213.7,
+      1205.8,
+      1216.3,
+      1212.1
+    ],
+    "medianAgentCalls": 5,
+    "agentCallSamples": [
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    "medianInputBytes": 102773,
+    "inputByteSamples": [
+      102758,
+      102773,
+      102773,
+      102773,
+      102773
+    ]
+  }
+}

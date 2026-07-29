@@ -1,0 +1,24 @@
+{
+  "fixture": "working",
+  "files": 60,
+  "runs": 3,
+  "batchSize": 4,
+  "jobs": 3,
+  "restart": {
+    "minMs": 4061.6,
+    "medianMs": 4067.5,
+    "p95Ms": 4067.5,
+    "maxMs": 4114.4,
+    "samplesMs": [
+      4114.4,
+      4067.5,
+      4061.6
+    ],
+    "medianAgentCalls": 7,
+    "agentCallSamples": [
+      7,
+      7,
+      7
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "fixture": "heldout",
+  "files": 12,
+  "runs": 5,
+  "batchSize": 4,
+  "summary": {
+    "minMs": 637.7,
+    "medianMs": 639.7,
+    "p95Ms": 641,
+    "maxMs": 1164.9,
+    "samplesMs": [
+      1164.9,
+      641,
+      638.8,
+      637.7,
+      639.7
+    ],
+    "medianAgentCalls": 3,
+    "agentCallSamples": [
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "medianInputBytes": 458776,
+    "inputByteSamples": [
+      458767,
+      458776,
+      458776,
+      458776,
+      458776
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "fixture": "heldout",
+  "files": 12,
+  "runs": 5,
+  "batchSize": 4,
+  "jobs": 3,
+  "build": {
+    "minMs": 184.2,
+    "medianMs": 187.3,
+    "p95Ms": 205.4,
+    "maxMs": 701.6,
+    "samplesMs": [
+      701.6,
+      187.3,
+      205.4,
+      184.3,
+      184.2
+    ],
+    "medianGitCalls": 10,
+    "gitCallSamples": [
+      10,
+      10,
+      10,
+      10,
+      10
+    ]
+  }
+}

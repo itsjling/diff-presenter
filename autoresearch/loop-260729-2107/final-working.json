@@ -1,0 +1,98 @@
+{
+  "fixture": "working",
+  "files": 60,
+  "runs": 5,
+  "batchSize": 12,
+  "jobs": 3,
+  "build": {
+    "minMs": 155.1,
+    "medianMs": 159.5,
+    "p95Ms": 164.3,
+    "maxMs": 1121.9,
+    "samplesMs": [
+      1121.9,
+      156.8,
+      164.3,
+      159.5,
+      155.1
+    ],
+    "medianGitCalls": 8,
+    "gitCallSamples": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ]
+  },
+  "summary": {
+    "minMs": 699.3,
+    "medianMs": 705.7,
+    "p95Ms": 712.4,
+    "maxMs": 1205,
+    "samplesMs": [
+      1205,
+      712.4,
+      705.7,
+      701.4,
+      699.3
+    ],
+    "medianAgentCalls": 6,
+    "agentCallSamples": [
+      6,
+      6,
+      6,
+      6,
+      6
+    ],
+    "medianInputBytes": 105061,
+    "inputByteSamples": [
+      105043,
+      105061,
+      105061,
+      105061,
+      105061
+    ]
+  },
+  "present": {
+    "snapshot": {
+      "minMs": 186.9,
+      "medianMs": 188.2,
+      "p95Ms": 188.5,
+      "maxMs": 193.1,
+      "samplesMs": [
+        193.1,
+        188.5,
+        188.2,
+        188.1,
+        186.9
+      ]
+    },
+    "asking": {
+      "minMs": 221,
+      "medianMs": 225.2,
+      "p95Ms": 226.1,
+      "maxMs": 229.3,
+      "samplesMs": [
+        229.3,
+        221,
+        225.2,
+        225.1,
+        226.1
+      ]
+    },
+    "snapshotToAsking": {
+      "minMs": 35.8,
+      "medianMs": 37,
+      "p95Ms": 37.7,
+      "maxMs": 39.2,
+      "samplesMs": [
+        39.2,
+        36,
+        35.8,
+        37,
+        37.7
+      ]
+    }
+  }
+}

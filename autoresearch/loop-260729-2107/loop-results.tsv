@@ -1,0 +1,11 @@
+# metric_direction: lower_is_better
+iteration	timestamp	commit	metric	delta	guard	guard-metric	status	description
+0	2026-07-29T21:10:00+08:00	3b2b311	19165.7	0.0	not-run	-	baseline	60-file summary median; snapshot 981.4 ms; snapshot-to-agent 4367.7 ms; 67 Git calls; 15 agent calls
+1	2026-07-29T21:17:00+08:00	4cc25d4	2955.8	-16209.9	pass	10 affected tests	keep	reuse first snapshot and publish notes without rebuilding Git data; 84.6% faster
+2	2026-07-29T21:20:00+08:00	f4ad011	36.4	-2514.9	pass	1 affected test	keep	start first agent job at once; snapshot-to-agent median 98.6% faster
+3	2026-07-29T21:24:00+08:00	ef9276f	1213.7	-1742.1	pass	22 tests + docs	keep	use at most 12 files and 180 KB per batch; 58.9% faster; held-out +0.25%
+4	2026-07-29T21:34:00+08:00	ea0c695	715.7	-498.0	pass	28 tests + docs	keep	run three file-note jobs at once and make one final change note; 41.0% faster; held-out 31.5% faster
+5	2026-07-29T21:42:00+08:00	-	28758.4	+2142.3	pass	complete real Codex output	discard	make low reasoning the default; real Codex median was 8.0% slower than default
+6	2026-07-29T21:45:00+08:00	bff50e6	156.5	-824.9	pass	11 affected tests	keep	read tracked patches in one Git call; 84.1% faster; 67 to 8 Git calls; held-out 41.3% faster
+7	2026-07-29T21:52:00+08:00	1c65d66	101.3	-697.0	pass	12 tests + build	keep	push snapshot updates with server-sent events; 87.3% faster than 1.5 second polling median
+8	2026-07-29T21:58:00+08:00	4fa546b	4067.5	-236.0	pass	11 affected tests	keep	cancel stale agent work when the diff changes; 5.5% faster; eight to seven calls

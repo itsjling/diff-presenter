@@ -1,0 +1,28 @@
+{
+  "version": "2.2.1",
+  "goal": "Confirm each proposed Diffsplain speed change with repeatable timing tests; keep gains and reject non-gains.",
+  "archetype": "optimize-metric",
+  "mode": "loop",
+  "predicate": {
+    "command": "node benchmarks/pipeline-speed.mjs --case all --fixture working --runs 5",
+    "expected": "Each kept candidate lowers its target median by at least 5%, passes guards, and stays within 3% on held-out runs."
+  },
+  "terminal_choice": "stop-at-verified",
+  "cycle": 8,
+  "max_cycles": 8,
+  "pending_verify": false,
+  "units_remaining": [7, 6, 5, 4, 3, 3, 2, 1, 0],
+  "pipeline": [
+    {"cycle": 1, "outcome": "progressed", "change": "reuse snapshot"},
+    {"cycle": 2, "outcome": "progressed", "change": "start first agent at once"},
+    {"cycle": 3, "outcome": "progressed", "change": "adaptive batches"},
+    {"cycle": 4, "outcome": "progressed", "change": "parallel file notes"},
+    {"cycle": 5, "outcome": "no-op", "change": "low reasoning rejected"},
+    {"cycle": 6, "outcome": "progressed", "change": "single tracked patch read"},
+    {"cycle": 7, "outcome": "progressed", "change": "server-sent events"},
+    {"cycle": 8, "outcome": "progressed", "change": "cancel stale notes"},
+    {"hop": "verify", "outcome": "progressed", "change": "held-out and full-suite verify"}
+  ],
+  "status": "CONVERGED",
+  "incumbent": "1ad4058"
+}

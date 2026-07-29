@@ -1,0 +1,19 @@
+{
+  "version": "2.1.0",
+  "source": "loop",
+  "timestamp": "2026-07-29T22:05:00+08:00",
+  "status": "COMPLETE",
+  "results_tsv": "autoresearch/loop-260729-2107/loop-results.tsv",
+  "findings": [
+    "Six measured production changes passed working and held-out speed gates.",
+    "Low reasoning was 8.0% slower and was rejected.",
+    "The full lint, 59-test, build, and docs gate passed."
+  ],
+  "config": {
+    "goal": "Confirm each proposed Diffsplain speed change with repeatable timing tests; keep gains and reject non-gains.",
+    "scope": "scripts/*.mjs, app/page.tsx, tests/*.test.mjs, benchmarks/*.mjs",
+    "metric": "Median wall time for the stage each change targets",
+    "direction": "lower_is_better",
+    "verify": "node benchmarks/pipeline-speed.mjs --case all --fixture working --runs 5"
+  }
+}

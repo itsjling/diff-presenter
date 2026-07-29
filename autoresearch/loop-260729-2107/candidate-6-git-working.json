@@ -1,0 +1,28 @@
+{
+  "fixture": "working",
+  "files": 60,
+  "runs": 5,
+  "batchSize": 4,
+  "jobs": 3,
+  "build": {
+    "minMs": 155.7,
+    "medianMs": 156.5,
+    "p95Ms": 156.8,
+    "maxMs": 673.9,
+    "samplesMs": [
+      673.9,
+      156.8,
+      155.7,
+      155.8,
+      156.5
+    ],
+    "medianGitCalls": 8,
+    "gitCallSamples": [
+      8,
+      8,
+      8,
+      8,
+      8
+    ]
+  }
+}
