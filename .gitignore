@@ -30,8 +30,6 @@ yarn-error.log*
 /dist/
 /docs/.blume/
 /docs/dist/
-/.vinext/
-/.wrangler/
 /.cache/
 /outputs/
 /work/

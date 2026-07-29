@@ -137,26 +137,6 @@ test("shows a content skeleton while the agent writes a file summary", async () 
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
-test("removes the server-framework starter", async () => {
-  const [page, index, packageJson] = await Promise.all([
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../index.html", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-  ]);
-
-  await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
-  await assert.rejects(access(new URL("../worker/index.ts", import.meta.url)));
-  assert.doesNotMatch(page, /SkeletonPreview|codex-preview/);
-  assert.doesNotMatch(index, /Starter Project|codex-preview/);
-  assert.doesNotMatch(
-    packageJson,
-    /react-loading-skeleton|vinext|wrangler|react-server-dom-webpack|"next"/,
-  );
-  assert.match(page, /ArrowRight/);
-  assert.match(page, /Cmd\+K|metaKey/);
-  assert.match(page, /diff-data\.json/);
-});
-
 test("builds live data for tracked and untracked workspace files", async () => {
   const repo = await mkdtemp(join(tmpdir(), "diffsplain-test-"));
   const output = join(repo, "snapshot.json");

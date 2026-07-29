@@ -27,7 +27,14 @@
   },
   "files": [
     "dist",
-    "scripts"
+    "scripts/build-diff-data.mjs",
+    "scripts/cli-args.mjs",
+    "scripts/coding-agents.mjs",
+    "scripts/doctor.mjs",
+    "scripts/generate-summaries.mjs",
+    "scripts/present.mjs",
+    "scripts/serve-built.mjs",
+    "scripts/summary-path.mjs"
   ],
   "engines": {
     "node": ">=22.13.0"
