@@ -1,0 +1,12 @@
+{
+  "clone_groups": [
+    "app/page.tsx:84-95|site/script.js:77-84",
+    "app/page.tsx:91-105|site/script.js:84-94",
+    "app/page.tsx:233-244|app/page.tsx:474-486",
+    "benchmarks/live-update-speed.mjs:14-20|benchmarks/pipeline-speed.mjs:20-26|benchmarks/real-codex-reasoning.mjs:16-22",
+    "benchmarks/pipeline-speed.mjs:76-80|benchmarks/real-codex-reasoning.mjs:56-60",
+    "benchmarks/pipeline-speed.mjs:83-88|benchmarks/pipeline-speed.mjs:93-99",
+    "benchmarks/pipeline-speed.mjs:274-282|benchmarks/pipeline-speed.mjs:356-364",
+    "scripts/generate-summaries.mjs:449-467|scripts/generate-summaries.mjs:502-517"
+  ]
+}

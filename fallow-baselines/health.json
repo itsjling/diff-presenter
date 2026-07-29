@@ -1,0 +1,164 @@
+{
+  "finding_counts": {
+    "app/page.tsx": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "benchmarks/pipeline-speed.mjs": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "scripts/build-diff-data.mjs": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 6
+      },
+      "crap_high": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 6
+      }
+    },
+    "scripts/cli-args.mjs": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "scripts/coding-agents.mjs": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 3
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "scripts/doctor.mjs": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "scripts/generate-summaries.mjs": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 4
+      },
+      "crap_moderate": {
+        "count": 4
+      }
+    },
+    "scripts/present.mjs": {
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "scripts/release.mjs": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "scripts/serve-built.mjs": {
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "scripts/summary-path.mjs": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "site/demo-controller.js": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "site/script.js": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "tests/generate-summaries.test.mjs": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "tests/present-agent.test.mjs": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "tests/present-instances.test.mjs": {
+      "crap_moderate": {
+        "count": 2
+      }
+    },
+    "tests/rendered-html.test.mjs": {
+      "crap_high": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": [
+    "scripts/cli-args.mjs:complexity",
+    "scripts/build-diff-data.mjs:complexity",
+    "app/page.tsx:complexity"
+  ]
+}

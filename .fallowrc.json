@@ -1,0 +1,47 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  "entry": [
+    "benchmarks/*.mjs",
+    "docs/blume.config.ts",
+    "docs/content/**/*.mdx",
+    "scripts/write-todo-demo.mjs"
+  ],
+  // These imports assert that generated and removed files stay absent.
+  "ignoreUnresolvedImports": [
+    "../dist/diff-data.json",
+    "../worker/index.ts"
+  ],
+  // Build tools load these packages; the published CLI does not.
+  "ignoreDependencies": [
+    "blume",
+    "react",
+    "react-dom",
+    "tailwindcss"
+  ],
+  "duplicates": {
+    "mode": "mild",
+    "minTokens": 50,
+    "minLines": 5,
+    "minOccurrences": 2,
+    "threshold": 0
+  },
+  "health": {
+    "maxCyclomatic": 20,
+    "maxCognitive": 15,
+    "maxCrap": 30,
+    "maxUnitSize": 60
+  },
+  "audit": {
+    "gate": "new-only",
+    "deadCodeBaseline": "fallow-baselines/dead-code.json",
+    "healthBaseline": "fallow-baselines/health.json",
+    "dupesBaseline": "fallow-baselines/dupes.json"
+  },
+  "rules": {
+    "unresolved-imports": "error",
+    "unlisted-dependencies": "error",
+    "unused-files": "error",
+    "unused-dependencies": "error",
+    "unused-exports": "error"
+  }
+}
