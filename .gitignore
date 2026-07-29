@@ -41,3 +41,4 @@ next-env.d.ts
 /.cache/
 /outputs/
 /work/
+/public/diff-data.json

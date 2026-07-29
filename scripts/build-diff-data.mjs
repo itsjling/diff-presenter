@@ -51,7 +51,7 @@ Options:
 }
 
 const repo = resolve(option('--repo') || process.cwd());
-const output = resolve(option('--output') || 'public/diff-data.json');
+const output = resolve(option('--output') || '.cache/diff-data.json');
 const excludedOutput = option('--exclude-output');
 const baseOption = option('--base');
 const headOption = option('--head');

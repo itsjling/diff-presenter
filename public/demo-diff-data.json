@@ -1,0 +1,264 @@
+{
+  "version": "5d2d2bb7580d",
+  "generatedAt": "2026-07-29T06:30:00.000Z",
+  "repo": {
+    "name": "todo-list-demo",
+    "root": "/demo/todo-list",
+    "base": "main",
+    "head": "feature/todo-filters",
+    "branch": "feature/todo-filters",
+    "baseBranch": "main",
+    "target": {
+      "kind": "pull-request"
+    }
+  },
+  "change": {
+    "title": "Add filters, due dates, and saved todos",
+    "number": 42,
+    "summary": "Adds the basic pieces of a useful todo list: persistent tasks, completion controls, filters, due dates, and focused tests.",
+    "why": "The first version lost tasks on refresh and treated every item the same. This change makes the small app useful across sessions and keeps finished work out of the way.",
+    "highlights": [
+      "Persists todos in local storage and restores them on load.",
+      "Adds active, completed, and all-task filters.",
+      "Adds due dates, priorities, completion styles, and reducer tests."
+    ],
+    "risks": [
+      "Stored todos from older versions need safe defaults for new fields.",
+      "Date-only values must not shift when the browser applies a time zone."
+    ]
+  },
+  "notes": {
+    "reviewFingerprint": "5d2d2bb7580d9040d31c2f29c55688264f6d4724d1ba921a86d4ba11513382d8",
+    "generatedFor": "5d2d2bb7580d9040d31c2f29c55688264f6d4724d1ba921a86d4ba11513382d8",
+    "fresh": true,
+    "complete": true
+  },
+  "files": [
+    {
+      "path": "src/components/TodoItem.tsx",
+      "status": "modified",
+      "additions": 12,
+      "deletions": 3,
+      "patch": "diff --git a/src/components/TodoItem.tsx b/src/components/TodoItem.tsx\nindex e86c1ab..d3b508a 100644\n--- a/src/components/TodoItem.tsx\n+++ b/src/components/TodoItem.tsx\n@@ -8,8 +8,17 @@ type Props = {\n export function TodoItem({ todo, onToggle }: Props) {\n   return (\n-    <li className=\"todo-item\">\n-      <button onClick={() => onToggle(todo.id)}>Done</button>\n-      <span>{todo.title}</span>\n+    <li className={todo.completed ? \"todo-item is-complete\" : \"todo-item\"}>\n+      <label className=\"todo-check\">\n+        <input\n+          type=\"checkbox\"\n+          checked={todo.completed}\n+          onChange={() => onToggle(todo.id)}\n+        />\n+        <span>{todo.title}</span>\n+      </label>\n+      {todo.dueDate ? (\n+        <time dateTime={todo.dueDate}>{formatDueDate(todo.dueDate)}</time>\n+      ) : null}\n     </li>\n   );\n }",
+      "summary": {
+        "title": "Make completion a clear state",
+        "what": "Replaces the generic Done button with a checked control and shows an optional due date beside each todo.",
+        "why": "A todo should expose its current completion state without making the reader infer it from a button label.",
+        "details": [
+          "The checked state now comes from todo.completed.",
+          "The due date uses a semantic time element."
+        ],
+        "risks": [
+          "formatDueDate must treat the stored value as a local date, not UTC."
+        ]
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 25,
+      "snippet": "diff --git a/src/components/TodoItem.tsx b/src/components/TodoItem.tsx\nindex e86c1ab..d3b508a 100644\n--- a/src/components/TodoItem.tsx\n+++ b/src/components/TodoItem.tsx\n@@ -8,8 +8,17 @@ type Props = {\n export function TodoItem({ todo, onToggle }: Props) {\n   return (\n-    <li className=\"todo-item\">\n-      <button onClick={() => onToggle(todo.id)}>Done</button>\n-      <span>{todo.title}</span>\n+    <li className={todo.completed ? \"todo-item is-complete\" : \"todo-item\"}>\n+      <label className=\"todo-check\">\n+        <input\n+          type=\"checkbox\"\n+          checked={todo.completed}\n+          onChange={() => onToggle(todo.id)}\n+        />\n+        <span>{todo.title}</span>\n+      </label>\n+      {todo.dueDate ? (\n+        <time dateTime={todo.dueDate}>{formatDueDate(todo.dueDate)}</time>\n+      ) : null}\n     </li>\n   );\n }"
+    },
+    {
+      "path": "src/components/TodoList.tsx",
+      "status": "modified",
+      "additions": 13,
+      "deletions": 6,
+      "patch": "diff --git a/src/components/TodoList.tsx b/src/components/TodoList.tsx\nindex 2620e53..498407f 100644\n--- a/src/components/TodoList.tsx\n+++ b/src/components/TodoList.tsx\n@@ -4,13 +4,20 @@ import { TodoItem } from \"./TodoItem\";\n export function TodoList({ todos, filter, onToggle }: Props) {\n-  if (!todos.length) {\n-    return <p>No todos yet.</p>;\n-  }\n+  const visibleTodos = todos.filter((todo) => {\n+    if (filter === \"active\") return !todo.completed;\n+    if (filter === \"completed\") return todo.completed;\n+    return true;\n+  });\n \n   return (\n-    <ul className=\"todo-list\">\n-      {todos.map((todo) => (\n+    <section aria-live=\"polite\">\n+      {!visibleTodos.length ? (\n+        <p className=\"empty-todos\">No todos match this filter.</p>\n+      ) : null}\n+      <ul className=\"todo-list\">\n+      {visibleTodos.map((todo) => (\n         <TodoItem key={todo.id} todo={todo} onToggle={onToggle} />\n       ))}\n-    </ul>\n+      </ul>\n+    </section>\n   );\n }",
+      "summary": {
+        "title": "Filter the visible todo list",
+        "what": "Derives the shown todos from the selected filter and gives an empty filter a useful message.",
+        "why": "Completed items should be easy to hide without changing the stored list.",
+        "details": [
+          "All, active, and completed views share one source array.",
+          "The list announces filter results without moving focus."
+        ],
+        "risks": [
+          "The filter names must stay aligned with the FilterBar values."
+        ]
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 31,
+      "snippet": "diff --git a/src/components/TodoList.tsx b/src/components/TodoList.tsx\nindex 2620e53..498407f 100644\n--- a/src/components/TodoList.tsx\n+++ b/src/components/TodoList.tsx\n@@ -4,13 +4,20 @@ import { TodoItem } from \"./TodoItem\";\n export function TodoList({ todos, filter, onToggle }: Props) {\n-  if (!todos.length) {\n-    return <p>No todos yet.</p>;\n-  }\n+  const visibleTodos = todos.filter((todo) => {\n+    if (filter === \"active\") return !todo.completed;\n+    if (filter === \"completed\") return todo.completed;\n+    return true;\n+  });\n \n   return (\n-    <ul className=\"todo-list\">\n-      {todos.map((todo) => (\n+    <section aria-live=\"polite\">\n+      {!visibleTodos.length ? (\n+        <p className=\"empty-todos\">No todos match this filter.</p>\n+      ) : null}\n+      <ul className=\"todo-list\">\n+      {visibleTodos.map((todo) => (\n         <TodoItem key={todo.id} todo={todo} onToggle={onToggle} />\n       ))}\n-    </ul>\n+      </ul>\n+    </section>\n   );\n }"
+    },
+    {
+      "path": "src/components/AddTodoForm.tsx",
+      "status": "modified",
+      "additions": 13,
+      "deletions": 3,
+      "patch": "diff --git a/src/components/AddTodoForm.tsx b/src/components/AddTodoForm.tsx\nindex 2c5e70f..06a9971 100644\n--- a/src/components/AddTodoForm.tsx\n+++ b/src/components/AddTodoForm.tsx\n@@ -9,15 +9,25 @@ export function AddTodoForm({ onAdd }: Props) {\n   const [title, setTitle] = useState(\"\");\n+  const [dueDate, setDueDate] = useState(\"\");\n \n   function submit(event: FormEvent) {\n     event.preventDefault();\n-    onAdd(title);\n+    const cleanTitle = title.trim();\n+    if (!cleanTitle) return;\n+    onAdd({ title: cleanTitle, dueDate: dueDate || undefined });\n     setTitle(\"\");\n+    setDueDate(\"\");\n   }\n \n   return (\n     <form onSubmit={submit}>\n-      <input value={title} onChange={(event) => setTitle(event.target.value)} />\n-      <button>Add</button>\n+      <input\n+        value={title}\n+        onChange={(event) => setTitle(event.target.value)}\n+        placeholder=\"What needs doing?\"\n+        aria-label=\"Todo title\"\n+      />\n+      <input type=\"date\" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />\n+      <button disabled={!title.trim()}>Add todo</button>\n     </form>\n   );\n }",
+      "summary": {
+        "title": "Reject blank todos at the form",
+        "what": "Trims the title, disables empty submission, and lets a new todo carry an optional due date.",
+        "why": "Blank rows create cleanup work and make the list feel broken.",
+        "details": [
+          "Both fields reset after a successful add.",
+          "The title input has a clear accessible name."
+        ],
+        "risks": [
+          "The date input needs a visible label in the final form layout."
+        ]
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 33,
+      "snippet": "diff --git a/src/components/AddTodoForm.tsx b/src/components/AddTodoForm.tsx\nindex 2c5e70f..06a9971 100644\n--- a/src/components/AddTodoForm.tsx\n+++ b/src/components/AddTodoForm.tsx\n@@ -9,15 +9,25 @@ export function AddTodoForm({ onAdd }: Props) {\n   const [title, setTitle] = useState(\"\");\n+  const [dueDate, setDueDate] = useState(\"\");\n \n   function submit(event: FormEvent) {\n     event.preventDefault();\n-    onAdd(title);\n+    const cleanTitle = title.trim();\n+    if (!cleanTitle) return;\n+    onAdd({ title: cleanTitle, dueDate: dueDate || undefined });\n     setTitle(\"\");\n+    setDueDate(\"\");\n   }\n \n   return (\n     <form onSubmit={submit}>\n-      <input value={title} onChange={(event) => setTitle(event.target.value)} />\n-      <button>Add</button>\n+      <input\n+        value={title}\n+        onChange={(event) => setTitle(event.target.value)}\n+        placeholder=\"What needs doing?\"\n+        aria-label=\"Todo title\"\n+      />\n+      <input type=\"date\" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />\n+      <button disabled={!title.trim()}>Add todo</button>\n     </form>\n   );\n }"
+    },
+    {
+      "path": "src/hooks/useTodos.ts",
+      "status": "modified",
+      "additions": 19,
+      "deletions": 4,
+      "patch": "diff --git a/src/hooks/useTodos.ts b/src/hooks/useTodos.ts\nindex 6bbf15c..f786fb1 100644\n--- a/src/hooks/useTodos.ts\n+++ b/src/hooks/useTodos.ts\n@@ -1,9 +1,24 @@\n-import { useState } from \"react\";\n+import { useEffect, useReducer } from \"react\";\n+import { todoReducer } from \"../lib/todoStore\";\n \n export function useTodos() {\n-  const [todos, setTodos] = useState<Todo[]>([]);\n+  const [todos, dispatch] = useReducer(\n+    todoReducer,\n+    [],\n+    () => {\n+      const saved = localStorage.getItem(\"todos\");\n+      return saved ? JSON.parse(saved) : [];\n+    },\n+  );\n \n-  const addTodo = (title: string) => setTodos([...todos, createTodo(title)]);\n+  useEffect(() => {\n+    localStorage.setItem(\"todos\", JSON.stringify(todos));\n+  }, [todos]);\n \n-  return { todos, addTodo };\n+  return {\n+    todos,\n+    addTodo: (input: NewTodo) => dispatch({ type: \"added\", input }),\n+    toggleTodo: (id: string) => dispatch({ type: \"toggled\", id }),\n+    removeTodo: (id: string) => dispatch({ type: \"removed\", id }),\n+  };\n }",
+      "summary": {
+        "title": "Keep todos after refresh",
+        "what": "Moves todo updates into a reducer, restores saved items on first load, and saves each later change.",
+        "why": "A useful todo list cannot discard its contents whenever the page reloads.",
+        "details": [
+          "The lazy reducer initializer reads storage only once.",
+          "All writes flow through named reducer actions."
+        ],
+        "risks": [
+          "Malformed stored JSON currently stops initialization and needs a fallback."
+        ]
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 33,
+      "snippet": "diff --git a/src/hooks/useTodos.ts b/src/hooks/useTodos.ts\nindex 6bbf15c..f786fb1 100644\n--- a/src/hooks/useTodos.ts\n+++ b/src/hooks/useTodos.ts\n@@ -1,9 +1,24 @@\n-import { useState } from \"react\";\n+import { useEffect, useReducer } from \"react\";\n+import { todoReducer } from \"../lib/todoStore\";\n \n export function useTodos() {\n-  const [todos, setTodos] = useState<Todo[]>([]);\n+  const [todos, dispatch] = useReducer(\n+    todoReducer,\n+    [],\n+    () => {\n+      const saved = localStorage.getItem(\"todos\");\n+      return saved ? JSON.parse(saved) : [];\n+    },\n+  );\n \n-  const addTodo = (title: string) => setTodos([...todos, createTodo(title)]);\n+  useEffect(() => {\n+    localStorage.setItem(\"todos\", JSON.stringify(todos));\n+  }, [todos]);\n \n-  return { todos, addTodo };\n+  return {\n+    todos,\n+    addTodo: (input: NewTodo) => dispatch({ type: \"added\", input }),\n+    toggleTodo: (id: string) => dispatch({ type: \"toggled\", id }),\n+    removeTodo: (id: string) => dispatch({ type: \"removed\", id }),\n+  };\n }"
+    },
+    {
+      "path": "src/lib/todoStore.ts",
+      "status": "added",
+      "additions": 30,
+      "deletions": 0,
+      "patch": "diff --git a/src/lib/todoStore.ts b/src/lib/todoStore.ts\nnew file mode 100644\nindex 0000000..9f7006c\n--- /dev/null\n+++ b/src/lib/todoStore.ts\n@@ -0,0 +1,30 @@\n+import type { NewTodo, Todo, TodoAction } from \"../types/todo\";\n+\n+export function todoReducer(todos: Todo[], action: TodoAction): Todo[] {\n+  if (action.type === \"added\") {\n+    return [\n+      ...todos,\n+      {\n+        id: crypto.randomUUID(),\n+        title: action.input.title,\n+        completed: false,\n+        dueDate: action.input.dueDate,\n+        priority: action.input.priority ?? \"normal\",\n+      },\n+    ];\n+  }\n+\n+  if (action.type === \"toggled\") {\n+    return todos.map((todo) =>\n+      todo.id === action.id\n+        ? { ...todo, completed: !todo.completed }\n+        : todo,\n+    );\n+  }\n+\n+  if (action.type === \"removed\") {\n+    return todos.filter((todo) => todo.id !== action.id);\n+  }\n+\n+  return todos;\n+}",
+      "summary": {
+        "title": "Put todo updates in one reducer",
+        "what": "Adds pure add, toggle, and remove transitions for the todo collection.",
+        "why": "Central state transitions are easier to test and keep storage writes separate from list logic.",
+        "details": [
+          "New todos receive an id, default completion state, and normal priority.",
+          "Every action returns a new array."
+        ],
+        "risks": [
+          "crypto.randomUUID needs a fallback in older browsers and some test runners."
+        ]
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 36,
+      "snippet": "diff --git a/src/lib/todoStore.ts b/src/lib/todoStore.ts\nnew file mode 100644\nindex 0000000..9f7006c\n--- /dev/null\n+++ b/src/lib/todoStore.ts\n@@ -0,0 +1,30 @@\n+import type { NewTodo, Todo, TodoAction } from \"../types/todo\";\n+\n+export function todoReducer(todos: Todo[], action: TodoAction): Todo[] {\n+  if (action.type === \"added\") {\n+    return [\n+      ...todos,\n+      {\n+        id: crypto.randomUUID(),\n+        title: action.input.title,\n+        completed: false,\n+        dueDate: action.input.dueDate,\n+        priority: action.input.priority ?? \"normal\",\n+      },\n+    ];\n+  }\n+\n+  if (action.type === \"toggled\") {\n+    return todos.map((todo) =>\n+      todo.id === action.id\n+        ? { ...todo, completed: !todo.completed }\n+        : todo,\n+    );\n+  }\n+\n+  if (action.type === \"removed\") {\n+    return todos.filter((todo) => todo.id !== action.id);\n+  }\n+\n+  return todos;\n+}"
+    },
+    {
+      "path": "src/types/todo.ts",
+      "status": "modified",
+      "additions": 14,
+      "deletions": 1,
+      "patch": "diff --git a/src/types/todo.ts b/src/types/todo.ts\nindex 25e13c0..a4066ed 100644\n--- a/src/types/todo.ts\n+++ b/src/types/todo.ts\n@@ -1,5 +1,18 @@\n export type Todo = {\n   id: string;\n   title: string;\n-  done: boolean;\n+  completed: boolean;\n+  dueDate?: string;\n+  priority: \"low\" | \"normal\" | \"high\";\n };\n+\n+export type NewTodo = Pick<Todo, \"title\" | \"dueDate\"> & {\n+  priority?: Todo[\"priority\"];\n+};\n+\n+export type TodoFilter = \"all\" | \"active\" | \"completed\";\n+\n+export type TodoAction =\n+  | { type: \"added\"; input: NewTodo }\n+  | { type: \"toggled\"; id: string }\n+  | { type: \"removed\"; id: string };",
+      "summary": {
+        "title": "Describe richer todo state",
+        "what": "Renames the completion field and adds due dates, priorities, filters, and reducer action types.",
+        "why": "The UI and reducer need one shared contract for the new behavior.",
+        "details": [
+          "NewTodo permits a missing priority so the reducer can supply a default.",
+          "Filter values form a closed string union."
+        ],
+        "risks": [
+          "Existing saved items still use done and need a small migration."
+        ]
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 24,
+      "snippet": "diff --git a/src/types/todo.ts b/src/types/todo.ts\nindex 25e13c0..a4066ed 100644\n--- a/src/types/todo.ts\n+++ b/src/types/todo.ts\n@@ -1,5 +1,18 @@\n export type Todo = {\n   id: string;\n   title: string;\n-  done: boolean;\n+  completed: boolean;\n+  dueDate?: string;\n+  priority: \"low\" | \"normal\" | \"high\";\n };\n+\n+export type NewTodo = Pick<Todo, \"title\" | \"dueDate\"> & {\n+  priority?: Todo[\"priority\"];\n+};\n+\n+export type TodoFilter = \"all\" | \"active\" | \"completed\";\n+\n+export type TodoAction =\n+  | { type: \"added\"; input: NewTodo }\n+  | { type: \"toggled\"; id: string }\n+  | { type: \"removed\"; id: string };"
+    },
+    {
+      "path": "src/styles/todos.css",
+      "status": "modified",
+      "additions": 24,
+      "deletions": 2,
+      "patch": "diff --git a/src/styles/todos.css b/src/styles/todos.css\nindex 11e4c3a..ccdf474 100644\n--- a/src/styles/todos.css\n+++ b/src/styles/todos.css\n@@ -12,7 +12,29 @@\n .todo-item {\n   align-items: center;\n-  border-bottom: 1px solid #ddd;\n+  border-bottom: 1px solid #d8d1c4;\n   display: flex;\n+  gap: 16px;\n   justify-content: space-between;\n-  padding: 8px;\n+  padding: 14px 0;\n+}\n+\n+.todo-check {\n+  align-items: center;\n+  display: flex;\n+  gap: 10px;\n+}\n+\n+.todo-item time {\n+  color: #73766d;\n+  font-size: 12px;\n+}\n+\n+.todo-item.is-complete span {\n+  color: #8b8d86;\n+  text-decoration: line-through;\n+}\n+\n+.empty-todos {\n+  color: #73766d;\n+  padding: 32px 0;\n }",
+      "summary": {
+        "title": "Show completed work quietly",
+        "what": "Adds spacing, due-date text, a muted completed state, and a calm empty message.",
+        "why": "Completion needs to remain visible without competing with active work.",
+        "details": [
+          "The row keeps its simple ruled-list structure.",
+          "The completed state changes both color and decoration."
+        ],
+        "risks": []
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 36,
+      "snippet": "diff --git a/src/styles/todos.css b/src/styles/todos.css\nindex 11e4c3a..ccdf474 100644\n--- a/src/styles/todos.css\n+++ b/src/styles/todos.css\n@@ -12,7 +12,29 @@\n .todo-item {\n   align-items: center;\n-  border-bottom: 1px solid #ddd;\n+  border-bottom: 1px solid #d8d1c4;\n   display: flex;\n+  gap: 16px;\n   justify-content: space-between;\n-  padding: 8px;\n+  padding: 14px 0;\n+}\n+\n+.todo-check {\n+  align-items: center;\n+  display: flex;\n+  gap: 10px;\n+}\n+\n+.todo-item time {\n+  color: #73766d;\n+  font-size: 12px;\n+}\n+\n+.todo-item.is-complete span {\n+  color: #8b8d86;\n+  text-decoration: line-through;\n+}\n+\n+.empty-todos {\n+  color: #73766d;\n+  padding: 32px 0;\n }"
+    },
+    {
+      "path": "src/components/FilterBar.tsx",
+      "status": "added",
+      "additions": 21,
+      "deletions": 0,
+      "patch": "diff --git a/src/components/FilterBar.tsx b/src/components/FilterBar.tsx\nnew file mode 100644\nindex 0000000..b3372f1\n--- /dev/null\n+++ b/src/components/FilterBar.tsx\n@@ -0,0 +1,21 @@\n+import type { TodoFilter } from \"../types/todo\";\n+\n+const filters: TodoFilter[] = [\"all\", \"active\", \"completed\"];\n+\n+export function FilterBar({ value, onChange }: Props) {\n+  return (\n+    <div className=\"filter-bar\" aria-label=\"Filter todos\">\n+      {filters.map((filter) => (\n+        <button\n+          key={filter}\n+          type=\"button\"\n+          className={value === filter ? \"is-active\" : \"\"}\n+          aria-pressed={value === filter}\n+          onClick={() => onChange(filter)}\n+        >\n+          {filter[0].toUpperCase() + filter.slice(1)}\n+        </button>\n+      ))}\n+    </div>\n+  );\n+}",
+      "summary": {
+        "title": "Add direct list filters",
+        "what": "Adds three pressed-state controls for all, active, and completed todos.",
+        "why": "People need a quick way to focus on unfinished work or review what they completed.",
+        "details": [
+          "aria-pressed exposes the current filter to assistive technology.",
+          "The values come from the shared TodoFilter type."
+        ],
+        "risks": [
+          "The Props type must be added or imported before this component compiles."
+        ]
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 27,
+      "snippet": "diff --git a/src/components/FilterBar.tsx b/src/components/FilterBar.tsx\nnew file mode 100644\nindex 0000000..b3372f1\n--- /dev/null\n+++ b/src/components/FilterBar.tsx\n@@ -0,0 +1,21 @@\n+import type { TodoFilter } from \"../types/todo\";\n+\n+const filters: TodoFilter[] = [\"all\", \"active\", \"completed\"];\n+\n+export function FilterBar({ value, onChange }: Props) {\n+  return (\n+    <div className=\"filter-bar\" aria-label=\"Filter todos\">\n+      {filters.map((filter) => (\n+        <button\n+          key={filter}\n+          type=\"button\"\n+          className={value === filter ? \"is-active\" : \"\"}\n+          aria-pressed={value === filter}\n+          onClick={() => onChange(filter)}\n+        >\n+          {filter[0].toUpperCase() + filter.slice(1)}\n+        </button>\n+      ))}\n+    </div>\n+  );\n+}"
+    },
+    {
+      "path": "src/lib/todoStore.test.ts",
+      "status": "added",
+      "additions": 32,
+      "deletions": 0,
+      "patch": "diff --git a/src/lib/todoStore.test.ts b/src/lib/todoStore.test.ts\nnew file mode 100644\nindex 0000000..b20af2c\n--- /dev/null\n+++ b/src/lib/todoStore.test.ts\n@@ -0,0 +1,32 @@\n+import { describe, expect, it, vi } from \"vitest\";\n+import { todoReducer } from \"./todoStore\";\n+\n+describe(\"todoReducer\", () => {\n+  it(\"adds a todo with safe defaults\", () => {\n+    vi.stubGlobal(\"crypto\", { randomUUID: () => \"todo-1\" });\n+\n+    const todos = todoReducer([], {\n+      type: \"added\",\n+      input: { title: \"Buy oat milk\" },\n+    });\n+\n+    expect(todos).toEqual([\n+      {\n+        id: \"todo-1\",\n+        title: \"Buy oat milk\",\n+        completed: false,\n+        dueDate: undefined,\n+        priority: \"normal\",\n+      },\n+    ]);\n+  });\n+\n+  it(\"toggles only the chosen todo\", () => {\n+    const first = makeTodo({ id: \"one\", completed: false });\n+    const second = makeTodo({ id: \"two\", completed: false });\n+\n+    expect(\n+      todoReducer([first, second], { type: \"toggled\", id: \"two\" }),\n+    ).toEqual([first, { ...second, completed: true }]);\n+  });\n+});",
+      "summary": {
+        "title": "Lock down reducer behavior",
+        "what": "Tests new-todo defaults and confirms toggling leaves unrelated items unchanged.",
+        "why": "The reducer now owns every todo transition and needs fast tests around its core rules.",
+        "details": [
+          "The id source is stubbed for a stable add assertion.",
+          "The toggle test checks both the changed and unchanged entries."
+        ],
+        "risks": [
+          "The global crypto stub should be restored after each test."
+        ]
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 38,
+      "snippet": "diff --git a/src/lib/todoStore.test.ts b/src/lib/todoStore.test.ts\nnew file mode 100644\nindex 0000000..b20af2c\n--- /dev/null\n+++ b/src/lib/todoStore.test.ts\n@@ -0,0 +1,32 @@\n+import { describe, expect, it, vi } from \"vitest\";\n+import { todoReducer } from \"./todoStore\";\n+\n+describe(\"todoReducer\", () => {\n+  it(\"adds a todo with safe defaults\", () => {\n+    vi.stubGlobal(\"crypto\", { randomUUID: () => \"todo-1\" });\n+\n+    const todos = todoReducer([], {\n+      type: \"added\",\n+      input: { title: \"Buy oat milk\" },\n+    });\n+\n+    expect(todos).toEqual([\n+      {\n+        id: \"todo-1\",\n+        title: \"Buy oat milk\",\n+        completed: false,\n+        dueDate: undefined,\n+        priority: \"normal\",\n+      },\n+    ]);\n+  });\n+\n+  it(\"toggles only the chosen todo\", () => {\n+    const first = makeTodo({ id: \"one\", completed: false });\n+    const second = makeTodo({ id: \"two\", completed: false });\n+\n+    expect(\n+      todoReducer([first, second], { type: \"toggled\", id: \"two\" }),\n+    ).toEqual([first, { ...second, completed: true }]);\n+  });\n+});"
+    },
+    {
+      "path": "README.md",
+      "status": "modified",
+      "additions": 12,
+      "deletions": 2,
+      "patch": "diff --git a/README.md b/README.md\nindex f2f695a..d5512c1 100644\n--- a/README.md\n+++ b/README.md\n@@ -8,4 +8,14 @@ npm run dev\n \n-Add a todo, mark it done, or remove it.\n+Add a todo, give it a due date, and mark it complete.\n \n-Todos reset when the page reloads.\n+Todos are saved in local storage and return after a reload.\n+\n+## Filters\n+\n+Use the list controls to show:\n+\n+- All todos\n+- Active todos\n+- Completed todos\n+\n+The app keeps filter state in memory and never removes hidden todos.",
+      "summary": {
+        "title": "Document the useful todo flow",
+        "what": "Updates the quick guide for due dates, saved todos, and the three list filters.",
+        "why": "The README should match the behavior a new contributor sees after starting the app.",
+        "details": [
+          "It states that filtering hides rather than deletes todos.",
+          "It explains that persistence uses local storage."
+        ],
+        "risks": []
+      },
+      "isBinary": false,
+      "isTruncated": false,
+      "totalDiffLines": 21,
+      "snippet": "diff --git a/README.md b/README.md\nindex f2f695a..d5512c1 100644\n--- a/README.md\n+++ b/README.md\n@@ -8,4 +8,14 @@ npm run dev\n \n-Add a todo, mark it done, or remove it.\n+Add a todo, give it a due date, and mark it complete.\n \n-Todos reset when the page reloads.\n+Todos are saved in local storage and return after a reload.\n+\n+## Filters\n+\n+Use the list controls to show:\n+\n+- All todos\n+- Active todos\n+- Completed todos\n+\n+The app keeps filter state in memory and never removes hidden todos."
+    }
+  ]
+}

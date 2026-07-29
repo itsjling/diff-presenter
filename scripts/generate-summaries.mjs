@@ -85,7 +85,7 @@ Options:
 const repo = resolve(callerDirectory, option('--repo') || callerDirectory);
 const outputPath = resolve(
   callerDirectory,
-  option('--output') || resolve(root, 'public/diff-data.json'),
+  option('--output') || resolve(root, '.cache/diff-data.json'),
 );
 const codexBin = option('--codex-bin') || process.env.CODEX_BIN || 'codex';
 const model = option('--model');

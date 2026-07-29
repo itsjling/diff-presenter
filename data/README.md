@@ -1,8 +1,9 @@
 # Diff data
 
-`scripts/build-diff-data.mjs` writes `public/diff-data.json` for the review
-page. Diff Presenter is an open-source developer tool meant to run on pull
-requests, so a GitHub PR is its main input:
+`scripts/build-diff-data.mjs` writes the ignored `.cache/diff-data.json` live
+snapshot for the review page. The local server exposes it at
+`/diff-data.json`. Diff Presenter is an open-source developer tool meant to run
+on pull requests, so a GitHub PR is its main input:
 
 ```sh
 node scripts/build-diff-data.mjs --repo /path/to/repo --pr 42
@@ -20,7 +21,8 @@ new file only when the data changed.
 ## Refresh the bundled todo demo
 
 `docs/todo-demo.js` holds the ten illustrative files used by both the landing
-page and the bundled app data. Rebuild the JSON files after changing it:
+page and the checked-in `public/demo-diff-data.json`. Rebuild the demo files
+after changing it:
 
 ```sh
 node scripts/write-todo-demo.mjs
@@ -34,7 +36,7 @@ Example:
 
 ```sh
 node scripts/build-diff-data.mjs --repo /path/to/repo --base BASE --head HEAD \
-  --summaries data/todo-demo-summaries.json --output public/diff-data.json
+  --summaries data/todo-demo-summaries.json --output .cache/diff-data.json
 ```
 
 Add `--watch` to check Git state and the note file every two seconds. The

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -29,14 +29,28 @@ const agentArgs = [...cli.agentArgs];
 const outputIndex = feedArgs.indexOf('--output');
 
 if (outputIndex === -1) {
-  feedArgs.push('--output', resolve(root, 'public/diff-data.json'));
-  agentArgs.push('--output', resolve(root, 'public/diff-data.json'));
+  feedArgs.push('--output', resolve(root, '.cache/diff-data.json'));
+  agentArgs.push('--output', resolve(root, '.cache/diff-data.json'));
 }
 if (!feedArgs.includes('--watch')) feedArgs.push('--watch');
 const outputPath = resolve(
   callerDirectory,
   feedArgs[feedArgs.indexOf('--output') + 1],
 );
+
+const builtServer = resolve(root, 'dist/server/index.js');
+if (!existsSync(builtServer)) {
+  const result = spawnSync(
+    process.platform === 'win32' ? 'npm.cmd' : 'npm',
+    ['run', 'build'],
+    { cwd: root, stdio: 'inherit' },
+  );
+  if (result.error) {
+    console.error(`Could not build the local page: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.status !== 0) process.exit(result.status || 1);
+}
 
 const feed = spawn(
   process.execPath,
@@ -48,24 +62,17 @@ const feed = spawn(
       : ['inherit', 'inherit', 'inherit'],
   },
 );
-const builtServer = resolve(root, 'dist/server/index.js');
-const site = existsSync(builtServer)
-  ? spawn(
-      process.execPath,
-      [
-        resolve(root, 'scripts/serve-built.mjs'),
-        '--output',
-        outputPath,
-        '--port',
-        String(port),
-      ],
-      { cwd: root, stdio: 'inherit' },
-    )
-  : spawn(
-      process.platform === 'win32' ? 'npm.cmd' : 'npm',
-      ['run', 'dev', '--', '--port', String(port)],
-      { cwd: root, stdio: 'inherit' },
-    );
+const site = spawn(
+  process.execPath,
+  [
+    resolve(root, 'scripts/serve-built.mjs'),
+    '--output',
+    outputPath,
+    '--port',
+    String(port),
+  ],
+  { cwd: root, stdio: 'inherit' },
+);
 let closing = false;
 let agent;
 let agentTimer;

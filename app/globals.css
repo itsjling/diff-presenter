@@ -816,6 +816,63 @@ kbd {
   max-width: 40em;
 }
 
+.note-skeleton {
+  margin-top: 25px;
+  max-width: 40em;
+}
+
+.note-skeleton-group {
+  display: grid;
+  gap: 10px;
+}
+
+.note-skeleton-group + .note-skeleton-group {
+  border-top: 1px solid var(--line);
+  margin-top: 30px;
+  padding-top: 20px;
+}
+
+.note-skeleton-line {
+  animation: note-skeleton-shimmer 1.6s ease-in-out infinite;
+  background: linear-gradient(
+    100deg,
+    #ddd6ca 20%,
+    #ebe5da 42%,
+    #ddd6ca 64%
+  );
+  background-size: 300% 100%;
+  border-radius: 2px;
+  display: block;
+  height: 11px;
+}
+
+.note-skeleton-line--label {
+  height: 8px;
+  margin-bottom: 3px;
+  width: 23%;
+}
+
+.note-skeleton-line--long {
+  width: 94%;
+}
+
+.note-skeleton-line--medium {
+  width: 72%;
+}
+
+.note-skeleton-line--short {
+  width: 48%;
+}
+
+@keyframes note-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
 .note-section {
   border-top: 1px solid var(--line);
   margin-top: 30px;

@@ -48,7 +48,7 @@ const summaries = {
 
 await Promise.all([
   writeFile(
-    resolve(root, "public/diff-data.json"),
+    resolve(root, "public/demo-diff-data.json"),
     `${JSON.stringify(snapshot, null, 2)}\n`,
   ),
   writeFile(

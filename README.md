@@ -128,10 +128,12 @@ npx diff-presenter \
   --summaries /path/to/summaries.json
 ```
 
-The watcher updates `public/diff-data.json` when Git state or the summary file
-changes. It checks remote PRs and branches every 30 seconds. The open page checks
-the data file every 1.5 seconds and keeps the current file selected when a new
-snapshot arrives.
+The watcher updates the ignored `.cache/diff-data.json` when Git state or the
+summary file changes. The local server exposes it at `/diff-data.json`. It
+checks remote PRs and branches every 30 seconds. The open page checks the data
+every 1.5 seconds and keeps the current file selected when a new snapshot
+arrives. Without a live snapshot, the page shows the checked-in
+`public/demo-diff-data.json`.
 
 ## Generate or revise the agent notes
 

@@ -20,7 +20,7 @@ function option(name, fallback) {
   return value;
 }
 
-const output = resolve(option('--output', resolve(clientRoot, 'diff-data.json')));
+const output = resolve(option('--output', resolve(root, '.cache/diff-data.json')));
 const portValue = option('--port', '3000');
 if (!/^\d+$/.test(portValue) || Number(portValue) > 65_535) {
   throw new Error('--port must be a number from 0 to 65535');

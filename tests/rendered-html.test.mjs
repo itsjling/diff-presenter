@@ -48,7 +48,7 @@ test("server-renders the Diff Presenter entry state", async () => {
 test("ships the ten-file todo-list demo", async () => {
   const [{ todoDemoFiles }, payloadText] = await Promise.all([
     import("../docs/todo-demo.js"),
-    readFile(new URL("../public/diff-data.json", import.meta.url), "utf8"),
+    readFile(new URL("../public/demo-diff-data.json", import.meta.url), "utf8"),
   ]);
   const payload = JSON.parse(payloadText);
 
@@ -105,6 +105,14 @@ test("ships the ten-file todo-list demo", async () => {
   );
 });
 
+test("keeps live review data out of built assets", async () => {
+  await access(new URL("../dist/client/demo-diff-data.json", import.meta.url));
+  await assert.rejects(
+    access(new URL("../dist/client/diff-data.json", import.meta.url)),
+    { code: "ENOENT" },
+  );
+});
+
 test("makes the landing-page demo interactive", async () => {
   const [html, script] = await Promise.all([
     readFile(new URL("../docs/index.html", import.meta.url), "utf8"),
@@ -119,6 +127,27 @@ test("makes the landing-page demo interactive", async () => {
   assert.match(script, /ArrowLeft/);
   assert.match(script, /ArrowRight/);
   assert.match(script, /metaKey/);
+});
+
+test("falls back to the bundled demo when no live snapshot exists", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /liveResponse\.status === 404/);
+  assert.match(page, /fetch\("\/demo-diff-data\.json"\)/);
+});
+
+test("shows a content skeleton while the agent writes a file summary", async () => {
+  const [page, styles] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /Writing summary of diff\.\.\./);
+  assert.match(page, /className="note-skeleton"/);
+  assert.doesNotMatch(page, /Writing this note|NOTE PROGRESS/);
+  assert.doesNotMatch(page, /You can review any finished file now/);
+  assert.match(styles, /@keyframes note-skeleton-shimmer/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
 test("removes all starter preview code and metadata", async () => {

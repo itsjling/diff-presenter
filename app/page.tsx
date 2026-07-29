@@ -279,9 +279,13 @@ export default function Home() {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch(`/diff-data.json?t=${Date.now()}`, {
+      const liveResponse = await fetch(`/diff-data.json?t=${Date.now()}`, {
         cache: "no-store",
       });
+      const response =
+        liveResponse.status === 404
+          ? await fetch("/demo-diff-data.json")
+          : liveResponse;
       if (!response.ok) throw new Error(`Snapshot returned ${response.status}`);
       const next = (await response.json()) as DiffSnapshot;
       if (!Array.isArray(next.files)) throw new Error("Snapshot has no files");
@@ -639,26 +643,42 @@ export default function Home() {
                 </span>
               </div>
 
-              {notesInProgress || noteUnavailable ? (
+              {notesInProgress ? (
+                <div
+                  className="summary-loading"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <h2 id="summary-heading">Writing summary of diff...</h2>
+                  <div className="note-skeleton" aria-hidden="true">
+                    <div className="note-skeleton-group">
+                      <span className="note-skeleton-line note-skeleton-line--long" />
+                      <span className="note-skeleton-line note-skeleton-line--medium" />
+                    </div>
+                    <div className="note-skeleton-group">
+                      <span className="note-skeleton-line note-skeleton-line--label" />
+                      <span className="note-skeleton-line note-skeleton-line--long" />
+                      <span className="note-skeleton-line note-skeleton-line--short" />
+                    </div>
+                    <div className="note-skeleton-group">
+                      <span className="note-skeleton-line note-skeleton-line--label" />
+                      <span className="note-skeleton-line note-skeleton-line--medium" />
+                      <span className="note-skeleton-line note-skeleton-line--long" />
+                      <span className="note-skeleton-line note-skeleton-line--short" />
+                    </div>
+                  </div>
+                </div>
+              ) : noteUnavailable ? (
                 <>
-                  <h2 id="summary-heading">
-                    {notesInProgress
-                      ? "Writing this note."
-                      : "This note is not ready."}
-                  </h2>
+                  <h2 id="summary-heading">This note is not ready.</h2>
                   <p className="summary-lead">
-                    {notesInProgress
-                      ? "The diff is ready to review. This file’s note will appear when its batch finishes."
-                      : "The agent stopped before it reached this file. The diff is still ready to review."}
+                    The agent stopped before it reached this file. The diff is
+                    still ready to review.
                   </p>
                   <section className="note-section note-section--pending">
-                    <p className="eyebrow">
-                      {notesInProgress ? "NOTE PROGRESS" : "WHAT TO DO"}
-                    </p>
+                    <p className="eyebrow">WHAT TO DO</p>
                     <p>
-                      {notesInProgress
-                        ? `${noteProgress}. You can review any finished file now.`
-                        : "Check the terminal error, then start Diff Presenter again."}
+                      Check the terminal error, then start Diff Presenter again.
                     </p>
                   </section>
                 </>
@@ -699,28 +719,27 @@ export default function Home() {
                   </ul>
                 </section>
               ) : null}
-
             </div>
 
-            <footer className="agent-signoff">
-              <span className="agent-glyph" aria-hidden="true">
-                ✦
-              </span>
-              <span>
-                {notesInProgress
-                  ? "The coding agent is writing notes"
-                  : noteUnavailable
+            {!notesInProgress ? (
+              <footer className="agent-signoff">
+                <span className="agent-glyph" aria-hidden="true">
+                  ✦
+                </span>
+                <span>
+                  {noteUnavailable
                     ? "The coding agent stopped"
                     : "Written by the coding agent"}
-                <small>
-                  {notesInProgress || noteUnavailable
-                    ? noteProgress
-                    : `Snapshot ${snapshot.version.slice(0, 10)} · ${new Date(
-                        snapshot.generatedAt,
-                      ).toLocaleString()}`}
-                </small>
-              </span>
-            </footer>
+                  <small>
+                    {noteUnavailable
+                      ? noteProgress
+                      : `Snapshot ${snapshot.version.slice(0, 10)} · ${new Date(
+                          snapshot.generatedAt,
+                        ).toLocaleString()}`}
+                  </small>
+                </span>
+              </footer>
+            ) : null}
           </aside>
         </div>
       </section>

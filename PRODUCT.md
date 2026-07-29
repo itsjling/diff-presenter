@@ -43,7 +43,7 @@ Use the name “Diff Presenter” for now. Describe it as an open-source develop
 
 - `README.md` documents the current product, supported review targets, commands, and data flow.
 - `app/page.tsx` contains the working review interface and its loading, empty, search, navigation, and long-diff states.
-- `public/diff-data.json` contains a ten-file todo-list demo with change and file notes.
+- `public/demo-diff-data.json` contains a ten-file todo-list demo with change and file notes.
 - `data/todo-demo-summaries.json` contains the agent notes used by the demo.
 - Tests cover rendering, remote targets, summary paths, agent notes, and snapshot generation.
 - No confirmed testimonials, customer claims, pricing, or benchmark data exists in this repo; future work must not invent them.
