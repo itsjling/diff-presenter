@@ -27,6 +27,7 @@ const selectedCase = option("--case", "all");
 const fixtureKind = option("--fixture", "working");
 const runs = Number(option("--runs", "5"));
 const batchSize = Number(option("--batch-size", "4"));
+const jobs = Number(option("--jobs", "3"));
 const agentDelay = Number(option("--agent-delay", "120"));
 const resultFile = option("--result-file");
 const keepFixture = args.includes("--keep-fixture");
@@ -290,6 +291,7 @@ const result = {
   files: Number(git(repo, "status", "--short").trim().split("\n").length),
   runs,
   batchSize,
+  jobs,
 };
 
 try {
@@ -351,6 +353,8 @@ try {
         tools.fakeAgent,
         "--batch-size",
         String(batchSize),
+        "--jobs",
+        String(jobs),
         "--force",
         "--summaries",
         summaries,

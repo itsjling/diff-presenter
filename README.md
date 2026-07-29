@@ -39,6 +39,7 @@ Arguments:
 | `--model NAME` | Choose the model used for notes. |
 | `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
 | `--batch-size COUNT` | Set the most files per agent pass. The default is `12`; large patches use smaller batches. |
+| `--jobs COUNT` | Set agent passes to run at once. The default is `3`. |
 | `--force` | Regenerate all agent notes instead of using cached notes. |
 | `--remote NAME\|URL` | Choose the Git remote. The default is `origin`. |
 | `--port NUMBER` | Choose an exact local port. The default starts at `2299`. |

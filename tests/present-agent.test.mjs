@@ -144,7 +144,8 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
 
     const snapshot = await waitFor(async () => {
       const value = JSON.parse(await readFile(output, "utf8"));
-      return value.files?.[0]?.summary?.title === "Update text"
+      return value.files?.[0]?.summary?.title === "Update text" &&
+        value.notes?.complete
         ? value
         : undefined;
     });
@@ -182,7 +183,7 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
     );
     await new Promise((resolve) => setTimeout(resolve, 3_500));
     const restartLog = await readFile(events, "utf8");
-    assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 1);
+    assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 2);
 
     const restartResult = await stop(presenter);
     presenter = undefined;

@@ -492,6 +492,8 @@ process.stdout.write(JSON.stringify({
         codexBin,
         "--batch-size",
         "1",
+        "--jobs",
+        "1",
         "--summaries",
         summaries,
         "--output",
@@ -633,20 +635,25 @@ test("regenerates notes only for changed and added files", async () => {
 
     assert.deepEqual(await recordedCalls(codex.calls), [
       { files: ["added.txt", "changed.txt"], existing: [] },
+      { files: [], existing: ["added.txt", "changed.txt"] },
       {
         files: ["changed.txt", "new.txt"],
         existing: ["added.txt"],
       },
+      {
+        files: [],
+        existing: ["added.txt", "changed.txt", "new.txt"],
+      },
     ]);
 
     const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
-    assert.equal(writtenNotes.change.title, "Change note 2");
+    assert.equal(writtenNotes.change.title, "Change note 4");
     assert.equal(writtenNotes.files["added.txt"].title, "Note 1 for added.txt");
     assert.equal(
       writtenNotes.files["changed.txt"].title,
-      "Note 2 for changed.txt",
+      "Note 3 for changed.txt",
     );
-    assert.equal(writtenNotes.files["new.txt"].title, "Note 2 for new.txt");
+    assert.equal(writtenNotes.files["new.txt"].title, "Note 3 for new.txt");
     assert.deepEqual(
       Object.keys(writtenNotes.meta.fileFingerprints).sort(),
       ["added.txt", "changed.txt", "new.txt"],
@@ -660,20 +667,20 @@ test("regenerates notes only for changed and added files", async () => {
     const third = run(repo, args);
     assert.equal(third.status, 0, third.stderr);
     assert.match(third.stdout, /No file summaries changed/);
-    assert.equal((await recordedCalls(codex.calls)).length, 2);
+    assert.equal((await recordedCalls(codex.calls)).length, 4);
 
     const forced = run(repo, [...args, "--force"]);
     assert.equal(forced.status, 0, forced.stderr);
-    assert.deepEqual((await recordedCalls(codex.calls)).at(-1), {
+    assert.deepEqual((await recordedCalls(codex.calls)).at(-2), {
       files: ["added.txt", "changed.txt", "new.txt"],
       existing: [],
     });
 
     const refreshedNotes = JSON.parse(await readFile(summaries, "utf8"));
-    assert.equal(refreshedNotes.change.title, "Change note 3");
+    assert.equal(refreshedNotes.change.title, "Change note 6");
     assert.equal(
       refreshedNotes.files["added.txt"].title,
-      "Note 3 for added.txt",
+      "Note 5 for added.txt",
     );
 
     const snapshot = JSON.parse(await readFile(output, "utf8"));
@@ -716,11 +723,12 @@ test("drops removed files without regenerating unchanged file notes", async () =
 
     assert.deepEqual(await recordedCalls(codex.calls), [
       { files: ["added.txt", "changed.txt"], existing: [] },
+      { files: [], existing: ["added.txt", "changed.txt"] },
       { files: [], existing: ["changed.txt"] },
     ]);
 
     const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
-    assert.equal(writtenNotes.change.title, "Change note 2");
+    assert.equal(writtenNotes.change.title, "Change note 3");
     assert.deepEqual(Object.keys(writtenNotes.files), ["changed.txt"]);
     assert.equal(
       writtenNotes.files["changed.txt"].title,

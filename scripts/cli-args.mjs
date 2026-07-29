@@ -16,6 +16,7 @@ const valueOptions = new Set([
   '--model',
   '--reasoning',
   '--batch-size',
+  '--jobs',
   '--port',
 ]);
 const flagOptions = new Set([
@@ -53,6 +54,7 @@ Options:
   --model NAME        Model for agent notes
   --reasoning LEVEL   Agent reasoning effort when supported
   --batch-size COUNT  Maximum files per agent pass (default: 12)
+  --jobs COUNT        Agent passes to run at once (default: 3)
   --force             Regenerate all agent notes
   --remote NAME|URL   Git remote (default: origin)
   --port NUMBER       Local page port (default: 2299)
@@ -259,6 +261,7 @@ export function parseCliArgs(
     '--model',
     '--reasoning',
     '--batch-size',
+    '--jobs',
   ]) {
     const value = options.get(name);
     if (value) {
@@ -286,6 +289,13 @@ export function parseCliArgs(
     (!/^[1-9]\d*$/.test(batchSize) || Number(batchSize) > 50)
   ) {
     fail('--batch-size must be a number from 1 to 50');
+  }
+  const jobs = options.get('--jobs');
+  if (
+    jobs &&
+    (!/^[1-9]\d*$/.test(jobs) || Number(jobs) > 8)
+  ) {
+    fail('--jobs must be a number from 1 to 8');
   }
 
   const portValue = options.get('--port') || '2299';

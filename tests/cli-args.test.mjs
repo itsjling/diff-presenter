@@ -140,6 +140,8 @@ test('passes agent model, reasoning, and batch settings through', () => {
       'low',
       '--batch-size',
       '2',
+      '--jobs',
+      '4',
     ],
     {
       callerDirectory: cwd,
@@ -147,13 +149,15 @@ test('passes agent model, reasoning, and batch settings through', () => {
     },
   );
 
-  assert.deepEqual(parsed.agentArgs.slice(-6), [
+  assert.deepEqual(parsed.agentArgs.slice(-8), [
     '--model',
     'gpt-test',
     '--reasoning',
     'low',
     '--batch-size',
     '2',
+    '--jobs',
+    '4',
   ]);
 });
 
@@ -184,6 +188,14 @@ test('rejects invalid reasoning and batch settings', () => {
         pathExists: missing,
       }),
     /--batch-size must be/i,
+  );
+  assert.throws(
+    () =>
+      parseCliArgs(['--jobs', '9'], {
+        callerDirectory: cwd,
+        pathExists: missing,
+      }),
+    /--jobs must be/i,
   );
 });
 
