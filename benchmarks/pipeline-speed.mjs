@@ -33,8 +33,8 @@ const resultFile = option("--result-file");
 const keepFixture = args.includes("--keep-fixture");
 const snapshotReuse = args.includes("--snapshot-reuse");
 
-if (!["all", "build", "summary", "present"].includes(selectedCase)) {
-  throw new Error("--case must be all, build, summary, or present");
+if (!["all", "build", "summary", "present", "restart"].includes(selectedCase)) {
+  throw new Error("--case must be all, build, summary, present, or restart");
 }
 if (!["working", "heldout"].includes(fixtureKind)) {
   throw new Error("--fixture must be working or heldout");
@@ -281,6 +281,88 @@ async function waitForPresenter(commandArgs, env, targetLine) {
   }
 }
 
+async function measureRestart(repo, output, tools, runNumber) {
+  const summaries = join(repo, ".diffsplain", "summaries.json");
+  rmSync(summaries, { force: true });
+  clear(tools.calls);
+  const child = spawn(
+    process.execPath,
+    [
+      resolve(projectRoot, "scripts/present.mjs"),
+      "--repo",
+      repo,
+      "--worktree",
+      "--codex-bin",
+      tools.fakeAgent,
+      "--output",
+      output,
+      "--port",
+      "0",
+    ],
+    {
+      cwd: projectRoot,
+      env: tools.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let editedAt;
+  let marker;
+  let buffer = "";
+  let stderr = "";
+  const started = performance.now();
+  const edit = () => {
+    if (editedAt !== undefined) return;
+    editedAt = performance.now();
+    marker = `restart marker ${runNumber} ${Date.now()}`;
+    const path = join(repo, "file-000.txt");
+    writeFileSync(path, `${readFileSync(path, "utf8")}${marker}\n`);
+  };
+  const consume = (text) => {
+    buffer += text;
+    const complete = buffer.split("\n");
+    buffer = complete.pop() || "";
+    for (const line of complete) {
+      if (line.startsWith("Asking ")) edit();
+    }
+  };
+  child.stdout.on("data", (chunk) => consume(chunk.toString()));
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+    consume(chunk.toString());
+  });
+
+  try {
+    const deadline = performance.now() + 25_000;
+    while (performance.now() < deadline) {
+      if (editedAt !== undefined && existsSync(output)) {
+        const snapshot = JSON.parse(readFileSync(output, "utf8"));
+        if (
+          snapshot.notes?.complete &&
+          snapshot.notes.generatedFor === snapshot.notes.reviewFingerprint &&
+          snapshot.files?.some((file) => file.patch?.includes(marker))
+        ) {
+          return {
+            elapsedMs: performance.now() - editedAt,
+            totalMs: performance.now() - started,
+            agentCalls: lines(tools.calls).length,
+          };
+        }
+      }
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+    }
+    throw new Error(`Timed out waiting for restarted notes\n${stderr}`);
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolvePromise) => {
+      const timer = setTimeout(resolvePromise, 2_000);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolvePromise();
+      });
+    });
+  }
+}
+
 const temporary = mkdtempSync(join(tmpdir(), "diffsplain-speed-"));
 const repo = makeFixture(temporary);
 const tools = makeTools(temporary);
@@ -439,6 +521,32 @@ try {
       snapshot: stats(snapshotSamples),
       asking: stats(askingSamples),
       snapshotToAsking: stats(fixedWaitSamples),
+    };
+  }
+
+  if (selectedCase === "restart") {
+    run("npm", ["run", "build"], {
+      cwd: projectRoot,
+      env: tools.env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    const samples = [];
+    const callCounts = [];
+    for (let index = 0; index < runs; index += 1) {
+      const liveOutput = join(temporary, `restart-${index}.json`);
+      const measurement = await measureRestart(
+        repo,
+        liveOutput,
+        tools,
+        index,
+      );
+      samples.push(measurement.elapsedMs);
+      callCounts.push(measurement.agentCalls);
+    }
+    result.restart = {
+      ...stats(samples),
+      medianAgentCalls: percentile(callCounts, 0.5),
+      agentCallSamples: callCounts,
     };
   }
 

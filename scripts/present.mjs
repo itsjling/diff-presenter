@@ -221,7 +221,10 @@ function snapshotFingerprint() {
 function runAgent(fingerprint) {
   if (closing || !agentEnabled) return;
   if (agent) {
-    queuedFingerprint = fingerprint;
+    if (fingerprint !== agentFingerprint) {
+      queuedFingerprint = fingerprint;
+      agent.kill('SIGTERM');
+    }
     return;
   }
   agentFingerprint = fingerprint;
@@ -266,7 +269,10 @@ function scheduleAgent(fingerprint) {
   }
   if (!selectedFingerprint || selectedFingerprint === agentFingerprint) return;
   if (agent) {
-    queuedFingerprint = selectedFingerprint;
+    if (selectedFingerprint !== agentFingerprint) {
+      queuedFingerprint = selectedFingerprint;
+      agent.kill('SIGTERM');
+    }
     return;
   }
   clearTimeout(agentTimer);

@@ -145,6 +145,13 @@ const checkout = rawArgs.includes('--checkout');
 const remote = option('--remote') || 'origin';
 const force = rawArgs.includes('--force');
 const snapshotPath = option('--snapshot');
+const activeAgentProcesses = new Set();
+let interrupted = false;
+
+process.once('SIGTERM', () => {
+  interrupted = true;
+  for (const child of activeAgentProcesses) child.kill('SIGTERM');
+});
 
 if (range && (base || head)) {
   fail('--range cannot be used with --base or --head');
@@ -594,6 +601,7 @@ function runAgent(invocation, input) {
       cwd: root,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    activeAgentProcesses.add(child);
     const stdout = [];
     const stderr = [];
     let outputBytes = 0;
@@ -609,8 +617,16 @@ function runAgent(invocation, input) {
     };
     child.stdout.on('data', (chunk) => collect(stdout, chunk));
     child.stderr.on('data', (chunk) => collect(stderr, chunk));
-    child.once('error', rejectPromise);
+    child.once('error', (error) => {
+      activeAgentProcesses.delete(child);
+      rejectPromise(error);
+    });
     child.once('close', (status, signal) => {
+      activeAgentProcesses.delete(child);
+      if (interrupted) {
+        rejectPromise(new Error('Agent note generation was interrupted'));
+        return;
+      }
       const stdoutText = Buffer.concat(stdout).toString('utf8');
       const stderrText = Buffer.concat(stderr).toString('utf8');
       if (status !== 0 || signal) {
@@ -951,7 +967,7 @@ try {
     console.log(`Rebuilt ${outputPath}`);
   }
 } catch (error) {
-  if (workingSummaries && workingSnapshot) {
+  if (!interrupted && workingSummaries && workingSnapshot) {
     try {
       workingSummaries = {
         ...workingSummaries,
@@ -965,8 +981,10 @@ try {
       publish(workingSnapshot, workingSummaries);
     } catch {}
   }
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
+  if (!interrupted) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }
