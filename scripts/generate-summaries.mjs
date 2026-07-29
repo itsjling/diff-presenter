@@ -132,7 +132,11 @@ if (cacheDirectory) {
   targetArgs.push('--cache-dir', resolve(callerDirectory, cacheDirectory));
 }
 
-function runBuilder(output) {
+function runBuilder(output, excludeOutput = false) {
+  const outputArgs = ['--output', output];
+  if (excludeOutput) {
+    outputArgs.push('--exclude-output', outputPath);
+  }
   const result = spawnSync(
     process.execPath,
     [
@@ -140,8 +144,7 @@ function runBuilder(output) {
       ...targetArgs,
       '--summaries',
       summariesPath,
-      '--output',
-      output,
+      ...outputArgs,
     ],
     {
       cwd: callerDirectory,
@@ -367,7 +370,7 @@ const temporaryDirectory = mkdtempSync(
 try {
   const rawSnapshotPath = resolve(temporaryDirectory, 'diff-data.json');
   const schemaPath = resolve(temporaryDirectory, 'summary-schema.json');
-  runBuilder(rawSnapshotPath);
+  runBuilder(rawSnapshotPath, true);
 
   const rawSnapshot = JSON.parse(readFileSync(rawSnapshotPath, 'utf8'));
   const { snapshot, encoded } = cleanSnapshot(rawSnapshot);

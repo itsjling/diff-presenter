@@ -51,6 +51,7 @@ Options:
 
 const repo = resolve(option('--repo') || process.cwd());
 const output = resolve(option('--output') || 'public/diff-data.json');
+const excludedOutput = option('--exclude-output');
 const baseOption = option('--base');
 const headOption = option('--head');
 const prOption = option('--pr');
@@ -87,7 +88,11 @@ const repoPath = (file) => {
   return path && path !== '..' && !path.startsWith('../') ? path : undefined;
 };
 const excludedPaths = new Set(
-  [repoPath(summariesPath), repoPath(output)].filter(Boolean),
+  [
+    repoPath(summariesPath),
+    repoPath(output),
+    excludedOutput ? repoPath(resolve(excludedOutput)) : undefined,
+  ].filter(Boolean),
 );
 
 function command(commandName, commandArgs, options = {}) {

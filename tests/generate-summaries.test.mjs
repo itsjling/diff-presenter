@@ -142,6 +142,58 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
   }
 });
 
+test("keeps notes fresh when the rebuilt output is a changed tracked file", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+
+  try {
+    await writeFile(output, '{"old":true}\n');
+    git(repo, "add", "diff-data.json");
+    git(repo, "commit", "-qm", "track generated output");
+    await writeFile(output, '{"changed":true}\n');
+    await writeFile(join(repo, "changed.txt"), "worktree change\n");
+
+    const codex = await fakeCodex(
+      repo,
+      notes({
+        "changed.txt": {
+          title: "Update text",
+          what: "Replaces the stored line.",
+          why: "Covers worktree notes.",
+          details: [],
+          risks: [],
+        },
+      }),
+    );
+    await writeFile(
+      join(repo, ".git", "info", "exclude"),
+      "codex-args.json\ncodex-response.json\nfake-codex.mjs\n",
+    );
+    const result = run(repo, [
+      "--codex-bin",
+      codex.bin,
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.deepEqual(snapshot.files.map((file) => file.path), ["changed.txt"]);
+    assert.equal(
+      writtenNotes.meta.reviewFingerprint,
+      snapshot.notes.reviewFingerprint,
+    );
+    assert.equal(snapshot.notes.fresh, true);
+    assert.equal(snapshot.notes.complete, true);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
 test("does not write partial notes when Codex misses a changed file", async () => {
   const repo = await makeRepo();
   const summaries = join(repo, "notes.json");
