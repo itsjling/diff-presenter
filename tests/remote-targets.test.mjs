@@ -24,13 +24,13 @@ function run(repo, args, options = {}) {
 }
 
 async function makeRemoteRepo() {
-  const root = await mkdtemp(join(tmpdir(), "beautiful-diffs-remote-"));
+  const root = await mkdtemp(join(tmpdir(), "diffsplain-remote-"));
   const remote = join(root, "origin.git");
   const repo = join(root, "checkout");
   execFileSync("git", ["init", "--bare", "-q", remote]);
   execFileSync("git", ["clone", "-q", remote, repo]);
-  git(repo, "config", "user.email", "diff-presenter@example.test");
-  git(repo, "config", "user.name", "Diff Presenter");
+  git(repo, "config", "user.email", "diffsplain@example.test");
+  git(repo, "config", "user.name", "Diffsplain");
 
   await writeFile(join(repo, "base.txt"), "base\n");
   git(repo, "add", "base.txt");

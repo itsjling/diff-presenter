@@ -1,18 +1,18 @@
 ---
 title: CLI usage
-description: Select a review target and control the local Diff Presenter page.
+description: Select a review target and control the local Diffsplain page.
 sidebar:
   order: 2
 ---
 
 ## Current checkout
 
-With no target, Diff Presenter compares the current checkout with its default
+With no target, Diffsplain compares the current checkout with its default
 branch. The result includes local commits plus staged, unstaged, and untracked
 work.
 
 ```sh
-npx diff-presenter
+npx diffsplain
 ```
 
 ## Pull requests
@@ -20,20 +20,20 @@ npx diff-presenter
 Use a pull request number in the current repo:
 
 ```sh
-npx diff-presenter --pr 198
+npx diffsplain --pr 198
 ```
 
 Pass the repo when you run the command elsewhere:
 
 ```sh
-npx diff-presenter owner/repo --pr 198
-npx diff-presenter --repo https://github.com/owner/repo --pr 198
+npx diffsplain owner/repo --pr 198
+npx diffsplain --repo https://github.com/owner/repo --pr 198
 ```
 
 A full pull request URL carries the repo:
 
 ```sh
-npx diff-presenter --pr https://github.com/owner/repo/pull/198
+npx diffsplain --pr https://github.com/owner/repo/pull/198
 ```
 
 ## Branches
@@ -41,14 +41,14 @@ npx diff-presenter --pr https://github.com/owner/repo/pull/198
 Compare a branch with the remote default branch:
 
 ```sh
-npx diff-presenter --branch feature/my-change
-npx diff-presenter owner/repo --branch feature/my-change
+npx diffsplain --branch feature/my-change
+npx diffsplain owner/repo --branch feature/my-change
 ```
 
 Choose a different base or remote when needed:
 
 ```sh
-npx diff-presenter \
+npx diffsplain \
   --repo /path/to/repo \
   --branch feature/my-change \
   --base next \
@@ -60,7 +60,7 @@ npx diff-presenter \
 Use `--worktree` to show only tracked and untracked changes against `HEAD`:
 
 ```sh
-npx diff-presenter --worktree
+npx diffsplain --worktree
 ```
 
 The watcher refreshes the page as the worktree changes. It keeps notes for
@@ -72,7 +72,7 @@ files.
 Pass two refs that exist in the chosen repo:
 
 ```sh
-npx diff-presenter \
+npx diffsplain \
   --repo /path/to/repo \
   --base BASE_REF \
   --head HEAD_REF

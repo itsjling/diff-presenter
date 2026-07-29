@@ -3,7 +3,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { summaryPath } from "../scripts/summary-path.mjs";
 
-const projectRoot = "/tmp/diff-presenter";
+const projectRoot = "/tmp/diffsplain";
 const callerDirectory = "/tmp";
 const repo = "/tmp/repo";
 
@@ -17,7 +17,7 @@ function path(options = {}) {
 }
 
 test("keeps worktree notes beside the target repo", () => {
-  assert.equal(path(), join(repo, ".beautiful-diffs/summaries.json"));
+  assert.equal(path(), join(repo, ".diffsplain/summaries.json"));
   assert.equal(
     path({ explicit: "chosen.json" }),
     join(callerDirectory, "chosen.json"),

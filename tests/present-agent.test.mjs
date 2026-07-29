@@ -45,13 +45,13 @@ async function stop(child) {
 }
 
 test("starts the note agent after the watch snapshot and stops cleanly", async () => {
-  const root = await mkdtemp(join(tmpdir(), "beautiful-diffs-present-"));
+  const root = await mkdtemp(join(tmpdir(), "diffsplain-present-"));
   const repo = join(root, "repo");
   const bin = join(root, "bin");
   const output = join(root, "diff-data.json");
   const events = join(root, "events.log");
   const response = join(root, "response.json");
-  const summaries = join(repo, ".beautiful-diffs", "summaries.json");
+  const summaries = join(repo, ".diffsplain", "summaries.json");
   let presenter;
 
   try {
@@ -77,8 +77,8 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
     await mkdir(bin);
 
     git(repo, "init", "-q");
-    git(repo, "config", "user.email", "diff-presenter@example.test");
-    git(repo, "config", "user.name", "Diff Presenter");
+    git(repo, "config", "user.email", "diffsplain@example.test");
+    git(repo, "config", "user.name", "Diffsplain");
     await writeFile(join(repo, "changed.txt"), "before\n");
     git(repo, "add", "changed.txt");
     git(repo, "commit", "-qm", "base");

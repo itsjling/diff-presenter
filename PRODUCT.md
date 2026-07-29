@@ -12,15 +12,15 @@ Developers reviewing pull requests. They need to understand each diff quickly wi
 
 ## Product Purpose
 
-Diff Presenter is an open-source developer tool for pull request review. It makes PRs clear by showing one changed file at a time with concise, complete notes from a coding agent. It succeeds when a developer can understand a PR and review it with less effort.
+Diffsplain is an open-source developer tool for pull request review. It makes PRs clear by showing one changed file at a time with concise, complete notes from a coding agent. It succeeds when a developer can understand a PR and review it with less effort.
 
 ## Positioning
 
-Diff Presenter runs on a PR and pairs each unified diff with agent-written context about what changed, why it changed, useful details, and risks. It keeps that context beside the code instead of making the developer piece it together from a separate chat or a raw patch.
+Diffsplain runs on a PR and pairs each unified diff with agent-written context about what changed, why it changed, useful details, and risks. It keeps that context beside the code instead of making the developer piece it together from a separate chat or a raw patch.
 
 ## Operating Context
 
-Developers run `npx diff-presenter` in a Git checkout. With no arguments, it compares the checkout with its default branch. They can also pass a repo path, URL, or `owner/name`, then choose a branch or pull request. Developers move through changed files, search the file list, and expand long patches when needed. The page updates when the diff or agent notes change.
+Developers run `npx diffsplain` in a Git checkout. With no arguments, it compares the checkout with its default branch. They can also pass a repo path, URL, or `owner/name`, then choose a branch or pull request. Developers move through changed files, search the file list, and expand long patches when needed. The page updates when the diff or agent notes change.
 
 ## Capabilities and Constraints
 
@@ -33,11 +33,11 @@ Developers run `npx diff-presenter` in a Git checkout. With no arguments, it com
 - Pair the whole change and each file with agent-written summaries, reasons, details, and risks.
 - Keep local review read-only: the app must not change the target repo.
 - Keep notes concise without dropping facts needed for a sound review.
-- Treat the final product name as an open decision.
+- Use the product name Diffsplain.
 
 ## Brand Commitments
 
-Use the name “Diff Presenter” for now. Describe it as an open-source developer tool built to run on pull requests. Keep it local and read-only. The final name remains work in progress.
+Use the name “Diffsplain.” Describe it as an open-source developer tool built to run on pull requests. Keep it local and read-only.
 
 ## Evidence on Hand
 

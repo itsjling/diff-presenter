@@ -12,12 +12,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-test("builds the static Diff Presenter entry page", async () => {
+test("builds the static Diffsplain entry page", async () => {
   const html = await readFile(
     new URL("../dist/index.html", import.meta.url),
     "utf8",
   );
-  assert.match(html, /<title>Diff Presenter<\/title>/i);
+  assert.match(html, /<title>Diffsplain<\/title>/i);
   assert.match(html, /<div id="root"><\/div>/);
   assert.match(html, /\.\/assets\/[^"]+\.js/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
@@ -158,7 +158,7 @@ test("removes the server-framework starter", async () => {
 });
 
 test("builds live data for tracked and untracked workspace files", async () => {
-  const repo = await mkdtemp(join(tmpdir(), "diff-presenter-test-"));
+  const repo = await mkdtemp(join(tmpdir(), "diffsplain-test-"));
   const output = join(repo, "snapshot.json");
   const git = (...args) =>
     execFileSync("git", ["-C", repo, ...args], {
@@ -168,17 +168,17 @@ test("builds live data for tracked and untracked workspace files", async () => {
 
   try {
     git("init", "-q");
-    git("config", "user.email", "diff-presenter@example.test");
-    git("config", "user.name", "Diff Presenter");
+    git("config", "user.email", "diffsplain@example.test");
+    git("config", "user.name", "Diffsplain");
     await writeFile(join(repo, "tracked.txt"), "before\n");
     git("add", "tracked.txt");
     git("commit", "-qm", "base");
 
     await writeFile(join(repo, "tracked.txt"), "after\n");
     await writeFile(join(repo, "new.txt"), "new line\n");
-    await mkdir(join(repo, ".beautiful-diffs"));
+    await mkdir(join(repo, ".diffsplain"));
     await writeFile(
-      join(repo, ".beautiful-diffs/summaries.json"),
+      join(repo, ".diffsplain/summaries.json"),
       JSON.stringify({
         change: {
           title: "Test change",
@@ -229,11 +229,11 @@ test("builds live data for tracked and untracked workspace files", async () => {
 
     const oldVersion = first.version;
     const summaries = JSON.parse(
-      await readFile(join(repo, ".beautiful-diffs/summaries.json"), "utf8"),
+      await readFile(join(repo, ".diffsplain/summaries.json"), "utf8"),
     );
     summaries.files["new.txt"].title = "Revised note";
     await writeFile(
-      join(repo, ".beautiful-diffs/summaries.json"),
+      join(repo, ".diffsplain/summaries.json"),
       JSON.stringify(summaries),
     );
     execFileSync(
@@ -254,7 +254,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
 
     summaries.meta = { reviewFingerprint: "0".repeat(64) };
     await writeFile(
-      join(repo, ".beautiful-diffs/summaries.json"),
+      join(repo, ".diffsplain/summaries.json"),
       JSON.stringify(summaries),
     );
     execFileSync(
@@ -280,7 +280,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
 });
 
 test("handles a Git workspace before its first commit", async () => {
-  const repo = await mkdtemp(join(tmpdir(), "diff-presenter-new-repo-"));
+  const repo = await mkdtemp(join(tmpdir(), "diffsplain-new-repo-"));
   const output = join(repo, "snapshot.json");
 
   try {

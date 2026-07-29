@@ -159,13 +159,13 @@ test('rejects invalid reasoning and batch settings', () => {
   );
 });
 
-test('publishes the diff-presenter executable', async () => {
+test('publishes the diffsplain executable', async () => {
   const packageJson = JSON.parse(
     await readFile(new URL('../package.json', import.meta.url), 'utf8'),
   );
 
   assert.equal(packageJson.private, undefined);
-  assert.equal(packageJson.bin['diff-presenter'], 'scripts/present.mjs');
+  assert.equal(packageJson.bin['diffsplain'], 'scripts/present.mjs');
   assert.ok(packageJson.files.includes('dist'));
   assert.ok(packageJson.scripts.prepack);
 });

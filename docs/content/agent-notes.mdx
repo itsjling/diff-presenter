@@ -5,19 +5,19 @@ sidebar:
   order: 3
 ---
 
-Codex writes short notes for each changed file by default. Diff Presenter sends
+Codex writes short notes for each changed file by default. Diffsplain sends
 the selected diff to the Codex CLI under its current login.
 
 Use a plain diff when you do not want notes:
 
 ```sh
-npx diff-presenter --no-agent
+npx diffsplain --no-agent
 ```
 
 Choose how Codex runs:
 
 ```sh
-npx diff-presenter \
+npx diffsplain \
   --model MODEL_NAME \
   --reasoning low \
   --batch-size 2
@@ -43,10 +43,10 @@ when the diff has not changed.
 Worktree notes default to:
 
 ```text
-/path/to/repo/.beautiful-diffs/summaries.json
+/path/to/repo/.diffsplain/summaries.json
 ```
 
-Other targets use separate files in Diff Presenter’s ignored
+Other targets use separate files in Diffsplain’s ignored
 `.cache/summaries/` folder. Pass `--summaries FILE` to use another path.
 
 The file has one change note and notes keyed by file path:

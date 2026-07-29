@@ -182,7 +182,7 @@ function fileSummary(path, value) {
     what: cleanText(value?.what, 'Shows the current Git patch.'),
     why: cleanText(
       value?.why,
-      'Start Diff Presenter with --agent to generate this note.',
+      'Start Diffsplain with --agent to generate this note.',
     ),
     details: cleanList(value?.details),
     risks: cleanList(value?.risks),
@@ -499,8 +499,8 @@ function resolveBranchTarget() {
     .update(`${baseBranch}\0${branch}`)
     .digest('hex')
     .slice(0, 16);
-  const baseRef = `refs/beautiful-diffs/branch/${key}/base`;
-  const headRef = `refs/beautiful-diffs/branch/${key}/head`;
+  const baseRef = `refs/diffsplain/branch/${key}/base`;
+  const headRef = `refs/diffsplain/branch/${key}/head`;
   fetchInto(cache, remote.url, [
     `+refs/heads/${baseBranch}:${baseRef}`,
     `+refs/heads/${branch}:${headRef}`,
@@ -545,8 +545,8 @@ function resolvePullRequestTarget() {
     .update(String(pr.number))
     .digest('hex')
     .slice(0, 16);
-  const baseRef = `refs/beautiful-diffs/pr/${key}/base`;
-  const headRef = `refs/beautiful-diffs/pr/${key}/head`;
+  const baseRef = `refs/diffsplain/pr/${key}/base`;
+  const headRef = `refs/diffsplain/pr/${key}/head`;
   fetchInto(cache, remote.url, [
     `+refs/heads/${pr.baseRefName}:${baseRef}`,
     `+refs/pull/${pr.number}/head:${headRef}`,

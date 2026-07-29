@@ -30,10 +30,10 @@ const pathOptions = new Set([
   '--codex-bin',
 ]);
 
-export const helpText = `Usage: diff-presenter [REPO] [options]
+export const helpText = `Usage: diffsplain [REPO] [options]
 
 Show the current checkout against its default branch:
-  diff-presenter
+  diffsplain
 
 Targets:
   --branch NAME       Show a remote branch against its default branch
@@ -55,10 +55,10 @@ Options:
   --help              Show this help
 
 Examples:
-  diff-presenter
-  diff-presenter --repo owner/project --pr 42
-  diff-presenter owner/project --branch feature/search
-  diff-presenter --agent codex`;
+  diffsplain
+  diffsplain --repo owner/project --pr 42
+  diffsplain owner/project --branch feature/search
+  diffsplain --agent codex`;
 
 function fail(message) {
   throw new Error(message);

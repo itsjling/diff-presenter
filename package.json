@@ -1,9 +1,25 @@
 {
-  "name": "diff-presenter",
+  "name": "diffsplain",
   "version": "0.1.0",
-  "description": "An open-source developer tool for reviewing GitHub pull requests.",
+  "description": "Review Git diffs one file at a time with Codex notes beside each patch.",
+  "keywords": [
+    "codex",
+    "diff",
+    "git",
+    "github",
+    "pull-request",
+    "review"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itsjling/diffsplain.git"
+  },
+  "homepage": "https://github.com/itsjling/diffsplain#readme",
+  "bugs": {
+    "url": "https://github.com/itsjling/diffsplain/issues"
+  },
   "bin": {
-    "diff-presenter": "scripts/present.mjs"
+    "diffsplain": "scripts/present.mjs"
   },
   "files": [
     "dist",

@@ -1,7 +1,7 @@
 import { defineConfig } from "blume";
 
 export default defineConfig({
-  title: "Diff Presenter",
+  title: "Diffsplain",
   description:
     "Review Git diffs one file at a time, with a short Codex note beside each patch.",
   content: {
@@ -13,7 +13,7 @@ export default defineConfig({
   github: {
     dir: "docs",
     owner: "itsjling",
-    repo: "diff-presenter",
+    repo: "diffsplain",
   },
   navigation: {
     sidebar: ["/", "/cli", "/agent-notes", "/data", "/development"],
