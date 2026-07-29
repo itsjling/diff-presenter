@@ -106,7 +106,16 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
 
     presenter = spawn(
       process.execPath,
-      [script, "--repo", repo, "--agent", "--output", output],
+      [
+        script,
+        "--repo",
+        repo,
+        "--worktree",
+        "--output",
+        output,
+        "--port",
+        "0",
+      ],
       {
         cwd: root,
         env: {
@@ -145,7 +154,16 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
 
     presenter = spawn(
       process.execPath,
-      [script, "--repo", repo, "--agent", "--output", output],
+      [
+        script,
+        "--repo",
+        repo,
+        "--worktree",
+        "--output",
+        output,
+        "--port",
+        "0",
+      ],
       {
         cwd: root,
         env: {
@@ -158,10 +176,6 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         stdio: "pipe",
       },
     );
-    await waitFor(async () => {
-      const log = await readFile(events, "utf8");
-      return (log.match(/npm-started/g) || []).length === 2;
-    });
     await new Promise((resolve) => setTimeout(resolve, 3_500));
     const restartLog = await readFile(events, "utf8");
     assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 1);

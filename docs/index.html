@@ -24,7 +24,7 @@ FORM: Quiet corner, grounded structure 5, staged as a product announcement; seed
     <meta name="twitter:card" content="summary_large_image" />
     <title>Diff Presenter — Review the pull request, not the patch</title>
     <link rel="stylesheet" href="./styles.css" />
-    <script src="./script.js" defer></script>
+    <script src="./script.js" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -73,67 +73,154 @@ FORM: Quiet corner, grounded structure 5, staged as a product announcement; seed
           </div>
         </div>
 
-        <figure class="review-window" aria-labelledby="review-caption">
-          <figcaption class="review-toolbar" id="review-caption">
-            <span class="review-toolbar__brand">DP</span>
-            <span class="review-toolbar__repo">diff-presenter</span>
-            <span class="review-toolbar__pr">Illustrative review</span>
-            <span class="review-toolbar__path">src/review/summary.ts</span>
-            <span class="review-toolbar__count">24 / 57</span>
-          </figcaption>
+        <section
+          class="product-demo"
+          aria-label="Interactive ten-file todo pull request demo"
+          data-demo
+          tabindex="0"
+        >
+          <div class="demo-reader-toolbar">
+            <button
+              class="demo-nav-button"
+              type="button"
+              data-demo-prev
+              aria-label="Show previous file"
+            >
+              <span aria-hidden="true">←</span>
+            </button>
 
-          <div class="review-body">
-            <div class="diff" role="table" aria-label="Example unified code diff">
-              <div class="diff__hunk" role="row">
-                <span role="cell">@@ −42,7 +42,11 @@ buildSummary</span>
-              </div>
-              <div class="diff__row" role="row">
-                <span class="line-number" role="cell">42</span>
-                <span class="line-marker" aria-hidden="true"> </span>
-                <code role="cell">const files = change.files</code>
-              </div>
-              <div class="diff__row diff__row--delete" role="row">
-                <span class="line-number" role="cell">43</span>
-                <span class="line-marker" aria-hidden="true">−</span>
-                <code role="cell">return summarize(files)</code>
-              </div>
-              <div class="diff__row diff__row--add" role="row">
-                <span class="line-number" role="cell">43</span>
-                <span class="line-marker" aria-hidden="true">+</span>
-                <code role="cell">const selected = files[current]</code>
-              </div>
-              <div class="diff__row diff__row--add" role="row">
-                <span class="line-number" role="cell">44</span>
-                <span class="line-marker" aria-hidden="true">+</span>
-                <code role="cell">return summarize(selected)</code>
-              </div>
-              <div class="diff__row" role="row">
-                <span class="line-number" role="cell">45</span>
-                <span class="line-marker" aria-hidden="true"> </span>
-                <code role="cell">}</code>
-              </div>
-            </div>
+            <button
+              class="demo-file-picker-trigger"
+              type="button"
+              data-demo-picker-trigger
+              aria-haspopup="dialog"
+              aria-expanded="false"
+            >
+              <span class="demo-file-count" data-demo-count>01 / 10</span>
+              <span class="demo-status-pin" data-demo-status-pin></span>
+              <span class="demo-current-path" data-demo-path></span>
+              <span class="demo-picker-hint" aria-hidden="true">
+                <kbd>⌘</kbd><kbd>K</kbd>
+              </span>
+            </button>
 
-            <aside class="agent-note" aria-label="Example agent note">
-              <p class="agent-note__label">Agent note</p>
-              <h2>Keep the review focused.</h2>
-              <p>
-                The summary now follows the selected file, so the reason stays
-                beside the code under review.
-              </p>
-              <dl>
+            <div class="demo-file-stats" data-demo-stats></div>
+
+            <button
+              class="demo-nav-button"
+              type="button"
+              data-demo-next
+              aria-label="Show next file"
+            >
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+
+          <div class="demo-page" data-demo-page>
+            <section class="demo-diff-pane" aria-label="Unified diff">
+              <header class="demo-pane-heading">
                 <div>
-                  <dt>Why</dt>
-                  <dd>Less context switching between a raw patch and chat.</dd>
+                  <p class="demo-eyebrow">Unified diff</p>
+                  <h1 data-demo-heading-path></h1>
                 </div>
-                <div>
-                  <dt>Check</dt>
-                  <dd>Selection stays stable when the PR refreshes.</dd>
+              </header>
+              <div class="demo-diff-scroll">
+                <div
+                  class="demo-diff-lines"
+                  data-demo-diff
+                  role="table"
+                  aria-label="Current file diff"
+                ></div>
+              </div>
+              <footer class="demo-diff-footer">
+                <span data-demo-line-count></span>
+                <span>← → to move</span>
+              </footer>
+            </section>
+
+            <aside class="demo-summary-pane" aria-label="Agent note">
+              <div class="demo-summary-scroll">
+                <div class="demo-summary-kicker">
+                  <span>Agent note</span>
+                  <span data-demo-summary-count>01 / 10</span>
                 </div>
-              </dl>
+                <h2 data-demo-summary-title></h2>
+                <p class="demo-summary-lead" data-demo-summary-what></p>
+
+                <section class="demo-note-section">
+                  <p class="demo-eyebrow">Why it changed</p>
+                  <p data-demo-summary-why></p>
+                </section>
+
+                <section class="demo-note-section">
+                  <p class="demo-eyebrow">Key details</p>
+                  <ul data-demo-summary-details></ul>
+                </section>
+
+                <section
+                  class="demo-note-section demo-note-section--risk"
+                  data-demo-risk-section
+                >
+                  <p class="demo-eyebrow">Check closely</p>
+                  <ul data-demo-summary-risks></ul>
+                </section>
+              </div>
+              <footer class="demo-signoff">
+                <span class="demo-agent-glyph" aria-hidden="true">✦</span>
+                <span>
+                  Written by the coding agent
+                  <small>Illustrative todo app PR · 10 files</small>
+                </span>
+              </footer>
             </aside>
           </div>
-        </figure>
+
+          <div
+            class="demo-picker-backdrop"
+            data-demo-picker-backdrop
+            hidden
+          >
+            <div
+              class="demo-picker-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="demo-picker-title"
+            >
+              <div class="demo-picker-header">
+                <div>
+                  <p class="demo-eyebrow">All changed files</p>
+                  <h2 id="demo-picker-title">Jump to a file</h2>
+                </div>
+                <button
+                  class="demo-picker-close"
+                  type="button"
+                  data-demo-picker-close
+                  aria-label="Close file picker"
+                >
+                  Esc
+                </button>
+              </div>
+              <label class="demo-picker-search">
+                <span class="sr-only">Search changed files</span>
+                <span aria-hidden="true">⌕</span>
+                <input
+                  type="search"
+                  placeholder="Filter by path…"
+                  autocomplete="off"
+                  data-demo-picker-search
+                />
+                <small data-demo-picker-match-count>10 files</small>
+              </label>
+              <div
+                class="demo-picker-list"
+                data-demo-picker-list
+                aria-label="Changed files"
+              ></div>
+            </div>
+          </div>
+
+          <span class="sr-only" data-demo-live aria-live="polite"></span>
+        </section>
 
         <div class="hero__command" aria-label="Quick start command">
           <span aria-hidden="true">$</span>

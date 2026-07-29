@@ -8,12 +8,13 @@ export function summaryPath({
   explicit,
   pr,
   branch,
+  checkout = false,
   base,
   head,
   remote = 'origin',
 }) {
   if (explicit) return resolve(callerDirectory, explicit);
-  if (!pr && !branch && !(base && head)) {
+  if (!pr && !branch && !checkout && !(base && head)) {
     return resolve(repo, '.beautiful-diffs/summaries.json');
   }
 
@@ -23,7 +24,9 @@ export function summaryPath({
     ? { kind: 'pr', pullRequest, remote }
     : branch
       ? { kind: 'branch', branch, base: base || 'default', remote }
-      : { kind: 'range', base, head };
+      : checkout
+        ? { kind: 'checkout', base: base || 'default', remote }
+        : { kind: 'range', base, head };
   const key = createHash('sha256')
     .update(JSON.stringify({ repo, target }))
     .digest('hex')

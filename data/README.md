@@ -1,14 +1,30 @@
 # Diff data
 
-`scripts/build-diff-data.mjs` writes `public/diff-data.json` for the page. It
-takes Git refs or, by default, tracked and untracked worktree changes against
-`HEAD`.
+`scripts/build-diff-data.mjs` writes `public/diff-data.json` for the review
+page. Diff Presenter is an open-source developer tool meant to run on pull
+requests, so a GitHub PR is its main input:
+
+```sh
+node scripts/build-diff-data.mjs --repo /path/to/repo --pr 42
+```
+
+The script can also take Git refs, a remote branch, or tracked and untracked
+worktree changes against `HEAD`.
 
 The file has a version and time, repo data, one change summary, and a file list.
 Each file has its status, line counts, full unified patch, short unified snippet,
 and a summary with what changed, why, details, and risks. The page treats binary
 files as metadata. The writer gives each new set a content hash and swaps in a
 new file only when the data changed.
+
+## Refresh the bundled todo demo
+
+`docs/todo-demo.js` holds the ten illustrative files used by both the landing
+page and the bundled app data. Rebuild the JSON files after changing it:
+
+```sh
+node scripts/write-todo-demo.mjs
+```
 
 Without `--summaries`, the script reads
 `.beautiful-diffs/summaries.json` from the chosen repo. It leaves that note file
@@ -18,17 +34,16 @@ Example:
 
 ```sh
 node scripts/build-diff-data.mjs --repo /path/to/repo --base BASE --head HEAD \
-  --summaries data/pr-198-summaries.json --output public/diff-data.json
+  --summaries data/todo-demo-summaries.json --output public/diff-data.json
 ```
 
 Add `--watch` to check Git state and the note file every two seconds. The
-`npm run present -- --repo /path/to/repo` command starts both the watcher and the
-local page.
+`npx diff-presenter --worktree` command starts both the watcher and the local
+page for this target.
 
-Remote targets do not depend on the current checkout:
+Pull requests and remote branches do not depend on the current checkout:
 
 ```sh
-node scripts/build-diff-data.mjs --repo /path/to/repo --pr 42
 node scripts/build-diff-data.mjs --repo /path/to/repo --branch topic \
   --base main --remote origin
 ```

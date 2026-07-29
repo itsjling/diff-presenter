@@ -45,29 +45,54 @@ test("server-renders the Diff Presenter entry state", async () => {
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
-test("ships the complete PR #198 review set", async () => {
-  const payload = JSON.parse(
-    await readFile(new URL("../public/diff-data.json", import.meta.url), "utf8"),
-  );
+test("ships the ten-file todo-list demo", async () => {
+  const [{ todoDemoFiles }, payloadText] = await Promise.all([
+    import("../docs/todo-demo.js"),
+    readFile(new URL("../public/diff-data.json", import.meta.url), "utf8"),
+  ]);
+  const payload = JSON.parse(payloadText);
 
   assert.match(payload.version, /^[a-f0-9]{12}$/);
-  assert.equal(payload.change.number, 198);
-  assert.equal(payload.files.length, 57);
+  assert.equal(payload.repo.name, "todo-list-demo");
+  assert.equal(payload.change.number, 42);
+  assert.equal(payload.files.length, 10);
+  assert.deepEqual(payload.files, todoDemoFiles);
+  assert.ok(
+    payload.files.every((file) => {
+      const lines = file.patch.split("\n");
+      const hunkIndex = lines.findIndex((line) => line.startsWith("@@"));
+      const hunk = lines[hunkIndex].match(
+        /^@@ -\d+,(\d+) \+\d+,(\d+) @@/,
+      );
+      const additions = lines.filter(
+        (line) => line.startsWith("+") && !line.startsWith("+++"),
+      ).length;
+      const deletions = lines.filter(
+        (line) => line.startsWith("-") && !line.startsWith("---"),
+      ).length;
+      const context = lines
+        .slice(hunkIndex + 1)
+        .filter((line) => line.startsWith(" ")).length;
+      return (
+        hunk &&
+        file.additions === additions &&
+        file.deletions === deletions &&
+        Number(hunk[1]) === context + deletions &&
+        Number(hunk[2]) === context + additions
+      );
+    }),
+  );
   assert.equal(
     payload.files.reduce((sum, file) => sum + file.additions, 0),
-    5_744,
+    190,
   );
   assert.equal(
     payload.files.reduce((sum, file) => sum + file.deletions, 0),
-    1_364,
+    21,
   );
-  assert.equal(payload.files.filter((file) => file.isBinary).length, 4);
-  assert.equal(payload.files.filter((file) => file.isTruncated).length, 8);
-  assert.ok(
-    payload.files
-      .filter((file) => file.isBinary)
-      .every((file) => file.patch === "" && file.snippet === ""),
-  );
+  assert.equal(payload.files.filter((file) => file.isBinary).length, 0);
+  assert.equal(payload.files.filter((file) => file.isTruncated).length, 0);
+  assert.equal(new Set(payload.files.map((file) => file.path)).size, 10);
   assert.ok(
     payload.files.every(
       (file) =>
@@ -78,6 +103,22 @@ test("ships the complete PR #198 review set", async () => {
         Array.isArray(file.summary.risks),
     ),
   );
+});
+
+test("makes the landing-page demo interactive", async () => {
+  const [html, script] = await Promise.all([
+    readFile(new URL("../docs/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../docs/script.js", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(html, /<script src="\.\/script\.js" type="module">/);
+  assert.match(html, /data-demo-picker-trigger/);
+  assert.match(html, /data-demo-prev/);
+  assert.match(html, /data-demo-next/);
+  assert.match(script, /import \{ todoDemoFiles \} from "\.\/todo-demo\.js"/);
+  assert.match(script, /ArrowLeft/);
+  assert.match(script, /ArrowRight/);
+  assert.match(script, /metaKey/);
 });
 
 test("removes all starter preview code and metadata", async () => {

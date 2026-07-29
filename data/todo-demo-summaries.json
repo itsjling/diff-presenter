@@ -1,0 +1,135 @@
+{
+  "change": {
+    "title": "Add filters, due dates, and saved todos",
+    "number": 42,
+    "summary": "Adds the basic pieces of a useful todo list: persistent tasks, completion controls, filters, due dates, and focused tests.",
+    "why": "The first version lost tasks on refresh and treated every item the same. This change makes the small app useful across sessions and keeps finished work out of the way.",
+    "highlights": [
+      "Persists todos in local storage and restores them on load.",
+      "Adds active, completed, and all-task filters.",
+      "Adds due dates, priorities, completion styles, and reducer tests."
+    ],
+    "risks": [
+      "Stored todos from older versions need safe defaults for new fields.",
+      "Date-only values must not shift when the browser applies a time zone."
+    ]
+  },
+  "files": {
+    "src/components/TodoItem.tsx": {
+      "title": "Make completion a clear state",
+      "what": "Replaces the generic Done button with a checked control and shows an optional due date beside each todo.",
+      "why": "A todo should expose its current completion state without making the reader infer it from a button label.",
+      "details": [
+        "The checked state now comes from todo.completed.",
+        "The due date uses a semantic time element."
+      ],
+      "risks": [
+        "formatDueDate must treat the stored value as a local date, not UTC."
+      ]
+    },
+    "src/components/TodoList.tsx": {
+      "title": "Filter the visible todo list",
+      "what": "Derives the shown todos from the selected filter and gives an empty filter a useful message.",
+      "why": "Completed items should be easy to hide without changing the stored list.",
+      "details": [
+        "All, active, and completed views share one source array.",
+        "The list announces filter results without moving focus."
+      ],
+      "risks": [
+        "The filter names must stay aligned with the FilterBar values."
+      ]
+    },
+    "src/components/AddTodoForm.tsx": {
+      "title": "Reject blank todos at the form",
+      "what": "Trims the title, disables empty submission, and lets a new todo carry an optional due date.",
+      "why": "Blank rows create cleanup work and make the list feel broken.",
+      "details": [
+        "Both fields reset after a successful add.",
+        "The title input has a clear accessible name."
+      ],
+      "risks": [
+        "The date input needs a visible label in the final form layout."
+      ]
+    },
+    "src/hooks/useTodos.ts": {
+      "title": "Keep todos after refresh",
+      "what": "Moves todo updates into a reducer, restores saved items on first load, and saves each later change.",
+      "why": "A useful todo list cannot discard its contents whenever the page reloads.",
+      "details": [
+        "The lazy reducer initializer reads storage only once.",
+        "All writes flow through named reducer actions."
+      ],
+      "risks": [
+        "Malformed stored JSON currently stops initialization and needs a fallback."
+      ]
+    },
+    "src/lib/todoStore.ts": {
+      "title": "Put todo updates in one reducer",
+      "what": "Adds pure add, toggle, and remove transitions for the todo collection.",
+      "why": "Central state transitions are easier to test and keep storage writes separate from list logic.",
+      "details": [
+        "New todos receive an id, default completion state, and normal priority.",
+        "Every action returns a new array."
+      ],
+      "risks": [
+        "crypto.randomUUID needs a fallback in older browsers and some test runners."
+      ]
+    },
+    "src/types/todo.ts": {
+      "title": "Describe richer todo state",
+      "what": "Renames the completion field and adds due dates, priorities, filters, and reducer action types.",
+      "why": "The UI and reducer need one shared contract for the new behavior.",
+      "details": [
+        "NewTodo permits a missing priority so the reducer can supply a default.",
+        "Filter values form a closed string union."
+      ],
+      "risks": [
+        "Existing saved items still use done and need a small migration."
+      ]
+    },
+    "src/styles/todos.css": {
+      "title": "Show completed work quietly",
+      "what": "Adds spacing, due-date text, a muted completed state, and a calm empty message.",
+      "why": "Completion needs to remain visible without competing with active work.",
+      "details": [
+        "The row keeps its simple ruled-list structure.",
+        "The completed state changes both color and decoration."
+      ],
+      "risks": []
+    },
+    "src/components/FilterBar.tsx": {
+      "title": "Add direct list filters",
+      "what": "Adds three pressed-state controls for all, active, and completed todos.",
+      "why": "People need a quick way to focus on unfinished work or review what they completed.",
+      "details": [
+        "aria-pressed exposes the current filter to assistive technology.",
+        "The values come from the shared TodoFilter type."
+      ],
+      "risks": [
+        "The Props type must be added or imported before this component compiles."
+      ]
+    },
+    "src/lib/todoStore.test.ts": {
+      "title": "Lock down reducer behavior",
+      "what": "Tests new-todo defaults and confirms toggling leaves unrelated items unchanged.",
+      "why": "The reducer now owns every todo transition and needs fast tests around its core rules.",
+      "details": [
+        "The id source is stubbed for a stable add assertion.",
+        "The toggle test checks both the changed and unchanged entries."
+      ],
+      "risks": [
+        "The global crypto stub should be restored after each test."
+      ]
+    },
+    "README.md": {
+      "title": "Document the useful todo flow",
+      "what": "Updates the quick guide for due dates, saved todos, and the three list filters.",
+      "why": "The README should match the behavior a new contributor sees after starting the app.",
+      "details": [
+        "It states that filtering hides rather than deletes todos.",
+        "It explains that persistence uses local storage."
+      ],
+      "risks": []
+    }
+  }
+}

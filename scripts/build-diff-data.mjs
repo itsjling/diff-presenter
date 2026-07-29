@@ -34,6 +34,7 @@ if (has('--help')) {
 Targets:
   --pr NUMBER|URL     Fetch and show a GitHub pull request
   --branch NAME       Fetch and show a remote branch
+  --checkout          Show the current checkout against its default branch
   --base REF --head REF
                       Show an exact local Git range
   (no target)         Show worktree changes against HEAD
@@ -56,6 +57,8 @@ const baseOption = option('--base');
 const headOption = option('--head');
 const prOption = option('--pr');
 const branchOption = option('--branch');
+const checkoutOption = has('--checkout');
+const worktreeOption = has('--worktree');
 const remoteOption = option('--remote') || 'origin';
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const summariesPath = summaryPath({
@@ -65,6 +68,7 @@ const summariesPath = summaryPath({
   explicit: option('--summaries'),
   pr: prOption,
   branch: branchOption,
+  checkout: checkoutOption,
   base: baseOption,
   head: headOption,
   remote: remoteOption,
@@ -79,7 +83,24 @@ const watching = has('--watch');
 if (prOption && branchOption) fail('--pr and --branch cannot be used together');
 if (prOption && (baseOption || headOption)) fail('--pr cannot be used with --base or --head');
 if (branchOption && headOption) fail('--branch cannot be used with --head');
-if (!prOption && !branchOption && Boolean(baseOption) !== Boolean(headOption)) {
+if (
+  checkoutOption &&
+  (prOption || branchOption || headOption || worktreeOption)
+) {
+  fail('--checkout cannot be combined with another target');
+}
+if (
+  worktreeOption &&
+  (prOption || branchOption || baseOption || headOption)
+) {
+  fail('--worktree cannot be combined with another target');
+}
+if (
+  !prOption &&
+  !branchOption &&
+  !checkoutOption &&
+  Boolean(baseOption) !== Boolean(headOption)
+) {
   fail('--base and --head must be used together');
 }
 
@@ -332,7 +353,7 @@ function uniqueMergeBase(runGit, base, head) {
   return bases[0];
 }
 
-function remoteDefaultBranch(remoteUrl) {
+function remoteDefaultBranchInfo(remoteUrl) {
   let raw;
   try {
     raw = runRepo(['ls-remote', '--symref', remoteUrl, 'HEAD']);
@@ -343,7 +364,58 @@ function remoteDefaultBranch(remoteUrl) {
   if (!match) {
     throw new Error('The remote has no default branch; pass --base NAME');
   }
-  return match[1];
+  const oid = raw.match(new RegExp(`^([a-f0-9]+)\\s+HEAD$`, 'm'))?.[1];
+  return { name: match[1], oid };
+}
+
+function remoteDefaultBranch(remoteUrl) {
+  return remoteDefaultBranchInfo(remoteUrl).name;
+}
+
+function localDefaultBranch(remote) {
+  if (baseOption) return { name: baseOption };
+
+  if (remote) {
+    const symbolic = tryRepo([
+      'symbolic-ref',
+      '--quiet',
+      `refs/remotes/${remote.name}/HEAD`,
+    ]);
+    const prefix = `refs/remotes/${remote.name}/`;
+    if (symbolic.startsWith(prefix)) {
+      return { name: symbolic.slice(prefix.length) };
+    }
+    try {
+      return remoteDefaultBranchInfo(remote.url);
+    } catch {}
+  }
+
+  const configured = tryRepo(['config', '--get', 'init.defaultBranch']);
+  const candidates = [configured, 'main', 'master'].filter(Boolean);
+  for (const name of candidates) {
+    if (tryRepo(['rev-parse', '--verify', `refs/heads/${name}^{commit}`])) {
+      return { name };
+    }
+  }
+  throw new Error(
+    'Could not find the default branch. Fetch it or pass --base NAME.',
+  );
+}
+
+function localBaseCommit(base, remote) {
+  const candidates = [
+    remote ? `refs/remotes/${remote.name}/${base.name}` : undefined,
+    `refs/heads/${base.name}`,
+    base.name,
+    base.oid,
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const oid = tryRepo(['rev-parse', '--verify', `${candidate}^{commit}`]);
+    if (oid) return oid;
+  }
+  throw new Error(
+    `The default branch "${base.name}" is not in this checkout. Run git fetch or pass --base REF.`,
+  );
 }
 
 function githubRepository(remoteUrl) {
@@ -367,6 +439,7 @@ function githubRepository(remoteUrl) {
   if (!host || parts.length < 2) return undefined;
   const ownerRepo = `${parts.at(-2)}/${parts.at(-1)}`;
   return {
+    name: ownerRepo,
     selector: host === 'github.com' ? ownerRepo : `${host}/${ownerRepo}`,
     webUrl: `https://${host}/${ownerRepo}`,
   };
@@ -543,6 +616,49 @@ function resolvePullRequestTarget() {
   };
 }
 
+function resolveCheckoutTarget() {
+  const currentHead = tryRepo(['rev-parse', '--verify', 'HEAD']);
+  if (!currentHead) return resolveLocalTarget();
+
+  const branch = tryRepo(['branch', '--show-current']) || undefined;
+  const remoteUrl = tryRepo(['remote', 'get-url', remoteOption]) || undefined;
+  const remote = remoteUrl
+    ? { name: remoteOption, url: remoteUrl }
+    : undefined;
+  const defaultBranch = localDefaultBranch(remote);
+  const defaultHead = localBaseCommit(defaultBranch, remote);
+  const mergeBaseOid = uniqueMergeBase(runRepo, defaultHead, currentHead);
+  const repository = githubRepository(remoteUrl);
+  const headLabel = branch || currentHead;
+
+  return {
+    kind: 'checkout',
+    runGit: runRepo,
+    range: [mergeBaseOid],
+    base: mergeBaseOid,
+    head: currentHead,
+    branch,
+    baseBranch: defaultBranch.name,
+    remote,
+    sourceRepositoryUrl: repository?.webUrl,
+    baseRepositoryUrl: repository?.webUrl,
+    target: {
+      kind: 'checkout',
+      ...(remote ? { remote: remote.name } : {}),
+      base: { ref: defaultBranch.name, oid: defaultHead },
+      head: { ref: headLabel, oid: currentHead },
+      mergeBaseOid,
+    },
+    changeDefaults: {
+      title: `Compare ${headLabel} to ${defaultBranch.name}`,
+      summary: `Shows changes in the current checkout since it split from ${defaultBranch.name}.`,
+      why: 'Reviews the checked-out work without changing the repo.',
+      highlights: [],
+      risks: [],
+    },
+  };
+}
+
 function resolveLocalTarget() {
   const currentHead = tryRepo(['rev-parse', '--verify', 'HEAD']);
   const worktree = !baseOption && !headOption;
@@ -586,6 +702,7 @@ function resolveLocalTarget() {
 function resolveTarget() {
   if (prOption) return resolvePullRequestTarget();
   if (branchOption) return resolveBranchTarget();
+  if (checkoutOption) return resolveCheckoutTarget();
   return resolveLocalTarget();
 }
 
@@ -641,8 +758,13 @@ function githubFileUrl(repositoryUrl, ref, path) {
 }
 
 function build() {
-  runRepo(['rev-parse', '--is-inside-work-tree']);
+  const localWorkspace =
+    tryRepo(['rev-parse', '--is-inside-work-tree']) === 'true';
+  if (!remoteMode && !localWorkspace) {
+    throw new Error(`${repo} is not a Git checkout`);
+  }
   const target = resolveTarget();
+  const remoteRepository = githubRepository(target.remote?.url);
   const summaryDoc = readJson(summariesPath, {}) || {};
   const nameStatus = parseNameStatus(
     target.runGit([
@@ -667,7 +789,7 @@ function build() {
     ]),
   );
 
-  if (target.kind === 'worktree') {
+  if (target.kind === 'worktree' || target.kind === 'checkout') {
     const trackedPaths = new Set(nameStatus.map((file) => file.path));
     const untracked = tryRepo([
       'ls-files',
@@ -756,15 +878,29 @@ function build() {
     filesWithoutSummaries.every((file) =>
       completeFileSummary(sourceSummaries.files?.[file.path]),
     );
+  const completedFiles = filesWithoutSummaries.filter((file) =>
+    completeFileSummary(sourceSummaries.files?.[file.path]),
+  ).length;
+  const storedStatus = summaryDoc.meta?.status;
+  const noteStatus = summariesAreComplete
+    ? 'complete'
+    : !summariesAreFresh
+      ? 'stale'
+      : ['generating', 'failed'].includes(storedStatus)
+        ? storedStatus
+        : 'idle';
   const files = filesWithoutSummaries.map((file) => ({
     ...file,
     summary: fileSummary(file.path, sourceSummaries.files?.[file.path]),
+    noteReady: Boolean(
+      completeFileSummary(sourceSummaries.files?.[file.path]),
+    ),
   }));
   const change = changeSummary(sourceSummaries.change, target.changeDefaults);
   const content = {
     repo: {
-      name: repo.split('/').pop(),
-      root: repo,
+      name: remoteRepository?.name || repo.split('/').pop(),
+      root: localWorkspace ? repo : target.remote?.url || repo,
       base: target.base,
       head: target.head,
       ...(target.branch ? { branch: target.branch } : {}),
@@ -781,6 +917,15 @@ function build() {
       ...(generatedFor ? { generatedFor } : {}),
       fresh: summariesAreFresh,
       complete: summariesAreComplete,
+      status: noteStatus,
+      completedFiles,
+      totalFiles: filesWithoutSummaries.length,
+      ...(typeof summaryDoc.meta?.model === 'string'
+        ? { model: summaryDoc.meta.model }
+        : {}),
+      ...(typeof summaryDoc.meta?.reasoning === 'string'
+        ? { reasoning: summaryDoc.meta.reasoning }
+        : {}),
     },
   };
   const version = createHash('sha256')
@@ -839,8 +984,8 @@ const refresh = () => {
   }
 };
 
-refresh();
-if (watching) {
+const started = refresh();
+if (watching && started) {
   let last = fingerprint();
   let remoteWait = 0;
   setInterval(() => {
@@ -853,4 +998,6 @@ if (watching) {
       refresh();
     }
   }, 2_000);
+} else if (watching) {
+  process.exitCode = 1;
 }

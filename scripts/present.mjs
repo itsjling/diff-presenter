@@ -2,31 +2,30 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { helpText, parseCliArgs } from './cli-args.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const rawArgs = process.argv.slice(2);
-const agentEnabled = rawArgs.includes('--agent');
-const agentValueFlags = new Set(['--codex-bin', '--model']);
-
-function withoutAgentOptions(args) {
-  const result = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const value = args[index];
-    if (value === '--agent') continue;
-    if (agentValueFlags.has(value)) {
-      index += 1;
-      continue;
-    }
-    result.push(value);
-  }
-  return result;
+const callerDirectory = process.cwd();
+let cli;
+try {
+  cli = parseCliArgs(process.argv.slice(2), { callerDirectory });
+} catch (error) {
+  console.error(error.message);
+  console.error('Run diff-presenter --help for usage.');
+  process.exit(2);
 }
 
-const feedArgs = withoutAgentOptions(rawArgs);
-const agentArgs = rawArgs.filter((value) => value !== '--agent');
+if (cli.help) {
+  console.log(helpText);
+  process.exit(0);
+}
+
+const { agentEnabled, port } = cli;
+const feedArgs = [...cli.feedArgs];
+const agentArgs = [...cli.agentArgs];
 const outputIndex = feedArgs.indexOf('--output');
 
 if (outputIndex === -1) {
@@ -35,7 +34,7 @@ if (outputIndex === -1) {
 }
 if (!feedArgs.includes('--watch')) feedArgs.push('--watch');
 const outputPath = resolve(
-  root,
+  callerDirectory,
   feedArgs[feedArgs.indexOf('--output') + 1],
 );
 
@@ -43,14 +42,30 @@ const feed = spawn(
   process.execPath,
   [resolve(root, 'scripts/build-diff-data.mjs'), ...feedArgs],
   {
-    cwd: root,
+    cwd: callerDirectory,
     stdio: agentEnabled
       ? ['inherit', 'pipe', 'inherit']
       : ['inherit', 'inherit', 'inherit'],
   },
 );
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const site = spawn(npm, ['run', 'dev'], { cwd: root, stdio: 'inherit' });
+const builtServer = resolve(root, 'dist/server/index.js');
+const site = existsSync(builtServer)
+  ? spawn(
+      process.execPath,
+      [
+        resolve(root, 'scripts/serve-built.mjs'),
+        '--output',
+        outputPath,
+        '--port',
+        String(port),
+      ],
+      { cwd: root, stdio: 'inherit' },
+    )
+  : spawn(
+      process.platform === 'win32' ? 'npm.cmd' : 'npm',
+      ['run', 'dev', '--', '--port', String(port)],
+      { cwd: root, stdio: 'inherit' },
+    );
 let closing = false;
 let agent;
 let agentTimer;
@@ -119,7 +134,7 @@ function runAgent(fingerprint) {
   const child = spawn(
     process.execPath,
     [resolve(root, 'scripts/generate-summaries.mjs'), ...agentArgs],
-    { cwd: root, stdio: 'inherit' },
+    { cwd: callerDirectory, stdio: 'inherit' },
   );
   agent = child;
   let settled = false;
@@ -195,8 +210,20 @@ function stop(code = 0) {
 feed.on('exit', (code, signal) => {
   if (!closing && (code || signal)) stop(code || 1);
 });
+feed.on('error', (error) => {
+  if (!closing) {
+    console.error(`Could not start the diff watcher: ${error.message}`);
+    stop(1);
+  }
+});
 site.on('exit', (code, signal) => {
   if (!closing) stop(code || (signal ? 1 : 0));
+});
+site.on('error', (error) => {
+  if (!closing) {
+    console.error(`Could not start the local page: ${error.message}`);
+    stop(1);
+  }
 });
 process.on('SIGINT', () => stop(0));
 process.on('SIGTERM', () => stop(0));

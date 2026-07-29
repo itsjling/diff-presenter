@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,6 +54,21 @@ function run(repo, args) {
   });
 }
 
+async function waitFor(read, timeout = 8_000) {
+  const deadline = Date.now() + timeout;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      const value = await read();
+      if (value) return value;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+  throw lastError || new Error("Timed out waiting for generated notes");
+}
+
 function notes(files) {
   return {
     change: {
@@ -98,6 +113,10 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
       "HEAD~1..HEAD",
       "--codex-bin",
       codex.bin,
+      "--model",
+      "gpt-test",
+      "--reasoning",
+      "low",
       "--summaries",
       summaries,
       "--output",
@@ -111,6 +130,11 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
       args.includes("--output-schema"),
       `expected structured Codex output, got: ${args.join(" ")}`,
     );
+    assert.deepEqual(args.slice(args.indexOf("--model"), args.indexOf("--model") + 2), [
+      "--model",
+      "gpt-test",
+    ]);
+    assert.ok(args.includes('model_reasoning_effort="low"'));
 
     const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
     assert.deepEqual(
@@ -194,7 +218,7 @@ test("keeps notes fresh when the rebuilt output is a changed tracked file", asyn
   }
 });
 
-test("does not write partial notes when Codex misses a changed file", async () => {
+test("marks note generation as failed when Codex misses a changed file", async () => {
   const repo = await makeRepo();
   const summaries = join(repo, "notes.json");
   const output = join(repo, "diff-data.json");
@@ -225,9 +249,123 @@ test("does not write partial notes when Codex misses a changed file", async () =
 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /added\.txt|every changed file|missing/i);
-    await assert.rejects(readFile(summaries, "utf8"));
+    const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(writtenNotes.meta.status, "failed");
+    assert.deepEqual(writtenNotes.files, {});
+
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(snapshot.notes.status, "failed");
+    assert.equal(snapshot.notes.completedFiles, 0);
   } finally {
     await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("publishes each completed file batch before the full run ends", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+  const codexBin = join(repo, "progressive-codex.mjs");
+  const calls = join(repo, "codex-calls.txt");
+  let child;
+
+  try {
+    await writeFile(
+      codexBin,
+      `#!/usr/bin/env node
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+const input = JSON.parse(readFileSync(0, "utf8"));
+const call = existsSync(${JSON.stringify(calls)})
+  ? Number(readFileSync(${JSON.stringify(calls)}, "utf8")) + 1
+  : 1;
+writeFileSync(${JSON.stringify(calls)}, String(call));
+if (call === 2) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 900);
+}
+process.stdout.write(JSON.stringify({
+  change: {
+    title: "Update two files",
+    summary: "Updates one file and adds another.",
+    why: "Covers progressive note generation.",
+    highlights: [],
+    risks: [],
+  },
+  files: input.files.map((file) => ({
+    path: file.path,
+    title: "Note for " + file.path,
+    what: "Explains " + file.path + ".",
+    why: "This file is part of the change.",
+    details: [],
+    risks: [],
+  })),
+}));
+`,
+    );
+    await chmod(codexBin, 0o755);
+
+    child = spawn(
+      process.execPath,
+      [
+        script,
+        "--repo",
+        repo,
+        "--range",
+        "HEAD~1..HEAD",
+        "--codex-bin",
+        codexBin,
+        "--batch-size",
+        "1",
+        "--summaries",
+        summaries,
+        "--output",
+        output,
+      ],
+      { encoding: "utf8", stdio: "pipe" },
+    );
+
+    const partial = await waitFor(async () => {
+      const value = JSON.parse(await readFile(summaries, "utf8"));
+      const snapshot = JSON.parse(await readFile(output, "utf8"));
+      return value.meta?.status === "generating" &&
+        Object.keys(value.files || {}).length === 1 &&
+        snapshot.notes?.completedFiles === 1
+        ? { value, snapshot }
+        : undefined;
+    });
+    assert.deepEqual(Object.keys(partial.value.files), ["added.txt"]);
+
+    const partialSnapshot = partial.snapshot;
+    assert.equal(partialSnapshot.notes.status, "generating");
+    assert.equal(partialSnapshot.notes.completedFiles, 1);
+    assert.equal(partialSnapshot.files[0].noteReady, true);
+    assert.equal(partialSnapshot.files[1].noteReady, false);
+
+    const result = await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code, signal) => resolve({ code, signal }));
+    });
+    child = undefined;
+    assert.deepEqual(result, { code: 0, signal: null });
+
+    const complete = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(complete.meta.status, "complete");
+    assert.deepEqual(Object.keys(complete.files).sort(), [
+      "added.txt",
+      "changed.txt",
+    ]);
+
+    const finalSnapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(finalSnapshot.notes.status, "complete");
+    assert.equal(finalSnapshot.notes.completedFiles, 2);
+    assert.equal(finalSnapshot.notes.complete, true);
+  } finally {
+    if (child && !child.killed) child.kill("SIGTERM");
+    await rm(repo, {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 50,
+    });
   }
 });
 

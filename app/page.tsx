@@ -31,6 +31,7 @@ type DiffFile = {
   snippet: string;
   sourceUrl?: string;
   summary: FileSummary;
+  noteReady?: boolean;
 };
 
 type DiffSnapshot = {
@@ -46,7 +47,7 @@ type DiffSnapshot = {
     remote?: string;
     remoteUrl?: string;
     target?: {
-      kind: "worktree" | "range" | "branch" | "pull-request";
+      kind: "worktree" | "checkout" | "range" | "branch" | "pull-request";
     };
   };
   change: {
@@ -59,6 +60,15 @@ type DiffSnapshot = {
     risks: string[];
   };
   files: DiffFile[];
+  notes?: {
+    fresh: boolean;
+    complete: boolean;
+    status: "idle" | "generating" | "complete" | "failed" | "stale";
+    completedFiles: number;
+    totalFiles: number;
+    model?: string;
+    reasoning?: string;
+  };
 };
 
 type DiffRow = {
@@ -400,7 +410,28 @@ export default function Home() {
         snapshot.repo.baseBranch &&
         snapshot.repo.branch
       ? `${snapshot.repo.baseBranch} → ${snapshot.repo.branch}`
-    : `${shortRef(snapshot.repo.base)} → ${shortRef(snapshot.repo.head)}`;
+      : `${shortRef(snapshot.repo.base)} → ${shortRef(snapshot.repo.head)}`;
+  const noteReady =
+    currentFile.noteReady ?? snapshot.notes?.complete ?? true;
+  const notesGenerating = snapshot.notes?.status === "generating";
+  const notesFailed = snapshot.notes?.status === "failed";
+  const notesInProgress = notesGenerating && !noteReady;
+  const noteUnavailable = notesFailed && !noteReady;
+  const noteProgress = snapshot.notes
+    ? `${snapshot.notes.completedFiles} of ${snapshot.notes.totalFiles} ready`
+    : "";
+  const syncLabel = loadError
+    ? "Reconnecting"
+    : notesGenerating
+      ? "Writing notes"
+      : notesFailed
+        ? "Notes stopped"
+        : "Watching";
+  const syncDetail = loadError
+    ? relativeTime(snapshot.generatedAt)
+    : notesGenerating || notesFailed
+      ? noteProgress
+      : relativeTime(snapshot.generatedAt);
 
   return (
     <main
@@ -446,13 +477,21 @@ export default function Home() {
         </div>
 
         <div
-          className={`sync-state ${loadError ? "sync-state--error" : ""}`}
+          className={`sync-state ${
+            loadError
+              ? "sync-state--error"
+              : notesFailed
+                ? "sync-state--notes-error"
+                : notesGenerating
+                  ? "sync-state--notes"
+                  : ""
+          }`}
           title={loadError ?? `Snapshot ${snapshot.version}`}
         >
           <span className="live-dot" aria-hidden="true" />
           <div>
-            <strong>{loadError ? "Reconnecting" : "Watching"}</strong>
-            <span>{relativeTime(snapshot.generatedAt)}</span>
+            <strong>{syncLabel}</strong>
+            <span>{syncDetail}</span>
           </div>
         </div>
       </header>
@@ -580,23 +619,64 @@ export default function Home() {
 
           <aside className="summary-pane" aria-labelledby="summary-heading">
             <div className="summary-scroll">
-              <div className="summary-kicker">
-                <span>AGENT NOTE</span>
+              <div
+                className={`summary-kicker ${
+                  notesInProgress || noteUnavailable
+                    ? "summary-kicker--pending"
+                    : ""
+                }`}
+              >
+                <span>
+                  {notesInProgress
+                    ? "AGENT NOTE · WRITING"
+                    : noteUnavailable
+                      ? "AGENT NOTE · STOPPED"
+                      : "AGENT NOTE"}
+                </span>
                 <span>
                   {String(currentIndex + 1).padStart(2, "0")} /{" "}
                   {String(files.length).padStart(2, "0")}
                 </span>
               </div>
 
-              <h2 id="summary-heading">{currentFile.summary.title}</h2>
-              <p className="summary-lead">{currentFile.summary.what}</p>
+              {notesInProgress || noteUnavailable ? (
+                <>
+                  <h2 id="summary-heading">
+                    {notesInProgress
+                      ? "Writing this note."
+                      : "This note is not ready."}
+                  </h2>
+                  <p className="summary-lead">
+                    {notesInProgress
+                      ? "The diff is ready to review. This file’s note will appear when its batch finishes."
+                      : "The agent stopped before it reached this file. The diff is still ready to review."}
+                  </p>
+                  <section className="note-section note-section--pending">
+                    <p className="eyebrow">
+                      {notesInProgress ? "NOTE PROGRESS" : "WHAT TO DO"}
+                    </p>
+                    <p>
+                      {notesInProgress
+                        ? `${noteProgress}. You can review any finished file now.`
+                        : "Check the terminal error, then start Diff Presenter again."}
+                    </p>
+                  </section>
+                </>
+              ) : (
+                <>
+                  <h2 id="summary-heading">{currentFile.summary.title}</h2>
+                  <p className="summary-lead">{currentFile.summary.what}</p>
 
-              <section className="note-section">
-                <p className="eyebrow">WHY IT CHANGED</p>
-                <p>{currentFile.summary.why}</p>
-              </section>
+                  <section className="note-section">
+                    <p className="eyebrow">WHY IT CHANGED</p>
+                    <p>{currentFile.summary.why}</p>
+                  </section>
+                </>
+              )}
 
-              {currentFile.summary.details.length ? (
+              {!notesInProgress &&
+              !noteUnavailable &&
+              currentFile.summary.details.length ? (
                 <section className="note-section">
                   <p className="eyebrow">KEY DETAILS</p>
                   <ul>
@@ -607,7 +687,9 @@ export default function Home() {
                 </section>
               ) : null}
 
-              {currentFile.summary.risks.length ? (
+              {!notesInProgress &&
+              !noteUnavailable &&
+              currentFile.summary.risks.length ? (
                 <section className="note-section note-section--risk">
                   <p className="eyebrow">CHECK CLOSELY</p>
                   <ul>
@@ -625,10 +707,17 @@ export default function Home() {
                 ✦
               </span>
               <span>
-                Written by the coding agent
+                {notesInProgress
+                  ? "The coding agent is writing notes"
+                  : noteUnavailable
+                    ? "The coding agent stopped"
+                    : "Written by the coding agent"}
                 <small>
-                  Snapshot {snapshot.version.slice(0, 10)} ·{" "}
-                  {new Date(snapshot.generatedAt).toLocaleString()}
+                  {notesInProgress || noteUnavailable
+                    ? noteProgress
+                    : `Snapshot ${snapshot.version.slice(0, 10)} · ${new Date(
+                        snapshot.generatedAt,
+                      ).toLocaleString()}`}
                 </small>
               </span>
             </footer>
@@ -712,7 +801,11 @@ export default function Home() {
       ) : null}
 
       <span className="sr-only" aria-live="polite">
-        {clock >= 0 ? relativeTime(snapshot.generatedAt) : ""}
+        {clock >= 0
+          ? notesGenerating || notesFailed
+            ? `${syncLabel}: ${noteProgress}`
+            : relativeTime(snapshot.generatedAt)
+          : ""}
       </span>
     </main>
   );

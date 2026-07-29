@@ -99,6 +99,66 @@ test("builds a remote branch range without changing the checkout", async () => {
   }
 });
 
+test("builds the current checkout against the default branch", async () => {
+  const fixture = await makeRemoteRepo();
+  const output = join(fixture.root, "checkout.json");
+
+  try {
+    git(fixture.repo, "switch", "-qc", "local-feature");
+    await writeFile(join(fixture.repo, "committed.txt"), "committed work\n");
+    git(fixture.repo, "add", "committed.txt");
+    git(fixture.repo, "commit", "-qm", "local feature");
+    await writeFile(join(fixture.repo, "working.txt"), "working tree work\n");
+
+    run(fixture.repo, ["--checkout", "--output", output]);
+    const payload = JSON.parse(await readFile(output, "utf8"));
+
+    assert.deepEqual(
+      payload.files.map((file) => file.path),
+      ["committed.txt", "working.txt"],
+    );
+    assert.equal(payload.repo.branch, "local-feature");
+    assert.equal(payload.repo.baseBranch, "main");
+    assert.equal(payload.repo.target.kind, "checkout");
+    assert.equal(payload.repo.target.base.oid, fixture.mainOid);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("builds a remote repo target without a local checkout", async () => {
+  const fixture = await makeRemoteRepo();
+  const output = join(fixture.root, "remote-only.json");
+  const cache = join(fixture.root, "remote-only-cache");
+
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        script,
+        "--repo",
+        fixture.root,
+        "--remote",
+        fixture.remote,
+        "--branch",
+        "feature",
+        "--cache-dir",
+        cache,
+        "--output",
+        output,
+      ],
+      { encoding: "utf8", stdio: "pipe" },
+    );
+    const payload = JSON.parse(await readFile(output, "utf8"));
+
+    assert.deepEqual(payload.files.map((file) => file.path), ["feature.txt"]);
+    assert.equal(payload.repo.root, fixture.remote);
+    assert.equal(payload.repo.baseBranch, "main");
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("builds a pull request range through gh without changing the checkout", async () => {
   const fixture = await makeRemoteRepo();
   const bin = join(fixture.root, "bin");

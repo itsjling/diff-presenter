@@ -37,9 +37,12 @@ test("keeps remote and range notes in target-specific cache files", () => {
 
   const branch = path({ branch: "feature", remote: "origin" });
   const otherBranch = path({ branch: "other", remote: "origin" });
+  const checkout = path({ checkout: true, remote: "origin" });
   const range = path({ base: "main", head: "feature" });
   assert.notEqual(branch, otherBranch);
   assert.notEqual(branch, range);
+  assert.notEqual(checkout, range);
   assert.match(branch, /\/\.cache\/summaries\/branch-[a-f0-9]{24}\.json$/);
+  assert.match(checkout, /\/\.cache\/summaries\/checkout-[a-f0-9]{24}\.json$/);
   assert.match(range, /\/\.cache\/summaries\/range-[a-f0-9]{24}\.json$/);
 });
