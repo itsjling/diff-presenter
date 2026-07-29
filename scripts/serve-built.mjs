@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createServer } from 'node:http';
+import { watchFile, unwatchFile } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { dirname, extname, resolve, sep } from 'node:path';
@@ -109,11 +110,35 @@ async function send(nodeResponse, response) {
 const server = createServer(async (request, response) => {
   try {
     const webRequest = nodeRequest(request);
+    if (new URL(webRequest.url).pathname === '/events') {
+      response.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-store',
+        connection: 'keep-alive',
+      });
+      response.write('event: ready\ndata: {}\n\n');
+      eventClients.add(response);
+      request.once('close', () => eventClients.delete(response));
+      return;
+    }
     await send(response, await fetchAsset(webRequest));
   } catch (error) {
     console.error(error);
     response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
     response.end('Diffsplain could not load this page.');
+  }
+});
+
+const eventClients = new Set();
+watchFile(output, { interval: 100 }, (current, previous) => {
+  if (
+    current.mtimeMs === previous.mtimeMs &&
+    current.size === previous.size
+  ) {
+    return;
+  }
+  for (const client of eventClients) {
+    client.write('event: update\ndata: {}\n\n');
   }
 });
 
@@ -149,6 +174,9 @@ let closing = false;
 function close() {
   if (closing) return;
   closing = true;
+  unwatchFile(output);
+  for (const client of eventClients) client.end();
+  eventClients.clear();
   server.close(() => {
     process.exitCode = 0;
   });

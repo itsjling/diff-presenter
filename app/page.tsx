@@ -77,7 +77,7 @@ type DiffRow = {
   text: string;
 };
 
-const POLL_MS = 1_500;
+const FALLBACK_POLL_MS = 1_500;
 
 function parseDiff(patch: string): DiffRow[] {
   let oldLine: number | undefined;
@@ -310,11 +310,29 @@ export default function Home() {
 
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
-    const poll = window.setInterval(() => void refresh(), POLL_MS);
+    let poll: number | undefined;
+    let events: EventSource | undefined;
+    const startPolling = () => {
+      if (poll === undefined) {
+        poll = window.setInterval(() => void refresh(), FALLBACK_POLL_MS);
+      }
+    };
+    if ("EventSource" in window) {
+      events = new EventSource(new URL("events", document.baseURI));
+      events.addEventListener("update", () => void refresh());
+      events.addEventListener("error", () => {
+        events?.close();
+        events = undefined;
+        startPolling();
+      });
+    } else {
+      startPolling();
+    }
     const ticker = window.setInterval(() => setClock((value) => value + 1), 5_000);
     return () => {
       window.clearTimeout(initial);
-      window.clearInterval(poll);
+      if (poll !== undefined) window.clearInterval(poll);
+      events?.close();
       window.clearInterval(ticker);
     };
   }, [refresh]);

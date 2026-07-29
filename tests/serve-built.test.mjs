@@ -68,6 +68,46 @@ test('serves the built review page with live diff data', async () => {
   }
 });
 
+test('pushes an event soon after live diff data changes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'diffsplain-events-'));
+  const output = join(directory, 'diff-data.json');
+  let child;
+  let reader;
+
+  try {
+    await writeFile(output, JSON.stringify({ version: 'before' }));
+    child = spawn(
+      process.execPath,
+      [script, '--output', output, '--port', '0'],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const url = await waitForUrl(child);
+    const response = await fetch(`${url}/events`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /text\/event-stream/);
+    reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = decoder.decode((await reader.read()).value);
+    assert.match(buffered, /event: ready/);
+
+    const started = performance.now();
+    await writeFile(output, JSON.stringify({ version: 'after' }));
+    while (!buffered.includes('event: update')) {
+      const next = await reader.read();
+      assert.equal(next.done, false);
+      buffered += decoder.decode(next.value);
+    }
+    assert.ok(
+      performance.now() - started < 500,
+      'expected an update event within 500 ms',
+    );
+  } finally {
+    await reader?.cancel();
+    if (child && child.exitCode === null) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('increments the requested port when automatic selection is enabled', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'diffsplain-port-'));
   const output = join(directory, 'diff-data.json');
