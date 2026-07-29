@@ -97,10 +97,11 @@ npx diff-presenter --worktree
 ```
 
 While this command runs, it asks Codex for fresh notes when the Git diff
-changes. It sends up to four files at a time and adds each finished batch to the
-open page, so you can start with the first notes while Codex writes the rest.
-Codex gets a read-only JSON snapshot; it does not change the target repo. The
-command sends that snapshot to the Codex service tied to your CLI login.
+changes. It keeps notes for files whose patches did not change and sends only
+new or changed files to Codex, up to four at a time. It adds each finished batch
+to the open page, so you can start with the first notes while Codex writes the
+rest. Codex gets a read-only JSON snapshot; it does not change the target repo.
+The command sends that snapshot to the Codex service tied to your CLI login.
 
 Choose another base or remote when needed:
 

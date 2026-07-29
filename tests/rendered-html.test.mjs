@@ -114,9 +114,10 @@ test("keeps live review data out of built assets", async () => {
 });
 
 test("makes the landing-page demo interactive", async () => {
-  const [html, script] = await Promise.all([
+  const [html, script, styles] = await Promise.all([
     readFile(new URL("../docs/index.html", import.meta.url), "utf8"),
     readFile(new URL("../docs/script.js", import.meta.url), "utf8"),
+    readFile(new URL("../docs/styles.css", import.meta.url), "utf8"),
   ]);
 
   assert.match(html, /<script src="\.\/script\.js" type="module">/);
@@ -127,6 +128,14 @@ test("makes the landing-page demo interactive", async () => {
   assert.match(script, /ArrowLeft/);
   assert.match(script, /ArrowRight/);
   assert.match(script, /metaKey/);
+  assert.match(
+    styles,
+    /\.hero__copy\s*\{[^}]*pointer-events:\s*none/s,
+  );
+  assert.match(
+    styles,
+    /\.hero__actions\s*\{[^}]*pointer-events:\s*auto/s,
+  );
 });
 
 test("falls back to the bundled demo when no live snapshot exists", async () => {

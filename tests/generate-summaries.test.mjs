@@ -48,6 +48,66 @@ process.stdout.write(readFileSync(${JSON.stringify(responseFile)}, "utf8"));
   return { bin, argsFile };
 }
 
+async function recordingCodex(root) {
+  const bin = join(root, "recording-codex.mjs");
+  const calls = join(root, "codex-calls.jsonl");
+  await writeFile(
+    bin,
+    `#!/usr/bin/env node
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+} from "node:fs";
+const input = JSON.parse(readFileSync(0, "utf8"));
+const call = existsSync(${JSON.stringify(calls)})
+  ? readFileSync(${JSON.stringify(calls)}, "utf8").trim().split("\\n").length + 1
+  : 1;
+appendFileSync(
+  ${JSON.stringify(calls)},
+  JSON.stringify({
+    files: input.files.map((file) => file.path),
+    existing: Object.keys(input.existingFileNotes || {}).sort(),
+  }) + "\\n",
+);
+const response = {
+  change: {
+    title: "Change note " + call,
+    summary: "Summarizes call " + call + ".",
+    why: "Covers selective note regeneration.",
+    highlights: [],
+    risks: [],
+  },
+};
+if (input.files.length) {
+  response.files = input.files.map((file) => ({
+    path: file.path,
+    title: "Note " + call + " for " + file.path,
+    what: "Explains " + file.path + ".",
+    why: "This file changed.",
+    details: [],
+    risks: [],
+  }));
+}
+process.stdout.write(JSON.stringify(response));
+`,
+  );
+  await chmod(bin, 0o755);
+  await writeFile(
+    join(root, ".git", "info", "exclude"),
+    "recording-codex.mjs\ncodex-calls.jsonl\n",
+  );
+  return { bin, calls };
+}
+
+async function recordedCalls(file) {
+  return (await readFile(file, "utf8"))
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 function run(repo, args) {
   return spawnSync(process.execPath, [script, "--repo", repo, ...args], {
     encoding: "utf8",
@@ -417,6 +477,135 @@ test("accepts the array form required by the Codex output schema", async () => {
       complete,
     );
     assert.match(writtenNotes.meta.reviewFingerprint, /^[a-f0-9]{64}$/);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("regenerates notes only for changed and added files", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+  const base = git(repo, "rev-parse", "HEAD~1");
+
+  try {
+    const codex = await recordingCodex(repo);
+    const args = [
+      "--base",
+      base,
+      "--head",
+      "HEAD",
+      "--codex-bin",
+      codex.bin,
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ];
+
+    const first = run(repo, args);
+    assert.equal(first.status, 0, first.stderr);
+
+    await writeFile(join(repo, "changed.txt"), "after again\n");
+    await writeFile(join(repo, "new.txt"), "another file\n");
+    git(repo, "add", "changed.txt", "new.txt");
+    git(repo, "commit", "-qm", "change two paths");
+
+    const second = run(repo, args);
+    assert.equal(second.status, 0, second.stderr);
+
+    assert.deepEqual(await recordedCalls(codex.calls), [
+      { files: ["added.txt", "changed.txt"], existing: [] },
+      {
+        files: ["changed.txt", "new.txt"],
+        existing: ["added.txt"],
+      },
+    ]);
+
+    const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(writtenNotes.change.title, "Change note 2");
+    assert.equal(writtenNotes.files["added.txt"].title, "Note 1 for added.txt");
+    assert.equal(
+      writtenNotes.files["changed.txt"].title,
+      "Note 2 for changed.txt",
+    );
+    assert.equal(writtenNotes.files["new.txt"].title, "Note 2 for new.txt");
+    assert.deepEqual(
+      Object.keys(writtenNotes.meta.fileFingerprints).sort(),
+      ["added.txt", "changed.txt", "new.txt"],
+    );
+    assert.ok(
+      Object.values(writtenNotes.meta.fileFingerprints).every((fingerprint) =>
+        /^[a-f0-9]{64}$/.test(fingerprint),
+      ),
+    );
+
+    const third = run(repo, args);
+    assert.equal(third.status, 0, third.stderr);
+    assert.match(third.stdout, /No file summaries changed/);
+    assert.equal((await recordedCalls(codex.calls)).length, 2);
+
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(snapshot.notes.complete, true);
+    assert.ok(snapshot.files.every((file) => file.noteReady));
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("drops removed files without regenerating unchanged file notes", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+  const base = git(repo, "rev-parse", "HEAD~1");
+
+  try {
+    const codex = await recordingCodex(repo);
+    const args = [
+      "--base",
+      base,
+      "--head",
+      "HEAD",
+      "--codex-bin",
+      codex.bin,
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ];
+
+    const first = run(repo, args);
+    assert.equal(first.status, 0, first.stderr);
+
+    git(repo, "rm", "-q", "added.txt");
+    git(repo, "commit", "-qm", "remove added path");
+
+    const second = run(repo, args);
+    assert.equal(second.status, 0, second.stderr);
+
+    assert.deepEqual(await recordedCalls(codex.calls), [
+      { files: ["added.txt", "changed.txt"], existing: [] },
+      { files: [], existing: ["changed.txt"] },
+    ]);
+
+    const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(writtenNotes.change.title, "Change note 2");
+    assert.deepEqual(Object.keys(writtenNotes.files), ["changed.txt"]);
+    assert.equal(
+      writtenNotes.files["changed.txt"].title,
+      "Note 1 for changed.txt",
+    );
+    assert.deepEqual(
+      Object.keys(writtenNotes.meta.fileFingerprints),
+      ["changed.txt"],
+    );
+
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.deepEqual(
+      snapshot.files.map((file) => file.path),
+      ["changed.txt"],
+    );
+    assert.equal(snapshot.notes.complete, true);
   } finally {
     await rm(repo, { recursive: true, force: true });
   }
