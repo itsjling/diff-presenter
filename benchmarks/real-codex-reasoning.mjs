@@ -57,6 +57,7 @@ try {
   git(repo, "init", "-q");
   git(repo, "config", "user.email", "benchmark@example.test");
   git(repo, "config", "user.name", "Benchmark");
+  git(repo, "config", "commit.gpgsign", "false");
   for (let index = 0; index < 4; index += 1) {
     writeFileSync(
       join(repo, `module-${index}.js`),

@@ -31,6 +31,7 @@ async function makeRemoteRepo() {
   execFileSync("git", ["clone", "-q", remote, repo]);
   git(repo, "config", "user.email", "diffsplain@example.test");
   git(repo, "config", "user.name", "Diffsplain");
+  git(repo, "config", "commit.gpgsign", "false");
 
   await writeFile(join(repo, "base.txt"), "base\n");
   git(repo, "add", "base.txt");

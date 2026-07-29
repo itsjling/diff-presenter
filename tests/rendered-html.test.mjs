@@ -170,6 +170,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
     git("init", "-q");
     git("config", "user.email", "diffsplain@example.test");
     git("config", "user.name", "Diffsplain");
+    git("config", "commit.gpgsign", "false");
     await writeFile(join(repo, "tracked.txt"), "before\n");
     await writeFile(
       join(repo, "other file.txt"),

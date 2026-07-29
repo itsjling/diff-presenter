@@ -77,6 +77,7 @@ function makeFixture(base) {
   git(repo, "init", "-q");
   git(repo, "config", "user.email", "benchmark@example.test");
   git(repo, "config", "user.name", "Benchmark");
+  git(repo, "config", "commit.gpgsign", "false");
 
   const fileCount = fixtureKind === "working" ? 60 : 11;
   const lineCount = fixtureKind === "working" ? 36 : 1_800;
