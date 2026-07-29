@@ -52,7 +52,7 @@ Options:
   --no-agent          Do not write agent notes
   --model NAME        Model for agent notes
   --reasoning LEVEL   Agent reasoning effort when supported
-  --batch-size COUNT  Files per agent pass (default: 4)
+  --batch-size COUNT  Maximum files per agent pass (default: 12)
   --force             Regenerate all agent notes
   --remote NAME|URL   Git remote (default: origin)
   --port NUMBER       Local page port (default: 2299)

@@ -89,7 +89,7 @@ Options:
   --codex-bin FILE    Codex CLI path (default: codex)
   --model NAME        Model passed to the coding agent
   --reasoning LEVEL   Agent reasoning effort when supported
-  --batch-size COUNT  Files per agent pass (default: 4)
+  --batch-size COUNT  Maximum files per agent pass (default: 12)
   --force             Regenerate all notes instead of using cached notes`);
   process.exit(0);
 }
@@ -113,7 +113,7 @@ try {
 const agentBinary = codingAgentBinary(selectedAgent, { codexBin });
 const model = option('--model');
 const reasoning = option('--reasoning');
-const batchSizeValue = option('--batch-size') || '4';
+const batchSizeValue = option('--batch-size') || '12';
 const reasoningLevels = new Set([
   'minimal',
   'low',
@@ -128,6 +128,7 @@ if (!/^[1-9]\d*$/.test(batchSizeValue) || Number(batchSizeValue) > 50) {
   fail('--batch-size must be a number from 1 to 50');
 }
 const batchSize = Number(batchSizeValue);
+const batchByteLimit = 180_000;
 const range = option('--range');
 const base = option('--base');
 const head = option('--head');
@@ -700,9 +701,24 @@ try {
     publish(rawSnapshot, workingSummaries);
 
     const batches = [];
-    for (let index = 0; index < changedPaths.length; index += batchSize) {
-      batches.push(changedPaths.slice(index, index + batchSize));
+    let batch = [];
+    let batchBytes = 0;
+    for (const path of changedPaths) {
+      const file = snapshot.files.find((item) => item.path === path);
+      const fileBytes = Buffer.byteLength(JSON.stringify(file));
+      if (
+        batch.length &&
+        (batch.length >= batchSize ||
+          batchBytes + fileBytes > batchByteLimit)
+      ) {
+        batches.push(batch);
+        batch = [];
+        batchBytes = 0;
+      }
+      batch.push(path);
+      batchBytes += fileBytes;
     }
+    if (batch.length) batches.push(batch);
     if (changeNeedsRefresh && batches.length === 0) batches.push([]);
 
     for (let index = 0; index < batches.length; index += 1) {
