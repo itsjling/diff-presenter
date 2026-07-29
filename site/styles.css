@@ -190,7 +190,7 @@ code {
 .hero__actions {
   display: flex;
   gap: 44px;
-  margin-top: 44px;
+  margin-top: 38px;
   pointer-events: auto;
 }
 
@@ -232,7 +232,7 @@ code {
   background: var(--paper);
   border: 1px solid rgb(32 35 31 / 14%);
   border-radius: 15px 15px 0 0;
-  bottom: 72px;
+  bottom: 0;
   box-shadow: var(--shadow);
   height: clamp(470px, 54vh, 610px);
   overflow: hidden;
@@ -858,27 +858,23 @@ code {
 
 .hero__command {
   align-items: center;
+  border-bottom: 1px solid var(--line);
   border-top: 1px solid var(--line);
-  bottom: 0;
   display: flex;
   font: 450 11px/1 "Geist Mono", monospace;
   gap: 14px;
-  left: var(--page-pad);
-  min-height: 72px;
-  position: absolute;
-  right: var(--page-pad);
-  z-index: 3;
+  margin-top: 30px;
+  padding: 26px 0;
+  pointer-events: auto;
+  width: min(100%, 600px);
 }
 
 .hero__command > span {
   color: var(--muted);
 }
 
-.hero__command a {
-  color: var(--blue-dark);
-  font-family: "Geist", sans-serif;
-  margin-left: auto;
-  text-underline-offset: 5px;
+.hero__command code {
+  min-width: 0;
 }
 
 .story,
@@ -1014,6 +1010,10 @@ code {
   color: var(--ink);
 }
 
+.run__commands > .text-link {
+  margin-top: 40px;
+}
+
 .principles {
   padding-bottom: var(--section-pad);
   padding-top: var(--section-pad);
@@ -1119,6 +1119,12 @@ code {
   transform: translate(-50%, 0);
 }
 
+@media (min-width: 1001px) {
+  .hero__command {
+    width: min(34vw, 600px);
+  }
+}
+
 @media (max-width: 1000px) {
   .hero {
     min-height: auto;
@@ -1139,13 +1145,7 @@ code {
   }
 
   .hero__command {
-    border-top: 1px solid var(--line);
-    bottom: auto;
-    left: auto;
-    min-height: 62px;
-    padding: 0 var(--page-pad);
-    position: relative;
-    right: auto;
+    width: min(100%, 600px);
   }
 
   .run {
@@ -1273,22 +1273,13 @@ code {
   }
 
   .hero__command {
-    align-items: flex-start;
     flex-wrap: wrap;
     gap: 10px;
-    padding-bottom: 20px;
-    padding-top: 20px;
   }
 
   .hero__command code {
     max-width: calc(100% - 30px);
     overflow-wrap: anywhere;
-  }
-
-  .hero__command a {
-    flex: 0 0 100%;
-    margin-left: 0;
-    margin-top: 6px;
   }
 
   .section-heading {
