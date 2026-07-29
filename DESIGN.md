@@ -1,5 +1,5 @@
 ---
-name: Diff Presenter
+name: Diffsplain
 description: Clear code diffs with concise, comprehensive agent notes.
 colors:
   desk-canvas: "#e9e2d5"
@@ -118,13 +118,13 @@ components:
     height: "21px"
 ---
 
-# Design System: Diff Presenter
+# Design System: Diffsplain
 
 ## Overview
 
 **Creative North Star: "The Review Desk"**
 
-Diff Presenter is an open-source developer tool built for pull request review. It uses a measured, editorial system built for close reading. Warm paper surfaces, dark ink, compact mono labels, and a strong split between source evidence and agent notes make the interface feel ordered without making it stark.
+Diffsplain is an open-source developer tool built for pull request review. It uses a measured, editorial system built for close reading. Warm paper surfaces, dark ink, compact mono labels, and a strong split between source evidence and agent notes make the interface feel ordered without making it stark.
 
 The system stays mostly flat. Borders, tone shifts, and spacing separate regions; shadows mark only the main reader and the file picker. The diff remains the main work area, while the narrower note pane adds context in a quieter reading rhythm.
 

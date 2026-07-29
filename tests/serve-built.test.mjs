@@ -15,7 +15,7 @@ function waitForUrl(child) {
     }, 10_000);
     child.stdout.on('data', (chunk) => {
       output += chunk;
-      const match = output.match(/Diff Presenter: (http:\/\/[^\s]+)/);
+      const match = output.match(/Diffsplain: (http:\/\/[^\s]+)/);
       if (match) {
         clearTimeout(timer);
         resolve(match[1]);
@@ -38,7 +38,7 @@ function stop(child) {
 }
 
 test('serves the built review page with live diff data', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'diff-presenter-server-'));
+  const directory = await mkdtemp(join(tmpdir(), 'diffsplain-server-'));
   const output = join(directory, 'diff-data.json');
   let child;
 
@@ -57,7 +57,7 @@ test('serves the built review page with live diff data', async () => {
       fetch(`${url}/assets/missing.js`),
     ]);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /<title>Diff Presenter<\/title>/i);
+    assert.match(await page.text(), /<title>Diffsplain<\/title>/i);
     assert.deepEqual(await data.json(), { version: 'test-version' });
     assert.equal(data.headers.get('cache-control'), 'no-store');
     assert.equal(missing.status, 404);

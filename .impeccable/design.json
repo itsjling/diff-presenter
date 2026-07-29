@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-07-28T15:33:27Z",
-  "title": "Design System: Diff Presenter",
+  "title": "Design System: Diffsplain",
   "extensions": {
     "colorMeta": {
       "desk-canvas": {
@@ -187,7 +187,7 @@
       "name": "Brand Mark",
       "kind": "custom",
       "description": "The sharp split-color DP mark used in the top bar.",
-      "html": "<div class=\"ds-brand-mark\" aria-label=\"Diff Presenter\"><span>D</span><span>P</span></div>",
+      "html": "<div class=\"ds-brand-mark\" aria-label=\"Diffsplain\"><span>D</span><span>S</span></div>",
       "css": ".ds-brand-mark { border: 1px solid var(--ink, #20231f); color: var(--ink, #20231f); display: grid; font: 700 10px/1 var(--font-geist-mono, monospace); grid-template-columns: 1fr 1fr; height: 38px; letter-spacing: -0.06em; width: 38px; } .ds-brand-mark span { align-items: center; display: flex; justify-content: center; } .ds-brand-mark span:first-child { background: var(--ink, #20231f); color: var(--paper, #fbf8f0); }"
     },
     {
@@ -248,7 +248,7 @@
   ],
   "narrative": {
     "northStar": "The Review Desk",
-    "overview": "Diff Presenter uses a measured, editorial system built for close reading. Warm paper surfaces, dark ink, compact mono labels, and a strong split between source evidence and agent notes make the interface feel ordered without making it stark.\n\nThe system stays mostly flat. Borders, tone shifts, and spacing separate regions; shadows mark only the main reader and the file picker. The diff remains the main work area, while the narrower note pane adds context in a quieter reading rhythm.",
+    "overview": "Diffsplain uses a measured, editorial system built for close reading. Warm paper surfaces, dark ink, compact mono labels, and a strong split between source evidence and agent notes make the interface feel ordered without making it stark.\n\nThe system stays mostly flat. Borders, tone shifts, and spacing separate regions; shadows mark only the main reader and the file picker. The diff remains the main work area, while the narrower note pane adds context in a quieter reading rhythm.",
     "keyCharacteristics": [
       "Warm paper and ink palette",
       "Two-pane review layout",

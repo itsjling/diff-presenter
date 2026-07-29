@@ -15,7 +15,7 @@ try {
   cli = parseCliArgs(process.argv.slice(2), { callerDirectory });
 } catch (error) {
   console.error(error.message);
-  console.error('Run diff-presenter --help for usage.');
+  console.error('Run diffsplain --help for usage.');
   process.exit(2);
 }
 

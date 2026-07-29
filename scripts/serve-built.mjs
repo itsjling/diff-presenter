@@ -111,7 +111,7 @@ const server = createServer(async (request, response) => {
   } catch (error) {
     console.error(error);
     response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
-    response.end('Diff Presenter could not load this page.');
+    response.end('Diffsplain could not load this page.');
   }
 });
 
@@ -119,7 +119,7 @@ server.listen(Number(portValue), '127.0.0.1', () => {
   const address = server.address();
   const selectedPort =
     address && typeof address === 'object' ? address.port : Number(portValue);
-  console.log(`Diff Presenter: http://127.0.0.1:${selectedPort}`);
+  console.log(`Diffsplain: http://127.0.0.1:${selectedPort}`);
 });
 
 let closing = false;

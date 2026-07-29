@@ -15,7 +15,7 @@ export function summaryPath({
 }) {
   if (explicit) return resolve(callerDirectory, explicit);
   if (!pr && !branch && !checkout && !(base && head)) {
-    return resolve(repo, '.beautiful-diffs/summaries.json');
+    return resolve(repo, '.diffsplain/summaries.json');
   }
 
   const pullRequest =

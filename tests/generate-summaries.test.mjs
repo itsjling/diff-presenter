@@ -16,10 +16,10 @@ function git(repo, ...args) {
 }
 
 async function makeRepo() {
-  const repo = await mkdtemp(join(tmpdir(), "beautiful-diffs-summaries-"));
+  const repo = await mkdtemp(join(tmpdir(), "diffsplain-summaries-"));
   git(repo, "init", "-q");
-  git(repo, "config", "user.email", "diff-presenter@example.test");
-  git(repo, "config", "user.name", "Diff Presenter");
+  git(repo, "config", "user.email", "diffsplain@example.test");
+  git(repo, "config", "user.name", "Diffsplain");
   await writeFile(join(repo, "changed.txt"), "before\n");
   git(repo, "add", "changed.txt");
   git(repo, "commit", "-qm", "base");

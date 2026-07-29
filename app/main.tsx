@@ -6,7 +6,7 @@ import Home from "./page";
 const root = document.getElementById("root");
 
 if (!root) {
-  throw new Error("Diff Presenter could not find its page root.");
+  throw new Error("Diffsplain could not find its page root.");
 }
 
 createRoot(root).render(

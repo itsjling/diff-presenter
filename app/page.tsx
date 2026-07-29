@@ -234,10 +234,10 @@ function EmptyState({
         <div className="brand-block">
           <div className="brand-mark" aria-hidden="true">
             <span>D</span>
-            <span>P</span>
+            <span>S</span>
           </div>
           <div>
-            <p className="brand-name">Diff Presenter</p>
+            <p className="brand-name">Diffsplain</p>
             <p className="brand-tag">Agent-made change notes</p>
           </div>
         </div>
@@ -253,7 +253,7 @@ function EmptyState({
         <p className="eyebrow">CLEAN WORKSPACE</p>
         <h1>No changed files.</h1>
         <p>
-          Diff Presenter is watching changes against{" "}
+          Diffsplain is watching changes against{" "}
           <code>{shortRef(snapshot.repo.base)}</code>. New work will appear here.
         </p>
       </div>
@@ -457,10 +457,10 @@ export default function Home() {
         <div className="brand-block">
           <div className="brand-mark" aria-hidden="true">
             <span>D</span>
-            <span>P</span>
+            <span>S</span>
           </div>
           <div>
-            <p className="brand-name">Diff Presenter</p>
+            <p className="brand-name">Diffsplain</p>
             <p className="brand-tag">Agent-made change notes</p>
           </div>
         </div>
@@ -678,7 +678,7 @@ export default function Home() {
                   <section className="note-section note-section--pending">
                     <p className="eyebrow">WHAT TO DO</p>
                     <p>
-                      Check the terminal error, then start Diff Presenter again.
+                      Check the terminal error, then start Diffsplain again.
                     </p>
                   </section>
                 </>

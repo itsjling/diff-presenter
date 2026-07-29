@@ -1,4 +1,4 @@
-# Diff Presenter
+# Diffsplain
 
 Review a Git diff one file at a time, with a short Codex note beside each
 patch.
@@ -8,7 +8,7 @@ patch.
 Run from a Git checkout:
 
 ```sh
-npx diff-presenter
+npx diffsplain
 ```
 
 The command opens [http://localhost:3000](http://localhost:3000) and compares
@@ -18,10 +18,10 @@ signed-in Codex CLI. Pull requests also need a signed-in GitHub CLI.
 Common targets:
 
 ```sh
-npx diff-presenter --pr 198
-npx diff-presenter owner/repo --branch feature/my-change
-npx diff-presenter --worktree
-npx diff-presenter --base BASE_REF --head HEAD_REF
+npx diffsplain --pr 198
+npx diffsplain owner/repo --branch feature/my-change
+npx diffsplain --worktree
+npx diffsplain --base BASE_REF --head HEAD_REF
 ```
 
 Arguments:
