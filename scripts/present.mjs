@@ -13,6 +13,11 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { helpText, parseCliArgs } from './cli-args.mjs';
+import {
+  codingAgentBinary,
+  commandAvailable,
+  selectCodingAgent,
+} from './coding-agents.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callerDirectory = process.cwd();
@@ -29,10 +34,32 @@ if (cli.help) {
   console.log(helpText);
   process.exit(0);
 }
+if (cli.version) {
+  const packageJson = JSON.parse(
+    readFileSync(resolve(root, 'package.json'), 'utf8'),
+  );
+  console.log(`diffsplain ${packageJson.version}`);
+  process.exit(0);
+}
 
 const { agentEnabled, port } = cli;
 const feedArgs = [...cli.feedArgs];
 const agentArgs = [...cli.agentArgs];
+if (agentEnabled) {
+  try {
+    const selectedAgent = await selectCodingAgent(
+      cli.agent,
+      (agent) =>
+        commandAvailable(
+          codingAgentBinary(agent, { codexBin: cli.codexBin }),
+        ),
+    );
+    agentArgs.push('--agent', selectedAgent);
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+}
 const outputIndex = feedArgs.indexOf('--output');
 let runtimeDirectory;
 

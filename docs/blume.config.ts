@@ -3,7 +3,7 @@ import { defineConfig } from "blume";
 export default defineConfig({
   title: "Diffsplain",
   description:
-    "Review Git diffs one file at a time, with a short Codex note beside each patch.",
+    "Review Git diffs one file at a time, with a short coding agent note beside each patch.",
   content: {
     root: "content",
   },

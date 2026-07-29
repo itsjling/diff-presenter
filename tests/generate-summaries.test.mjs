@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -108,9 +115,10 @@ async function recordedCalls(file) {
     .map((line) => JSON.parse(line));
 }
 
-function run(repo, args) {
+function run(repo, args, options = {}) {
   return spawnSync(process.execPath, [script, "--repo", repo, ...args], {
     encoding: "utf8",
+    ...options,
   });
 }
 
@@ -223,6 +231,82 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
     assert.equal(snapshot.notes.complete, true);
   } finally {
     await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("generates notes with Claude, Copilot, and OpenCode", async () => {
+  for (const agent of ["claude", "copilot", "opencode"]) {
+    const repo = await makeRepo();
+    const summaries = join(repo, `${agent}-notes.json`);
+    const output = join(repo, `${agent}-diff-data.json`);
+    const binDirectory = join(repo, "bin");
+    const bin = join(binDirectory, agent);
+    const response = notes({
+      "added.txt": {
+        title: "Add a text file",
+        what: "Adds the new file.",
+        why: "Provides the new content.",
+        details: [],
+        risks: [],
+      },
+      "changed.txt": {
+        title: "Update text",
+        what: "Replaces the old line.",
+        why: "Changes the stored value.",
+        details: [],
+        risks: [],
+      },
+    });
+
+    try {
+      await mkdir(binDirectory);
+      await writeFile(
+        bin,
+        `#!/usr/bin/env node
+const agent = ${JSON.stringify(agent)};
+const response = ${JSON.stringify(response)};
+if (agent === "claude") {
+  process.stdout.write(JSON.stringify({ structured_output: response }));
+} else if (agent === "opencode") {
+  process.stdout.write(JSON.stringify({
+    type: "text",
+    part: { text: JSON.stringify(response) },
+  }) + "\\n");
+} else {
+  process.stdout.write(JSON.stringify(response));
+}
+`,
+      );
+      await chmod(bin, 0o755);
+
+      const result = run(
+        repo,
+        [
+          "--range",
+          "HEAD~1..HEAD",
+          "--agent",
+          agent,
+          "--summaries",
+          summaries,
+          "--output",
+          output,
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${binDirectory}:${process.env.PATH}`,
+          },
+        },
+      );
+      assert.equal(result.status, 0, `${agent}: ${result.stderr}`);
+
+      const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+      assert.deepEqual(writtenNotes.files, response.files);
+      const snapshot = JSON.parse(await readFile(output, "utf8"));
+      assert.equal(snapshot.notes.complete, true);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
   }
 });
 

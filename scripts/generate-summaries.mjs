@@ -13,6 +13,13 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  agentCommand,
+  codingAgentBinary,
+  commandAvailable,
+  parseAgentResponse,
+  selectCodingAgent,
+} from './coding-agents.mjs';
 import { summaryPath } from './summary-path.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,6 +36,7 @@ const valueFlags = new Set([
   '--summaries',
   '--output',
   '--cache-dir',
+  '--agent',
   '--codex-bin',
   '--model',
   '--reasoning',
@@ -76,10 +84,11 @@ Options:
   --summaries FILE    Agent note file
   --output FILE       Rebuilt Diffsplain JSON
   --cache-dir PATH    Bare cache for fetched Git objects
+  --agent NAME        Use codex, claude, copilot, or opencode
   --codex-bin FILE    Codex CLI path (default: codex)
-  --model NAME        Model passed to codex exec
-  --reasoning LEVEL   Reasoning effort passed to codex exec
-  --batch-size COUNT  Files per Codex pass (default: 4)
+  --model NAME        Model passed to the coding agent
+  --reasoning LEVEL   Agent reasoning effort when supported
+  --batch-size COUNT  Files per agent pass (default: 4)
   --force             Regenerate all notes instead of using cached notes`);
   process.exit(0);
 }
@@ -89,7 +98,18 @@ const outputPath = resolve(
   callerDirectory,
   option('--output') || resolve(root, '.cache/diff-data.json'),
 );
-const codexBin = option('--codex-bin') || process.env.CODEX_BIN || 'codex';
+const codexBin = option('--codex-bin') || process.env.CODEX_BIN;
+let selectedAgent;
+try {
+  selectedAgent = await selectCodingAgent(
+    option('--agent'),
+    (agent) =>
+      commandAvailable(codingAgentBinary(agent, { codexBin })),
+  );
+} catch (error) {
+  fail(error.message);
+}
+const agentBinary = codingAgentBinary(selectedAgent, { codexBin });
 const model = option('--model');
 const reasoning = option('--reasoning');
 const batchSizeValue = option('--batch-size') || '4';
@@ -630,40 +650,36 @@ try {
         `${JSON.stringify(outputSchema(batchPaths), null, 2)}\n`,
       );
 
-      const codexArgs = [
-        'exec',
-        '--ephemeral',
-        '--sandbox',
-        'read-only',
-        '--ignore-user-config',
-        '--color',
-        'never',
-        '-C',
-        root,
-        '--output-schema',
+      const input = batchInput(
+        snapshot,
+        rawSnapshot,
+        batchPaths,
+        workingSummaries.files,
+      );
+      const inputPath = resolve(
+        temporaryDirectory,
+        `summary-input-${index + 1}.json`,
+      );
+      writeFileSync(inputPath, input);
+      const invocation = agentCommand({
+        agent: selectedAgent,
+        binary: agentBinary,
+        model,
+        reasoning,
+        prompt: promptFor(batchPaths),
+        schema: outputSchema(batchPaths),
         schemaPath,
-      ];
-      if (model) codexArgs.push('--model', model);
-      if (reasoning) {
-        codexArgs.push(
-          '--config',
-          `model_reasoning_effort=${JSON.stringify(reasoning)}`,
-        );
-      }
-      codexArgs.push(promptFor(batchPaths));
+        inputPath,
+        workingDirectory: root,
+      });
 
       console.error(
-        `Asking Codex for batch ${index + 1} of ${batches.length} (${batchPaths.length} changed files)...`,
+        `Asking ${selectedAgent} for batch ${index + 1} of ${batches.length} (${batchPaths.length} changed files)...`,
       );
-      const result = spawnSync(codexBin, codexArgs, {
+      const result = spawnSync(invocation.command, invocation.args, {
         cwd: root,
         encoding: 'utf8',
-        input: batchInput(
-          snapshot,
-          rawSnapshot,
-          batchPaths,
-          workingSummaries.files,
-        ),
+        input: invocation.input === 'stdin' ? input : undefined,
         maxBuffer: 10 * 1024 * 1024,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
@@ -679,16 +695,11 @@ try {
           .slice(-5)
           .join('\n');
         throw new Error(
-          `Codex exited with status ${result.status}${detail ? `\n${detail}` : ''}`,
+          `${selectedAgent} exited with status ${result.status}${detail ? `\n${detail}` : ''}`,
         );
       }
 
-      let response;
-      try {
-        response = JSON.parse(result.stdout);
-      } catch {
-        throw new Error('Codex did not return valid summary JSON');
-      }
+      const response = parseAgentResponse(selectedAgent, result.stdout);
       const normalized = normalizeResponse(response, batchPaths);
       workingSummaries = {
         change: normalized.change,

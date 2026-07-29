@@ -1,6 +1,6 @@
 # Diffsplain
 
-Review a Git diff one file at a time, with a short Codex note beside each
+Review a Git diff one file at a time, with a short coding agent note beside each
 patch.
 
 ## Use
@@ -13,8 +13,9 @@ npx diffsplain
 
 The command opens a local page and compares the checkout with its default
 branch. It starts at port `2299` and uses the next free port when needed. You
-need Node.js 22.13 or newer and a signed-in Codex CLI. Pull requests also need
-a signed-in GitHub CLI.
+need Node.js 22.13 or newer and a signed-in Codex, Claude, Copilot, or OpenCode
+CLI. Diffsplain tries them in that order. Pull requests also need a signed-in
+GitHub CLI.
 
 Common targets:
 
@@ -34,14 +35,15 @@ Arguments:
 | `--branch NAME` | Compare a remote branch with its default branch. |
 | `--worktree` | Review tracked and untracked changes against `HEAD`. |
 | `--base REF --head REF` | Review an exact local range. |
-| `--agent [codex]`, `--no-agent` | Enable Codex notes, or show a plain diff. |
-| `--model NAME` | Choose the Codex model used for notes. |
+| `--agent NAME`, `--no-agent` | Choose a coding agent, or show a plain diff. |
+| `--model NAME` | Choose the model used for notes. |
 | `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
-| `--batch-size COUNT` | Set files per Codex pass. The default is `4`. |
-| `--force` | Regenerate all Codex notes instead of using cached notes. |
+| `--batch-size COUNT` | Set files per agent pass. The default is `4`. |
+| `--force` | Regenerate all agent notes instead of using cached notes. |
 | `--remote NAME\|URL` | Choose the Git remote. The default is `origin`. |
 | `--port NUMBER` | Choose an exact local port. The default starts at `2299`. |
-| `--help` | Show command help. |
+| `-h`, `--help` | Show command help. |
+| `-v`, `--version` | Show the installed version. |
 
 ## Local development
 

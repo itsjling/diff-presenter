@@ -27,7 +27,7 @@ Developers run `npx diffsplain` in a Git checkout. With no arguments, it compare
 - Show GitHub pull requests without changing the local checkout.
 - Compare the current checkout with its default branch when no target is passed.
 - Accept local paths, Git URLs, and GitHub `owner/name` repo names.
-- Use the Codex CLI by default while leaving room for more agents.
+- Try Codex, Claude, Copilot, then OpenCode when no agent is chosen.
 - Show tracked and untracked worktree changes, exact local ranges, and remote branches as secondary targets.
 - Present full or shortened unified diffs, including binary-file metadata.
 - Pair the whole change and each file with agent-written summaries, reasons, details, and risks.

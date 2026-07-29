@@ -7,14 +7,14 @@ import { parseCliArgs } from '../scripts/cli-args.mjs';
 const cwd = '/work/project';
 const missing = () => false;
 
-test('defaults to the current checkout and Codex', () => {
+test('leaves agent selection open when no agent is passed', () => {
   const parsed = parseCliArgs([], {
     callerDirectory: cwd,
     pathExists: missing,
   });
 
   assert.equal(parsed.agentEnabled, true);
-  assert.equal(parsed.agent, 'codex');
+  assert.equal(parsed.agent, undefined);
   assert.equal(parsed.port, 2299);
   assert.equal(parsed.portWasPassed, false);
   assert.deepEqual(parsed.feedArgs, ['--repo', cwd, '--checkout']);
@@ -105,15 +105,30 @@ test('rejects remote repos without a branch or pull request', () => {
   );
 });
 
-test('accepts only the Codex agent for now', () => {
+test('accepts each supported coding agent', () => {
+  for (const agent of ['codex', 'claude', 'copilot', 'opencode']) {
+    const parsed = parseCliArgs(['--agent', agent], {
+      callerDirectory: cwd,
+      pathExists: missing,
+    });
+    assert.equal(parsed.agent, agent);
+  }
+});
+
+test('rejects an unknown coding agent', () => {
   assert.throws(
     () =>
-      parseCliArgs(['--agent', 'claude'], {
+      parseCliArgs(['--agent', 'unknown'], {
         callerDirectory: cwd,
         pathExists: missing,
       }),
-    /only "codex" is supported/i,
+    /unsupported agent/i,
   );
+});
+
+test('accepts short help and version flags', () => {
+  assert.deepEqual(parseCliArgs(['-h']), { help: true });
+  assert.deepEqual(parseCliArgs(['-v']), { version: true });
 });
 
 test('passes agent model, reasoning, and batch settings through', () => {

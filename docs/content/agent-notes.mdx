@@ -1,12 +1,13 @@
 ---
 title: Agent notes
-description: Control Codex notes, refresh them, or supply notes from another task.
+description: Choose an agent, refresh its notes, or supply notes from another task.
 sidebar:
   order: 3
 ---
 
-Codex writes short notes for each changed file by default. Diffsplain sends
-the selected diff to the Codex CLI under its current login.
+A coding agent writes short notes for each changed file by default. Diffsplain
+tries Codex, Claude, Copilot, then OpenCode, and uses the first installed CLI.
+Each CLI uses its current login.
 
 Use a plain diff when you do not want notes:
 
@@ -14,10 +15,11 @@ Use a plain diff when you do not want notes:
 npx diffsplain --no-agent
 ```
 
-Choose how Codex runs:
+Choose an agent or control how it runs:
 
 ```sh
 npx diffsplain \
+  --agent claude \
   --model MODEL_NAME \
   --reasoning low \
   --batch-size 2
@@ -43,7 +45,7 @@ npm run summarize -- --repo /path/to/repo --pr 198 --force
 ```
 
 The presenter follows the same rule, so a cached review opens without a new
-Codex pass. Use `npx diffsplain --force` when you want new notes.
+agent pass. Use `npx diffsplain --force` when you want new notes.
 
 ## Note files
 

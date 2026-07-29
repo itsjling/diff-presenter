@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { codingAgents } from './coding-agents.mjs';
 
 const valueOptions = new Set([
   '--repo',
@@ -19,6 +20,7 @@ const valueOptions = new Set([
 ]);
 const flagOptions = new Set([
   '--help',
+  '--version',
   '--agent',
   '--no-agent',
   '--force',
@@ -46,27 +48,33 @@ Targets:
 Options:
   --repo PATH|URL|OWNER/NAME
                       Repo to review (default: current repo)
-  --agent [codex]     Coding agent (default: codex)
+  --agent NAME        Use codex, claude, copilot, or opencode
   --no-agent          Do not write agent notes
-  --model NAME        Codex model for agent notes
-  --reasoning LEVEL   Codex reasoning effort for agent notes
+  --model NAME        Model for agent notes
+  --reasoning LEVEL   Agent reasoning effort when supported
   --batch-size COUNT  Files per agent pass (default: 4)
   --force             Regenerate all agent notes
   --remote NAME|URL   Git remote (default: origin)
   --port NUMBER       Local page port (default: 2299)
-  --help              Show this help
+  -h, --help          Show this help
+  -v, --version       Show the installed version
+
+Agent fallback:
+  codex, claude, copilot, opencode
 
 Examples:
   diffsplain
   diffsplain --repo owner/project --pr 42
   diffsplain owner/project --branch feature/search
-  diffsplain --agent codex`;
+  diffsplain --agent claude`;
 
 function fail(message) {
   throw new Error(message);
 }
 
 function splitOption(argument) {
+  if (argument === '-h') return { name: '--help', value: undefined };
+  if (argument === '-v') return { name: '--version', value: undefined };
   if (!argument.startsWith('--')) return undefined;
   const separator = argument.indexOf('=');
   if (separator === -1) return { name: argument, value: undefined };
@@ -110,7 +118,7 @@ export function parseCliArgs(
 ) {
   const options = new Map();
   const positionals = [];
-  let agent = 'codex';
+  let agent;
   let agentSet = false;
   let noAgent = false;
 
@@ -123,18 +131,15 @@ export function parseCliArgs(
     }
 
     if (parsed.name === '--agent') {
+      agentSet = true;
       if (parsed.value !== undefined) {
         if (!parsed.value) fail('--agent needs a value');
         agent = parsed.value;
-        agentSet = true;
       } else {
         const next = rawArgs[index + 1];
         if (next && !next.startsWith('-')) {
           agent = next;
-          agentSet = true;
           index += 1;
-        } else {
-          agentSet = true;
         }
       }
       continue;
@@ -170,13 +175,16 @@ export function parseCliArgs(
   }
 
   if (options.has('--help')) return { help: true };
+  if (options.has('--version')) return { version: true };
   if (positionals.length > 1) fail('Pass at most one repo');
   if (positionals.length && options.has('--repo')) {
     fail('Pass the repo once, either as REPO or with --repo');
   }
   if (noAgent && agentSet) fail('--agent and --no-agent cannot be used together');
-  if (!noAgent && agent !== 'codex') {
-    fail(`Unsupported agent "${agent}". Only "codex" is supported for now.`);
+  if (!noAgent && agent && !codingAgents.includes(agent)) {
+    fail(
+      `Unsupported agent "${agent}". Choose ${codingAgents.join(', ')}.`,
+    );
   }
 
   const branch = options.get('--branch');
@@ -287,8 +295,10 @@ export function parseCliArgs(
 
   return {
     help: false,
+    version: false,
     agentEnabled: !noAgent,
     agent,
+    codexBin: options.get('--codex-bin'),
     feedArgs: commonArgs,
     agentArgs,
     port: Number(portValue),

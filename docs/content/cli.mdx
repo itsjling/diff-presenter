@@ -64,7 +64,7 @@ npx diffsplain --worktree
 ```
 
 The watcher refreshes the page as the worktree changes. It keeps notes for
-files whose patches did not change and asks Codex only about new or changed
+files whose patches did not change and asks the agent only about new or changed
 files.
 
 ## Exact local ranges
@@ -87,16 +87,18 @@ npx diffsplain \
 | `--branch NAME` | Compare a remote branch with its default branch. |
 | `--worktree` | Review tracked and untracked changes against `HEAD`. |
 | `--base REF --head REF` | Review an exact local range. |
-| `--agent [codex]` | Write Codex notes. This is the default. |
+| `--agent NAME` | Use `codex`, `claude`, `copilot`, or `opencode`. |
 | `--no-agent` | Show the diff without agent notes. |
-| `--model NAME` | Choose the Codex model used for notes. |
+| `--model NAME` | Choose the model used for notes. |
 | `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
-| `--batch-size COUNT` | Set files per Codex pass, from `1` to `50`. |
-| `--force` | Regenerate all Codex notes instead of using cached notes. |
+| `--batch-size COUNT` | Set files per agent pass, from `1` to `50`. |
+| `--force` | Regenerate all agent notes instead of using cached notes. |
 | `--remote NAME\|URL` | Choose the Git remote. The default is `origin`. |
 | `--port NUMBER` | Choose an exact local port. The default starts at `2299`. |
-| `--help` | Show command help. |
+| `-h`, `--help` | Show command help. |
+| `-v`, `--version` | Show the installed version. |
 
 Remote repos need `--branch` or `--pr`. You cannot combine two target options.
 When you omit `--port`, Diffsplain increments from `2299` until it finds a free
-port.
+port. When you omit `--agent`, Diffsplain tries Codex, Claude, Copilot, then
+OpenCode. It stops with an error if none are installed.
