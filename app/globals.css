@@ -1,6 +1,24 @@
 @import "tailwindcss";
 
+@font-face {
+  font-display: swap;
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("../docs/fonts/geist-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-display: swap;
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("../docs/fonts/geist-mono-latin.woff2") format("woff2");
+}
+
 :root {
+  --font-geist-sans: "Geist";
+  --font-geist-mono: "Geist Mono";
   --canvas: #e9e2d5;
   --paper: #fbf8f0;
   --paper-deep: #f1ebdf;

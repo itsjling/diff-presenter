@@ -4,10 +4,10 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { dirname, extname, resolve, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const clientRoot = resolve(root, 'dist/client');
+const clientRoot = resolve(root, 'dist');
 const rawArgs = process.argv.slice(2);
 
 function option(name, fallback) {
@@ -72,7 +72,10 @@ async function fetchAsset(request) {
   } catch {
     return notFound();
   }
-  const file = resolve(clientRoot, `.${pathname}`);
+  const file = resolve(
+    clientRoot,
+    pathname === '/' ? 'index.html' : `.${pathname}`,
+  );
   if (file !== clientRoot && !file.startsWith(`${clientRoot}${sep}`)) {
     return notFound();
   }
@@ -101,30 +104,10 @@ async function send(nodeResponse, response) {
   Readable.fromWeb(response.body).pipe(nodeResponse);
 }
 
-const workerPath = resolve(root, 'dist/server/index.js');
-const { default: worker } = await import(pathToFileURL(workerPath));
-const environment = {
-  ASSETS: { fetch: fetchAsset },
-  IMAGES: {
-    input() {
-      throw new Error('Local image transforms are not supported');
-    },
-  },
-};
-const context = {
-  waitUntil() {},
-  passThroughOnException() {},
-};
-
 const server = createServer(async (request, response) => {
   try {
     const webRequest = nodeRequest(request);
-    const asset = await fetchAsset(webRequest);
-    const result =
-      asset.status === 404
-        ? await worker.fetch(webRequest, environment, context)
-        : asset;
-    await send(response, result);
+    await send(response, await fetchAsset(webRequest));
   } catch (error) {
     console.error(error);
     response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });

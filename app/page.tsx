@@ -1,5 +1,3 @@
-"use client";
-
 import {
   useCallback,
   useEffect,
@@ -279,12 +277,14 @@ export default function Home() {
 
   const refresh = useCallback(async () => {
     try {
-      const liveResponse = await fetch(`/diff-data.json?t=${Date.now()}`, {
+      const liveUrl = new URL("diff-data.json", document.baseURI);
+      liveUrl.searchParams.set("t", String(Date.now()));
+      const liveResponse = await fetch(liveUrl, {
         cache: "no-store",
       });
       const response =
         liveResponse.status === 404
-          ? await fetch("/demo-diff-data.json")
+          ? await fetch(new URL("demo-diff-data.json", document.baseURI))
           : liveResponse;
       if (!response.ok) throw new Error(`Snapshot returned ${response.status}`);
       const next = (await response.json()) as DiffSnapshot;

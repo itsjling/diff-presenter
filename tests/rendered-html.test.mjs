@@ -12,36 +12,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
+test("builds the static Diff Presenter entry page", async () => {
+  const html = await readFile(
+    new URL("../dist/index.html", import.meta.url),
+    "utf8",
   );
-}
-
-test("server-renders the Diff Presenter entry state", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
   assert.match(html, /<title>Diff Presenter<\/title>/i);
-  assert.match(html, /Preparing the changes\./);
-  assert.match(html, /Waiting for the workspace snapshot/);
+  assert.match(html, /<div id="root"><\/div>/);
+  assert.match(html, /\.\/assets\/[^"]+\.js/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -106,9 +84,9 @@ test("ships the ten-file todo-list demo", async () => {
 });
 
 test("keeps live review data out of built assets", async () => {
-  await access(new URL("../dist/client/demo-diff-data.json", import.meta.url));
+  await access(new URL("../dist/demo-diff-data.json", import.meta.url));
   await assert.rejects(
-    access(new URL("../dist/client/diff-data.json", import.meta.url)),
+    access(new URL("../dist/diff-data.json", import.meta.url)),
     { code: "ENOENT" },
   );
 });
@@ -142,7 +120,7 @@ test("falls back to the bundled demo when no live snapshot exists", async () => 
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
   assert.match(page, /liveResponse\.status === 404/);
-  assert.match(page, /fetch\("\/demo-diff-data\.json"\)/);
+  assert.match(page, /new URL\("demo-diff-data\.json", document\.baseURI\)/);
 });
 
 test("shows a content skeleton while the agent writes a file summary", async () => {
@@ -159,17 +137,21 @@ test("shows a content skeleton while the agent writes a file summary", async () 
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
-test("removes all starter preview code and metadata", async () => {
-  const [page, layout, packageJson] = await Promise.all([
+test("removes the server-framework starter", async () => {
+  const [page, index, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../index.html", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
 
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
+  await assert.rejects(access(new URL("../worker/index.ts", import.meta.url)));
   assert.doesNotMatch(page, /SkeletonPreview|codex-preview/);
-  assert.doesNotMatch(layout, /Starter Project|codex-preview/);
-  assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+  assert.doesNotMatch(index, /Starter Project|codex-preview/);
+  assert.doesNotMatch(
+    packageJson,
+    /react-loading-skeleton|vinext|wrangler|react-server-dom-webpack|"next"/,
+  );
   assert.match(page, /ArrowRight/);
   assert.match(page, /Cmd\+K|metaKey/);
   assert.match(page, /diff-data\.json/);

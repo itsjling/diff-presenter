@@ -38,8 +38,8 @@ const outputPath = resolve(
   feedArgs[feedArgs.indexOf('--output') + 1],
 );
 
-const builtServer = resolve(root, 'dist/server/index.js');
-if (!existsSync(builtServer)) {
+const builtPage = resolve(root, 'dist/index.html');
+if (!existsSync(builtPage)) {
   const result = spawnSync(
     process.platform === 'win32' ? 'npm.cmd' : 'npm',
     ['run', 'build'],

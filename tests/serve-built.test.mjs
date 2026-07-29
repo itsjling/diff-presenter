@@ -51,14 +51,16 @@ test('serves the built review page with live diff data', async () => {
     );
     const url = await waitForUrl(child);
 
-    const [page, data] = await Promise.all([
+    const [page, data, missing] = await Promise.all([
       fetch(url),
       fetch(`${url}/diff-data.json`),
+      fetch(`${url}/assets/missing.js`),
     ]);
     assert.equal(page.status, 200);
     assert.match(await page.text(), /<title>Diff Presenter<\/title>/i);
     assert.deepEqual(await data.json(), { version: 'test-version' });
     assert.equal(data.headers.get('cache-control'), 'no-store');
+    assert.equal(missing.status, 404);
   } finally {
     if (child && child.exitCode === null) await stop(child);
     await rm(directory, { recursive: true, force: true });

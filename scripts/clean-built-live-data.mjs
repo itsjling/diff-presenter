@@ -6,4 +6,4 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-await rm(resolve(root, "dist/client/diff-data.json"), { force: true });
+await rm(resolve(root, "dist/diff-data.json"), { force: true });

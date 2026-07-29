@@ -86,6 +86,9 @@ npm run dev
 
 Then open [http://localhost:3000](http://localhost:3000).
 
+The viewer is a static React page built with Vite. The local command serves the
+same built files and adds the live `/diff-data.json` endpoint.
+
 ## Other review targets
 
 ### Review worktree changes
@@ -219,6 +222,7 @@ full data contract and a build example are in
 ```sh
 npm run snapshot -- --repo /path/to/repo
 npm run build
+npm run lint
 npm test
 ```
 
@@ -226,3 +230,7 @@ The data script runs Git with argument arrays. Local diff modes only read the
 chosen workspace. Remote modes write fetched objects to Diff Presenter’s bare
 cache. The browser never runs Git or reads files outside the generated JSON
 snapshot.
+
+The landing page in `docs/` is separate from the local viewer. The
+`Deploy docs` GitHub Actions workflow publishes that static folder to GitHub
+Pages after changes land on `main`.
