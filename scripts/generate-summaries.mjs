@@ -687,12 +687,14 @@ try {
       if (result.status !== 0) {
         const detail = result.stderr
           .split('\n')
-          .filter(
-            (line) =>
-              line.length < 600 &&
-              /\b(error|failed|denied|unauthorized|forbidden)\b/i.test(line),
+          .map((line) =>
+            line.replace(
+              /\u001b\[[0-?]*[ -/]*[@-~]/g,
+              '',
+            ),
           )
-          .slice(-5)
+          .filter((line) => line.trim() && line.length < 600)
+          .slice(-8)
           .join('\n');
         throw new Error(
           `${selectedAgent} exited with status ${result.status}${detail ? `\n${detail}` : ''}`,

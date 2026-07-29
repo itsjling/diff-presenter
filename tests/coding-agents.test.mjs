@@ -46,6 +46,7 @@ test('builds non-interactive commands for each coding agent', () => {
   const codex = agentCommand({ ...common, agent: 'codex' });
   assert.deepEqual(codex.args.slice(0, 2), ['exec', '--ephemeral']);
   assert.ok(codex.args.includes('--output-schema'));
+  assert.ok(codex.args.includes('--skip-git-repo-check'));
   assert.equal(codex.input, 'stdin');
 
   const claude = agentCommand({ ...common, agent: 'claude' });

@@ -405,6 +405,39 @@ test("marks note generation as failed when Codex misses a changed file", async (
   }
 });
 
+test("shows coding agent stderr when note generation fails", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+  const codexBin = join(repo, "failing-codex");
+
+  try {
+    await writeFile(
+      codexBin,
+      "#!/bin/sh\n" +
+        "printf 'Not inside a trusted directory.\\n' >&2\n" +
+        "exit 1\n",
+    );
+    await chmod(codexBin, 0o755);
+
+    const result = run(repo, [
+      "--range",
+      "HEAD~1..HEAD",
+      "--codex-bin",
+      codexBin,
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ]);
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Not inside a trusted directory/);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
 test("publishes each completed file batch before the full run ends", async () => {
   const repo = await makeRepo();
   const summaries = join(repo, "notes.json");

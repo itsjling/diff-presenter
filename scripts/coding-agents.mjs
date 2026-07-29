@@ -141,6 +141,7 @@ export function agentCommand({
       '--ignore-user-config',
       '--color',
       'never',
+      '--skip-git-repo-check',
       '-C',
       workingDirectory,
       '--output-schema',
