@@ -2,8 +2,14 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { helpText, parseCliArgs } from './cli-args.mjs';
@@ -28,11 +34,19 @@ const { agentEnabled, port } = cli;
 const feedArgs = [...cli.feedArgs];
 const agentArgs = [...cli.agentArgs];
 const outputIndex = feedArgs.indexOf('--output');
+let runtimeDirectory;
 
 if (outputIndex === -1) {
-  feedArgs.push('--output', resolve(root, '.cache/diff-data.json'));
-  agentArgs.push('--output', resolve(root, '.cache/diff-data.json'));
+  runtimeDirectory = mkdtempSync(join(tmpdir(), 'diffsplain-live-'));
+  const liveOutput = resolve(runtimeDirectory, 'diff-data.json');
+  feedArgs.push('--output', liveOutput);
+  agentArgs.push('--output', liveOutput);
 }
+process.on('exit', () => {
+  if (runtimeDirectory) {
+    rmSync(runtimeDirectory, { recursive: true, force: true });
+  }
+});
 if (!feedArgs.includes('--watch')) feedArgs.push('--watch');
 const outputPath = resolve(
   callerDirectory,
@@ -71,14 +85,55 @@ const site = spawn(
     outputPath,
     '--port',
     String(port),
+    ...(!cli.portWasPassed ? ['--increment-port'] : []),
   ],
-  { cwd: root, stdio: 'inherit' },
+  { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] },
 );
 let closing = false;
 let agent;
 let agentTimer;
 let agentFingerprint;
 let queuedFingerprint;
+let browserOpened = false;
+
+function openBrowser(url) {
+  let command;
+  let args;
+  if (process.env.BROWSER) {
+    command = process.env.BROWSER;
+    args = [url];
+  } else if (process.platform === 'darwin') {
+    command = 'open';
+    args = [url];
+  } else if (process.platform === 'win32') {
+    command = 'cmd.exe';
+    args = ['/d', '/s', '/c', 'start', '', url];
+  } else {
+    command = 'xdg-open';
+    args = [url];
+  }
+
+  const opener = spawn(command, args, {
+    detached: true,
+    stdio: 'ignore',
+  });
+  opener.once('error', (error) => {
+    console.error(`Could not open the browser: ${error.message}`);
+  });
+  opener.unref();
+}
+
+if (site.stdout) {
+  const siteLines = createInterface({ input: site.stdout });
+  siteLines.on('line', (line) => {
+    console.log(line);
+    const match = line.match(/^Diffsplain: (http:\/\/\S+)$/);
+    if (!browserOpened && match) {
+      browserOpened = true;
+      openBrowser(match[1]);
+    }
+  });
+}
 
 function snapshotState() {
   try {
@@ -170,6 +225,7 @@ function scheduleAgent(fingerprint) {
   const state = snapshotState();
   const selectedFingerprint = fingerprint || state?.fingerprint;
   if (
+    !cli.forceSummaryRegeneration &&
     !agentFingerprint &&
     state?.hasCurrentAgentNotes &&
     selectedFingerprint === state.fingerprint

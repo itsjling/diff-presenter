@@ -92,8 +92,11 @@ npx diffsplain \
 | `--model NAME` | Choose the Codex model used for notes. |
 | `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
 | `--batch-size COUNT` | Set files per Codex pass, from `1` to `50`. |
+| `--force` | Regenerate all Codex notes instead of using cached notes. |
 | `--remote NAME\|URL` | Choose the Git remote. The default is `origin`. |
-| `--port NUMBER` | Choose the local page port. The default is `3000`. |
+| `--port NUMBER` | Choose an exact local port. The default starts at `2299`. |
 | `--help` | Show command help. |
 
 Remote repos need `--branch` or `--pr`. You cannot combine two target options.
+When you omit `--port`, Diffsplain increments from `2299` until it finds a free
+port.

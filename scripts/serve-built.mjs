@@ -21,10 +21,12 @@ function option(name, fallback) {
 }
 
 const output = resolve(option('--output', resolve(root, '.cache/diff-data.json')));
-const portValue = option('--port', '3000');
+const portValue = option('--port', '2299');
 if (!/^\d+$/.test(portValue) || Number(portValue) > 65_535) {
   throw new Error('--port must be a number from 0 to 65535');
 }
+const incrementPort =
+  rawArgs.includes('--increment-port') || !rawArgs.includes('--port');
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -115,12 +117,33 @@ const server = createServer(async (request, response) => {
   }
 });
 
-server.listen(Number(portValue), '127.0.0.1', () => {
-  const address = server.address();
-  const selectedPort =
-    address && typeof address === 'object' ? address.port : Number(portValue);
-  console.log(`Diffsplain: http://127.0.0.1:${selectedPort}`);
+let selectedPort = Number(portValue);
+
+function listen() {
+  server.listen(selectedPort, '127.0.0.1', () => {
+    const address = server.address();
+    const readyPort =
+      address && typeof address === 'object' ? address.port : selectedPort;
+    console.log(`Diffsplain: http://127.0.0.1:${readyPort}`);
+  });
+}
+
+server.on('error', (error) => {
+  if (
+    error.code === 'EADDRINUSE' &&
+    incrementPort &&
+    selectedPort > 0 &&
+    selectedPort < 65_535
+  ) {
+    selectedPort += 1;
+    listen();
+    return;
+  }
+  console.error(`Could not start Diffsplain: ${error.message}`);
+  process.exitCode = 1;
 });
+
+listen();
 
 let closing = false;
 function close() {

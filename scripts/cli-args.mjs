@@ -21,6 +21,7 @@ const flagOptions = new Set([
   '--help',
   '--agent',
   '--no-agent',
+  '--force',
   '--worktree',
 ]);
 const pathOptions = new Set([
@@ -50,8 +51,9 @@ Options:
   --model NAME        Codex model for agent notes
   --reasoning LEVEL   Codex reasoning effort for agent notes
   --batch-size COUNT  Files per agent pass (default: 4)
+  --force             Regenerate all agent notes
   --remote NAME|URL   Git remote (default: origin)
-  --port NUMBER       Local page port (default: 3000)
+  --port NUMBER       Local page port (default: 2299)
   --help              Show this help
 
 Examples:
@@ -243,6 +245,7 @@ export function parseCliArgs(
   }
 
   const agentArgs = [...commonArgs];
+  if (options.has('--force')) agentArgs.push('--force');
   for (const name of [
     '--codex-bin',
     '--model',
@@ -277,7 +280,7 @@ export function parseCliArgs(
     fail('--batch-size must be a number from 1 to 50');
   }
 
-  const portValue = options.get('--port') || '3000';
+  const portValue = options.get('--port') || '2299';
   if (!/^\d+$/.test(portValue) || Number(portValue) > 65_535) {
     fail('--port must be a number from 0 to 65535');
   }
@@ -289,5 +292,7 @@ export function parseCliArgs(
     feedArgs: commonArgs,
     agentArgs,
     port: Number(portValue),
+    portWasPassed: options.has('--port'),
+    forceSummaryRegeneration: options.has('--force'),
   };
 }

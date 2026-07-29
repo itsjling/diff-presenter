@@ -35,8 +35,15 @@ npm run summarize -- --repo /path/to/repo --pr 198
 ```
 
 The same command accepts branch, worktree, checkout, and exact-range targets.
-`summarize` always asks for a new pass. The presenter reuses complete notes
-when the diff has not changed.
+The command reuses complete notes for files whose patches have not changed.
+Pass `--force` to replace every note:
+
+```sh
+npm run summarize -- --repo /path/to/repo --pr 198 --force
+```
+
+The presenter follows the same rule, so a cached review opens without a new
+Codex pass. Use `npx diffsplain --force` when you want new notes.
 
 ## Note files
 

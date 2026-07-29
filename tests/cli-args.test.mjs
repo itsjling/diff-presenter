@@ -15,7 +15,8 @@ test('defaults to the current checkout and Codex', () => {
 
   assert.equal(parsed.agentEnabled, true);
   assert.equal(parsed.agent, 'codex');
-  assert.equal(parsed.port, 3000);
+  assert.equal(parsed.port, 2299);
+  assert.equal(parsed.portWasPassed, false);
   assert.deepEqual(parsed.feedArgs, ['--repo', cwd, '--checkout']);
   assert.deepEqual(parsed.agentArgs, ['--repo', cwd, '--checkout']);
 });
@@ -52,6 +53,7 @@ test('accepts a repo URL and pull request', () => {
 
   assert.equal(parsed.agentEnabled, false);
   assert.equal(parsed.port, 4000);
+  assert.equal(parsed.portWasPassed, true);
   assert.deepEqual(parsed.feedArgs, [
     '--repo',
     cwd,
@@ -138,6 +140,17 @@ test('passes agent model, reasoning, and batch settings through', () => {
     '--batch-size',
     '2',
   ]);
+});
+
+test('forces note regeneration only in the agent process', () => {
+  const parsed = parseCliArgs(['--force'], {
+    callerDirectory: cwd,
+    pathExists: missing,
+  });
+
+  assert.equal(parsed.forceSummaryRegeneration, true);
+  assert.doesNotMatch(parsed.feedArgs.join(' '), /--force/);
+  assert.equal(parsed.agentArgs.at(-1), '--force');
 });
 
 test('rejects invalid reasoning and batch settings', () => {

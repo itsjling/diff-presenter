@@ -11,9 +11,10 @@ Run from a Git checkout:
 npx diffsplain
 ```
 
-The command opens [http://localhost:3000](http://localhost:3000) and compares
-the checkout with its default branch. You need Node.js 22.13 or newer and a
-signed-in Codex CLI. Pull requests also need a signed-in GitHub CLI.
+The command opens a local page and compares the checkout with its default
+branch. It starts at port `2299` and uses the next free port when needed. You
+need Node.js 22.13 or newer and a signed-in Codex CLI. Pull requests also need
+a signed-in GitHub CLI.
 
 Common targets:
 
@@ -37,8 +38,9 @@ Arguments:
 | `--model NAME` | Choose the Codex model used for notes. |
 | `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
 | `--batch-size COUNT` | Set files per Codex pass. The default is `4`. |
+| `--force` | Regenerate all Codex notes instead of using cached notes. |
 | `--remote NAME\|URL` | Choose the Git remote. The default is `origin`. |
-| `--port NUMBER` | Choose the local port. The default is `3000`. |
+| `--port NUMBER` | Choose an exact local port. The default starts at `2299`. |
 | `--help` | Show command help. |
 
 ## Local development

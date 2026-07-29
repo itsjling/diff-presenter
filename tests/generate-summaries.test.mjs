@@ -545,6 +545,20 @@ test("regenerates notes only for changed and added files", async () => {
     assert.match(third.stdout, /No file summaries changed/);
     assert.equal((await recordedCalls(codex.calls)).length, 2);
 
+    const forced = run(repo, [...args, "--force"]);
+    assert.equal(forced.status, 0, forced.stderr);
+    assert.deepEqual((await recordedCalls(codex.calls)).at(-1), {
+      files: ["added.txt", "changed.txt", "new.txt"],
+      existing: [],
+    });
+
+    const refreshedNotes = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(refreshedNotes.change.title, "Change note 3");
+    assert.equal(
+      refreshedNotes.files["added.txt"].title,
+      "Note 3 for added.txt",
+    );
+
     const snapshot = JSON.parse(await readFile(output, "utf8"));
     assert.equal(snapshot.notes.complete, true);
     assert.ok(snapshot.files.every((file) => file.noteReady));

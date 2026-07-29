@@ -101,8 +101,10 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         "trap 'exit 0' TERM INT\n" +
         "while :; do sleep 1; done\n",
     );
+    await writeFile(join(bin, "browser"), "#!/bin/sh\nexit 0\n");
     await chmod(join(bin, "codex"), 0o755);
     await chmod(join(bin, "npm"), 0o755);
+    await chmod(join(bin, "browser"), 0o755);
 
     presenter = spawn(
       process.execPath,
@@ -120,6 +122,7 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         cwd: root,
         env: {
           ...process.env,
+          BROWSER: join(bin, "browser"),
           PATH: `${bin}:${process.env.PATH}`,
           PRESENTER_EVENTS: events,
           PRESENTER_OUTPUT: output,
@@ -168,6 +171,7 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         cwd: root,
         env: {
           ...process.env,
+          BROWSER: join(bin, "browser"),
           PATH: `${bin}:${process.env.PATH}`,
           PRESENTER_EVENTS: events,
           PRESENTER_OUTPUT: output,

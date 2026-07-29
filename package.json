@@ -29,7 +29,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vite --port 3000",
+    "dev": "vite --port 2299",
     "docs:dev": "cd docs && blume dev",
     "docs:build": "cd docs && blume build",
     "docs:check": "cd docs && blume check && blume validate",

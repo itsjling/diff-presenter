@@ -34,7 +34,7 @@ const valueFlags = new Set([
   '--reasoning',
   '--batch-size',
 ]);
-const booleanFlags = new Set(['--checkout', '--worktree']);
+const booleanFlags = new Set(['--checkout', '--force', '--worktree']);
 
 function fail(message) {
   console.error(message);
@@ -79,7 +79,8 @@ Options:
   --codex-bin FILE    Codex CLI path (default: codex)
   --model NAME        Model passed to codex exec
   --reasoning LEVEL   Reasoning effort passed to codex exec
-  --batch-size COUNT  Files per Codex pass (default: 4)`);
+  --batch-size COUNT  Files per Codex pass (default: 4)
+  --force             Regenerate all notes instead of using cached notes`);
   process.exit(0);
 }
 
@@ -113,6 +114,7 @@ const pr = option('--pr');
 const branch = option('--branch');
 const checkout = rawArgs.includes('--checkout');
 const remote = option('--remote') || 'origin';
+const force = rawArgs.includes('--force');
 
 if (range && (base || head)) {
   fail('--range cannot be used with --base or --head');
@@ -575,6 +577,7 @@ try {
     const changedPaths = [];
     for (const path of paths) {
       if (
+        !force &&
         previousFingerprints[path] === fileFingerprints[path] &&
         completeFileNote(previousFiles[path])
       ) {
@@ -584,6 +587,7 @@ try {
       }
     }
     const changeNeedsRefresh =
+      force ||
       previousSummaries.meta?.reviewFingerprint !==
         rawSnapshot.notes.reviewFingerprint ||
       !completeChangeNote(previousSummaries.change);

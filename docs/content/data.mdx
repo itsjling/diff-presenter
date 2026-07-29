@@ -6,8 +6,11 @@ sidebar:
 ---
 
 `scripts/build-diff-data.mjs` writes the ignored `.cache/diff-data.json`
-snapshot for the review page. The local server exposes it at
-`/diff-data.json`.
+snapshot unless you pass `--output`. The local server exposes the chosen file
+at `/diff-data.json`.
+
+`npx diffsplain` gives each running command its own temporary snapshot. This
+keeps two open reviews from reading or replacing each other’s data.
 
 Build a pull request snapshot:
 
