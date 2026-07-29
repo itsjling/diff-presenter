@@ -7,11 +7,13 @@
 > `plans/README.md`, unless a reviewer told you that they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 8703ca8..HEAD -- scripts/cli-args.mjs scripts/coding-agents.mjs scripts/present.mjs scripts/build-diff-data.mjs scripts/generate-summaries.mjs README.md docs/content/index.mdx docs/content/cli.mdx docs/content/agent-notes.mdx tests/cli-args.test.mjs tests/coding-agents.test.mjs tests/generate-summaries.test.mjs tests/present-instances.test.mjs plans/README.md`
+> `git diff --stat 1234de6..HEAD -- scripts/cli-args.mjs scripts/coding-agents.mjs scripts/present.mjs scripts/build-diff-data.mjs scripts/generate-summaries.mjs README.md docs/content/index.mdx docs/content/cli.mdx docs/content/agent-notes.mdx tests/cli-args.test.mjs tests/coding-agents.test.mjs tests/generate-summaries.test.mjs tests/present-instances.test.mjs plans/README.md`
 > If any source or docs file in that list changed since this plan was written,
 > compare the "Current state" excerpts with the live files before proceeding.
 > Ignore status-only edits to `plans/README.md`. Treat any other mismatch as a
 > STOP condition.
+> Also run `git status --short` and record all pre-existing worktree changes.
+> Preserve them throughout this plan.
 
 ## Status
 
@@ -20,7 +22,7 @@
 - **Risk**: MED
 - **Depends on**: none
 - **Category**: bug
-- **Planned at**: commit `8703ca8`, 2026-07-29
+- **Planned at**: commit `1234de6`, 2026-07-29
 
 ## Why this matters
 
@@ -103,9 +105,10 @@ and ties every cached note to the agent settings that made it.
     !completeChangeNote(previousSummaries.change);
   ```
 
-- `docs/content/agent-notes.mdx:20-29` shows Claude with `--reasoning low` and
-  says the default batch size is four. The code uses 12
-  (`scripts/cli-args.mjs:59` and `scripts/generate-summaries.mjs:118`).
+- `docs/content/agent-notes.mdx:20-29` shows Claude with `--reasoning low`.
+  Commit `7aceb55` already corrected its default batch size to 12, which
+  matches `scripts/cli-args.mjs:59` and
+  `scripts/generate-summaries.mjs:118`. Keep that correction.
 - `README.md:14-18` and `docs/content/index.mdx:14-15` say a signed-in agent is
   always required even though `--no-agent` starts without one.
 - The product brief says the no-argument command should work and that the app
@@ -124,6 +127,7 @@ and ties every cached note to the agent settings that made it.
 | Focused parser and agent tests | `node --test tests/cli-args.test.mjs tests/coding-agents.test.mjs` | all tests pass |
 | Focused note tests | `node --test tests/generate-summaries.test.mjs tests/present-instances.test.mjs` | all tests pass |
 | Docs | `npm run docs:check` | exit 0, no broken docs |
+| Static audit | `npm run fallow:audit` | exit 0, no new findings |
 | Lint | `npm run lint` | exit 0, no errors |
 | Full tests | `npm test` | exit 0, all tests pass |
 
@@ -295,7 +299,8 @@ Update only the short user-facing claims in the scoped docs:
   `--no-agent` works without one.
 - Define `--no-agent` as a run that neither calls an agent nor reads cached or
   supplied agent text.
-- Change the default batch size from four to 12.
+- Keep the corrected default batch size at 12 and add its range and adaptive
+  smaller-batch behavior where useful.
 - Use Codex or OpenCode in the reasoning example. State that only those two
   agents accept `--reasoning`.
 - State that Diffsplain picks the first installed agent in fallback order. It
@@ -327,11 +332,13 @@ Run the required checks after the focused tests.
 npm run lint
 npm test
 npm run docs:check
+npm run fallow:audit
 git status --short
 ```
 
-All three checks must exit 0. `git status --short` may list only the in-scope
-files and the `plans/README.md` status update.
+All four checks must exit 0. Compare `git status --short` with the starting
+snapshot. This plan may add only the in-scope files and the
+`plans/README.md` status update.
 
 ## Test plan
 
@@ -361,8 +368,10 @@ files and the `plans/README.md` status update.
 - [ ] Note metadata and snapshots name the selected agent.
 - [ ] The docs say the default batch size is 12 and make agent prerequisites
       conditional.
-- [ ] `npm run lint`, `npm test`, and `npm run docs:check` all exit 0.
-- [ ] `git status --short` lists no file outside the in-scope list.
+- [ ] `npm run lint`, `npm test`, `npm run docs:check`, and
+      `npm run fallow:audit` all exit 0.
+- [ ] Compared with the recorded starting status, this plan adds no change
+      outside the in-scope list.
 - [ ] The plan row in `plans/README.md` says `DONE`.
 
 ## STOP conditions
@@ -379,6 +388,8 @@ Stop and report back if:
   `meta`; those files remain supported input.
 - A focused or full check fails twice after a reasonable fix attempt.
 - The work requires a file outside the in-scope list.
+- Fallow reports a new issue that cannot be fixed within this plan. Do not edit
+  `.fallowrc.json` or `fallow-baselines/` to hide it.
 
 ## Maintenance notes
 

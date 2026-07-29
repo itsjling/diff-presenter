@@ -7,10 +7,12 @@
 > `plans/README.md`, unless a reviewer told you that they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 8703ca8..HEAD -- scripts/doctor.mjs scripts/present.mjs README.md docs/content/index.mdx docs/content/cli.mdx docs/content/troubleshooting.mdx docs/blume.config.ts tests/doctor.test.mjs plans/README.md`
+> `git diff --stat 1234de6..HEAD -- scripts/doctor.mjs scripts/present.mjs README.md docs/content/index.mdx docs/content/cli.mdx docs/content/troubleshooting.mdx docs/blume.config.ts tests/doctor.test.mjs plans/README.md`
 > Plan 001 is expected to change some docs and presenter code. Compare its final
 > behavior with this plan. Ignore status-only edits to `plans/README.md`. Stop
 > on any other unexplained mismatch.
+> Also run `git status --short` and record all pre-existing worktree changes.
+> Preserve them throughout this plan.
 
 ## Status
 
@@ -19,7 +21,7 @@
 - **Risk**: LOW
 - **Depends on**: `plans/001-make-agent-and-cache-behavior-truthful.md`
 - **Category**: dx
-- **Planned at**: commit `8703ca8`, 2026-07-29
+- **Planned at**: commit `1234de6`, 2026-07-29
 
 ## Why this matters
 
@@ -66,7 +68,7 @@ the errors the CLI emits.
   (`scripts/doctor.mjs:115-118`). `scripts/present.mjs:45-49` uses that value as
   the process exit status. A machine with Git and no agent therefore gets exit
   1 even though `diffsplain --no-agent` can run.
-- The report does not check the package's Node floor (`package.json:32-34`),
+- The report does not check the package's Node floor (`package.json:39-40`),
   which is `>=22.13.0`.
 - `tests/doctor.test.mjs:27-56` expects “Agent notes are ready” from a fake
   installed Cursor. Lines 58-80 expect exit 1 when `PATH` is empty, but that
@@ -93,6 +95,7 @@ the errors the CLI emits.
 | Doctor tests | `node --test tests/doctor.test.mjs tests/present-help.test.mjs` | all tests pass |
 | Manual report | `node scripts/present.mjs doctor` | prints a report; exit depends only on Node and Git |
 | Docs | `npm run docs:check` | exit 0 |
+| Static audit | `npm run fallow:audit` | exit 0, no new findings |
 | Lint | `npm run lint` | exit 0 |
 | Full tests | `npm test` | exit 0, all tests pass |
 
@@ -296,11 +299,12 @@ Both commands must exit 0, and Blume must include the new route.
 npm run lint
 npm test
 npm run docs:check
+npm run fallow:audit
 git status --short
 ```
 
-All checks must pass. Git status may list only in-scope files and the plan index
-status edit.
+All checks must pass. Compare Git status with the starting snapshot. This plan
+may add only in-scope files and the plan-index status edit.
 
 ## Test plan
 
@@ -328,8 +332,10 @@ status edit.
 - [ ] `/troubleshooting` covers every listed runtime error with safe checks and
       retry commands.
 - [ ] The new page appears in Blume navigation.
-- [ ] `npm run lint`, `npm test`, and `npm run docs:check` all exit 0.
-- [ ] `git status --short` lists no file outside the in-scope list.
+- [ ] `npm run lint`, `npm test`, `npm run docs:check`, and
+      `npm run fallow:audit` all exit 0.
+- [ ] Compared with the recorded starting status, this plan adds no change
+      outside the in-scope list.
 - [ ] The plan row in `plans/README.md` says `DONE`.
 
 ## STOP conditions
@@ -345,6 +351,8 @@ Stop and report back if:
   support.
 - A focused or full check fails twice after a reasonable fix attempt.
 - The work requires a file outside the in-scope list.
+- Fallow reports a new issue that cannot be fixed within this plan. Do not edit
+  `.fallowrc.json` or `fallow-baselines/` to hide it.
 
 ## Maintenance notes
 

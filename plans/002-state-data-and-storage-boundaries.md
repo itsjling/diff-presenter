@@ -7,10 +7,12 @@
 > `plans/README.md`, unless a reviewer told you that they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 8703ca8..HEAD -- scripts/summary-path.mjs scripts/generate-summaries.mjs scripts/build-diff-data.mjs scripts/present.mjs scripts/serve-built.mjs app/page.tsx docs/content/data.mdx docs/content/agent-notes.mdx tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs tests/serve-built.test.mjs plans/README.md`
+> `git diff --stat 1234de6..HEAD -- scripts/summary-path.mjs scripts/generate-summaries.mjs scripts/build-diff-data.mjs scripts/present.mjs scripts/serve-built.mjs app/page.tsx docs/content/data.mdx docs/content/agent-notes.mdx tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs tests/serve-built.test.mjs plans/README.md`
 > Plan 001 is expected to change several listed files. Compare its final code
 > with this plan's required behavior, not only with the excerpts below. Ignore
 > status-only edits to `plans/README.md`. Stop on any other unexplained drift.
+> Also run `git status --short` and record all pre-existing worktree changes.
+> Preserve them throughout this plan.
 
 ## Status
 
@@ -19,7 +21,7 @@
 - **Risk**: MED
 - **Depends on**: `plans/001-make-agent-and-cache-behavior-truthful.md`
 - **Category**: docs
-- **Planned at**: commit `8703ca8`, 2026-07-29
+- **Planned at**: commit `1234de6`, 2026-07-29
 
 ## Why this matters
 
@@ -89,12 +91,13 @@ run leave the target repo untouched and gives users one exact data contract.
 | Path and note tests | `node --test tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs` | all tests pass |
 | Server tests | `node --test tests/serve-built.test.mjs` | all tests pass |
 | Docs | `npm run docs:check` | exit 0 |
+| Static audit | `npm run fallow:audit` | exit 0, no new findings |
 | Lint | `npm run lint` | exit 0 |
 | Full tests | `npm test` | exit 0, all tests pass |
 
 ## Suggested executor toolkit
 
-- Use the current code as the source of truth for data flow. Do not infer a
+- Use the current code as evidence for each data-flow claim. Do not infer a
   provider's own retention or telemetry rules.
 - Use the official [npm exec documentation](https://docs.npmjs.com/cli/v11/commands/npm-exec/)
   only for the separate `npx` download/cache statement.
@@ -191,7 +194,7 @@ Add one integration assertion that a default worktree note run:
 `node --test tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs`
 must pass.
 
-### Step 3: Turn the data page into the canonical contract
+### Step 3: Make the data page the main contract
 
 Rewrite `docs/content/data.mdx` around user questions, not source scripts. Keep
 the route `/data`. It must include these sections:
@@ -286,11 +289,12 @@ All commands must exit 0.
 npm run lint
 npm test
 npm run docs:check
+npm run fallow:audit
 git status --short
 ```
 
-All checks must pass. Git status may list only the in-scope files and the plan
-index status edit.
+All checks must pass. Compare Git status with the starting snapshot. This plan
+may add only the in-scope files and the plan-index status edit.
 
 ## Test plan
 
@@ -317,8 +321,10 @@ index status edit.
       each persistent cache, temp cleanup, and live-update timing.
 - [ ] `/agent-notes` distinguishes minimum user input from tool-owned `meta`.
 - [ ] The docs make no claim about provider retention, training, or telemetry.
-- [ ] `npm run lint`, `npm test`, and `npm run docs:check` all exit 0.
-- [ ] `git status --short` lists no file outside the in-scope list.
+- [ ] `npm run lint`, `npm test`, `npm run docs:check`, and
+      `npm run fallow:audit` all exit 0.
+- [ ] Compared with the recorded starting status, this plan adds no change
+      outside the in-scope list.
 - [ ] The plan row in `plans/README.md` says `DONE`.
 
 ## STOP conditions
@@ -336,6 +342,8 @@ Stop and report back if:
   the linked npm documentation.
 - A focused or full check fails twice after a reasonable fix attempt.
 - The work requires a file outside the in-scope list.
+- Fallow reports a new issue that cannot be fixed within this plan. Do not edit
+  `.fallowrc.json` or `fallow-baselines/` to hide it.
 
 ## Maintenance notes
 

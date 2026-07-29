@@ -7,10 +7,12 @@
 > `plans/README.md`, unless a reviewer told you that they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 8703ca8..HEAD -- README.md site/index.html docs/content/index.mdx docs/content/troubleshooting.mdx tests/docs-content.test.mjs tests/present-instances.test.mjs tests/serve-built.test.mjs plans/README.md`
+> `git diff --stat 1234de6..HEAD -- README.md site/index.html docs/content/index.mdx docs/content/troubleshooting.mdx tests/docs-content.test.mjs tests/present-instances.test.mjs tests/serve-built.test.mjs plans/README.md`
 > Plans 003 and 005 are expected to create or change several files in this
 > list. Compare their final content with the required lifecycle below. Ignore
 > status-only edits to `plans/README.md`. Stop on any other unexplained drift.
+> Also run `git status --short` and record all pre-existing worktree changes.
+> Preserve them throughout this plan.
 
 ## Status
 
@@ -22,7 +24,7 @@
   `plans/004-define-every-review-target.md`,
   `plans/005-fix-doc-routes-and-source-boundaries.md`
 - **Category**: docs
-- **Planned at**: commit `8703ca8`, 2026-07-29
+- **Planned at**: commit `1234de6`, 2026-07-29
 
 ## Why this matters
 
@@ -69,6 +71,8 @@ README and landing page short.
   ready signal, and lines 78-83 stop the process with `SIGTERM`.
 - Keep the root README within the command-use/local-development rule in
   `AGENTS.md:5`.
+- Commit `1234de6` includes a landing-page headline/metadata rewrite. Preserve
+  that copy and add only the small requirement line in this plan.
 
 ## Commands you will need
 
@@ -78,6 +82,7 @@ README and landing page short.
 | Content tests | `node --test tests/docs-content.test.mjs` | all tests pass |
 | Lifecycle tests | `node --test tests/present-instances.test.mjs tests/serve-built.test.mjs` | all tests pass |
 | Docs | `npm run docs:check` | exit 0 |
+| Static audit | `npm run fallow:audit` | exit 0, no new findings |
 | Lint | `npm run lint` | exit 0 |
 | Full tests | `npm test` | exit 0, all tests pass |
 
@@ -276,11 +281,12 @@ Both commands must exit 0.
 npm run lint
 npm test
 npm run docs:check
+npm run fallow:audit
 git status --short
 ```
 
-All checks must pass. Git status may list only in-scope files and the plan index
-status edit.
+All checks must pass. Compare Git status with the starting snapshot. This plan
+may add only in-scope files and the plan-index status edit.
 
 ## Test plan
 
@@ -304,8 +310,10 @@ status edit.
 - [ ] Troubleshooting covers first-run install, browser, waiting, notes, and
       port cases.
 - [ ] Tests guard the docs tokens and exact ready-line prefix.
-- [ ] `npm run lint`, `npm test`, and `npm run docs:check` all exit 0.
-- [ ] `git status --short` lists no file outside the in-scope list.
+- [ ] `npm run lint`, `npm test`, `npm run docs:check`, and
+      `npm run fallow:audit` all exit 0.
+- [ ] Compared with the recorded starting status, this plan adds no change
+      outside the in-scope list.
 - [ ] The plan row in `plans/README.md` says `DONE`.
 
 ## STOP conditions
@@ -322,12 +330,14 @@ Stop and report back if:
   readable.
 - A focused or full check fails twice after a reasonable fix attempt.
 - The work requires a file outside the in-scope list.
+- Fallow reports a new issue that cannot be fixed within this plan. Do not edit
+  `.fallowrc.json` or `fallow-baselines/` to hide it.
 
 ## Maintenance notes
 
 - Plan 007 must tie the exact-version example to `package.json` so releases
   cannot leave stale onboarding text.
-- Keep the Introduction as the full lifecycle owner. README, landing, and
+- Keep the full lifecycle in the Introduction. README, landing, and
   troubleshooting should link to it instead of growing copies.
 - If startup output or shutdown behavior changes, update its process test and
   first-run prose in the same pull request.

@@ -7,11 +7,13 @@
 > `plans/README.md`, unless a reviewer told you that they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 8703ca8..HEAD -- scripts/cli-args.mjs scripts/cli-options.mjs scripts/check-cli-docs.mjs scripts/coding-agents.mjs package.json README.md docs/content/index.mdx docs/content/cli.mdx docs/content/development.mdx tests/cli-args.test.mjs tests/present-help.test.mjs tests/docs-contract.test.mjs tests/docs-content.test.mjs plans/README.md`
+> `git diff --stat 1234de6..HEAD -- scripts/cli-args.mjs scripts/cli-options.mjs scripts/check-cli-docs.mjs scripts/coding-agents.mjs package.json README.md docs/content/index.mdx docs/content/cli.mdx docs/content/development.mdx tests/cli-args.test.mjs tests/present-help.test.mjs tests/docs-contract.test.mjs tests/docs-content.test.mjs plans/README.md`
 > Plans 001-006 must land first and will change many listed files. Compare their
 > final behavior with this plan, then update the current-state assumptions
 > before coding. Ignore status-only edits to `plans/README.md`. Stop on any
 > unexplained mismatch.
+> Also run `git status --short` and record all pre-existing worktree changes.
+> Preserve them throughout this plan.
 
 ## Status
 
@@ -26,7 +28,7 @@
   `plans/005-fix-doc-routes-and-source-boundaries.md`,
   `plans/006-document-the-first-run-lifecycle.md`
 - **Category**: dx
-- **Planned at**: commit `8703ca8`, 2026-07-29
+- **Planned at**: commit `1234de6`, 2026-07-29
 
 ## Why this matters
 
@@ -91,16 +93,22 @@ version goes stale.
   (`scripts/present.mjs:250-255`).
 - `tests/present-help.test.mjs:8-18` checks only the usage prefix, doctor, and
   version flag. It cannot catch a missing option.
-- `package.json:39` runs only Blume checks:
+- `package.json:46` runs only Blume checks:
 
   ```json
   "docs:check": "cd docs && blume check && blume validate"
   ```
 
+- Commit `7aceb55` changed `package.json.files` from the whole `scripts`
+  directory to an explicit script list. Any new runtime-imported script must be
+  added to that list or the packed CLI will fail after install.
+- Commit `1234de6` adds Fallow setup. Preserve it. This plan may edit package
+  scripts and the published-file list, but it must not add, remove, or update
+  that dependency.
 - Plan 001 should leave a single agent capability record in
   `scripts/coding-agents.mjs`. Reuse it for provider rows; do not create another
   provider list.
-- Keep the root README short under `AGENTS.md:5`. `/cli` owns the full
+- Keep the root README short under `AGENTS.md:5`. `/cli` holds the full
   reference.
 - Match the no-dependency table-driven style in `scripts/cli-args.mjs` and
   `tests/cli-args.test.mjs`.
@@ -113,6 +121,7 @@ version goes stale.
 | Parser/help tests | `node --test tests/cli-args.test.mjs tests/present-help.test.mjs` | all tests pass |
 | Docs contract | `npm run docs:contract` | exit 0; reference blocks match metadata |
 | Docs | `npm run docs:check` | contract and Blume checks exit 0 |
+| Static audit | `npm run fallow:audit` | exit 0, no new findings |
 | Lint | `npm run lint` | exit 0 |
 | Full tests | `npm test` | exit 0, all tests pass |
 
@@ -178,7 +187,7 @@ version goes stale.
 
 ## Steps
 
-### Step 1: Characterize the full accepted surface
+### Step 1: Characterize the full accepted option set
 
 Before refactoring, extend tests:
 
@@ -265,9 +274,20 @@ Export render helpers for:
 
 Keep rendering deterministic and dependency-free.
 
+Add `scripts/cli-options.mjs` to `package.json.files` because the installed
+public parser imports it. Keep `scripts/check-cli-docs.mjs` development-only
+and out of the published file list; `docs:contract` runs from a source checkout,
+not from an installed dependency.
+
 **Verify**:
-`node -e "import('./scripts/cli-options.mjs').then((m) => console.log(m.cliOptionDefinitions.length))"`
-must print a positive integer and exit 0.
+
+```sh
+node -e "import('./scripts/cli-options.mjs').then((m) => console.log(m.cliOptionDefinitions.length))"
+npm pack --dry-run --json
+```
+
+The first command must print a positive integer. The pack listing must contain
+`scripts/cli-options.mjs`.
 
 ### Step 3: Derive parsing and help from the record
 
@@ -283,7 +303,7 @@ Refactor `scripts/cli-args.mjs`:
 - keep every target conflict and forwarding rule from prior plans.
 
 Do not move target resolution or process startup into the metadata module.
-Metadata describes the surface; parser code still applies behavior.
+Metadata describes the option set; parser code still applies behavior.
 
 Help must show:
 
@@ -398,6 +418,8 @@ Add:
 to `package.json`, then make `docs:check` run `npm run docs:contract` before the
 existing Blume checks. Do not remove `blume check` or `blume validate`.
 
+Do not add `scripts/check-cli-docs.mjs` to `package.json.files`.
+
 **Verify**:
 
 ```sh
@@ -416,18 +438,19 @@ In `docs/content/development.mdx`, add a short “Update CLI docs” section:
 2. update parser behavior if needed;
 3. print and replace the marked Markdown block;
 4. update tests;
-5. run `npm run docs:check`, `npm run lint`, and `npm test`.
+5. run `npm run docs:check`, `npm run fallow:audit`, `npm run lint`, and
+   `npm test`.
 
 In README's Local development checks, keep `npm run docs:check` from Plan 005.
 Do not add generated tables to README.
 
 Extend `tests/docs-content.test.mjs` to assert that Development names the option
-record, marker-print command, and all three checks.
+record, marker-print command, and all four checks.
 
 **Verify**:
 
 ```sh
-rg -n "cli-options\\.mjs|docs:contract|npm run docs:check|npm run lint|npm test" docs/content/development.mdx
+rg -n "cli-options\\.mjs|docs:contract|npm run docs:check|npm run fallow:audit|npm run lint|npm test" docs/content/development.mdx
 node --test tests/docs-content.test.mjs tests/docs-contract.test.mjs
 ```
 
@@ -441,11 +464,12 @@ Both commands must exit 0.
 npm run lint
 npm test
 npm run docs:check
+npm run fallow:audit
 git status --short
 ```
 
-All checks must pass. Git status may list only in-scope files and the plan index
-status edit.
+All checks must pass. Compare Git status with the starting snapshot. This plan
+may add only in-scope files and the plan-index status edit.
 
 ## Test plan
 
@@ -475,9 +499,13 @@ status edit.
 - [ ] `npm run docs:contract` fails on a changed option table, environment
       table, agent table, or pinned onboarding version.
 - [ ] `npm run docs:check` runs the contract plus both Blume checks.
+- [ ] `npm pack --dry-run --json` includes every script imported by the packed
+      public CLI, including `scripts/cli-options.mjs`.
 - [ ] Development explains the update workflow.
-- [ ] `npm run lint`, `npm test`, and `npm run docs:check` all exit 0.
-- [ ] `git status --short` lists no file outside the in-scope list.
+- [ ] `npm run lint`, `npm test`, `npm run docs:check`, and
+      `npm run fallow:audit` all exit 0.
+- [ ] Compared with the recorded starting status, this plan adds no change
+      outside the in-scope list.
 - [ ] The plan row in `plans/README.md` says `DONE`.
 
 ## STOP conditions
@@ -493,9 +521,11 @@ Stop and report back if:
 - Blume changes or strips the marker blocks in source before the contract can
   read them. The checker must read source MDX, not built output.
 - A generated table cannot express an option's full safety or persistence
-  effect. Keep the short canonical row and add prose below it.
+  effect. Keep the short generated row and add prose below it.
 - A focused or full check fails twice after a reasonable fix attempt.
 - The work requires a file outside the in-scope list.
+- Fallow reports a new issue that cannot be fixed within this plan. Do not edit
+  `.fallowrc.json` or `fallow-baselines/` to hide it.
 
 ## Maintenance notes
 

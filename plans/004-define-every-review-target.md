@@ -7,10 +7,12 @@
 > `plans/README.md`, unless a reviewer told you that they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 8703ca8..HEAD -- README.md docs/content/index.mdx docs/content/cli.mdx tests/cli-args.test.mjs tests/remote-targets.test.mjs plans/README.md`
+> `git diff --stat 1234de6..HEAD -- README.md docs/content/index.mdx docs/content/cli.mdx tests/cli-args.test.mjs tests/remote-targets.test.mjs plans/README.md`
 > Plan 001 may change these docs and parser tests. Compare its final state with
 > the facts below. Ignore status-only edits to `plans/README.md`. Stop on any
 > other unexplained mismatch.
+> Also run `git status --short` and record all pre-existing worktree changes.
+> Preserve them throughout this plan.
 
 ## Status
 
@@ -19,7 +21,7 @@
 - **Risk**: LOW
 - **Depends on**: `plans/001-make-agent-and-cache-behavior-truthful.md`
 - **Category**: docs
-- **Planned at**: commit `8703ca8`, 2026-07-29
+- **Planned at**: commit `1234de6`, 2026-07-29
 
 ## Why this matters
 
@@ -27,7 +29,7 @@ Users can choose five review targets, but the docs do not put their Git
 semantics side by side. “Compare with the default branch” can mean either a
 direct tip-to-tip diff or a merge-base diff, and users need to know whether
 staged, unstaged, or untracked files appear. This plan adds a target matrix and
-locks each row to runtime tests.
+runtime tests for each row.
 
 ## Current state
 
@@ -85,6 +87,7 @@ locks each row to runtime tests.
 | Install | `npm ci` | exit 0 |
 | Target tests | `node --test tests/cli-args.test.mjs tests/remote-targets.test.mjs` | all tests pass |
 | Docs | `npm run docs:check` | exit 0 |
+| Static audit | `npm run fallow:audit` | exit 0, no new findings |
 | Lint | `npm run lint` | exit 0 |
 | Full tests | `npm test` | exit 0, all tests pass |
 
@@ -109,8 +112,8 @@ locks each row to runtime tests.
 - Changing any target's Git behavior. If characterization tests disagree with
   this plan, stop and report a separate behavior bug.
 - Adding target aliases or exposing the internal `--checkout` flag.
-- Cache/storage prose beyond what the matrix needs; Plan 002 owns that detail.
-- Full option/reference work; Plan 007 owns it.
+- Cache/storage prose beyond what the matrix needs; Plan 002 covers that detail.
+- Full option/reference work; Plan 007 covers it.
 - Generated `dist/`, `docs/dist/`, and `docs/.blume/` files.
 
 ## Git workflow
@@ -172,7 +175,7 @@ Do not loosen accepted combinations.
 **Verify**:
 `node --test tests/cli-args.test.mjs tests/remote-targets.test.mjs` must pass.
 
-### Step 3: Add one canonical target matrix
+### Step 3: Add one target matrix
 
 Place a target matrix near the top of `docs/content/cli.mdx`, before the
 target-specific examples. Use these columns:
@@ -249,11 +252,12 @@ Both commands must exit 0.
 npm run lint
 npm test
 npm run docs:check
+npm run fallow:audit
 git status --short
 ```
 
-All checks must pass. Git status may list only in-scope files and the plan index
-status edit.
+All checks must pass. Compare Git status with the starting snapshot. This plan
+may add only in-scope files and the plan-index status edit.
 
 ## Test plan
 
@@ -278,8 +282,10 @@ status edit.
 - [ ] All invalid target pairs have parser tests.
 - [ ] The Introduction and README use short wording that agrees with the matrix.
 - [ ] No docs page exposes internal `--checkout`.
-- [ ] `npm run lint`, `npm test`, and `npm run docs:check` all exit 0.
-- [ ] `git status --short` lists no file outside the in-scope list.
+- [ ] `npm run lint`, `npm test`, `npm run docs:check`, and
+      `npm run fallow:audit` all exit 0.
+- [ ] Compared with the recorded starting status, this plan adds no change
+      outside the in-scope list.
 - [ ] The plan row in `plans/README.md` says `DONE`.
 
 ## STOP conditions
@@ -296,6 +302,8 @@ Stop and report back if:
   platform-specific source logic.
 - A focused or full check fails twice after a reasonable fix attempt.
 - The work requires a file outside the in-scope list.
+- Fallow reports a new issue that cannot be fixed within this plan. Do not edit
+  `.fallowrc.json` or `fallow-baselines/` to hide it.
 
 ## Maintenance notes
 

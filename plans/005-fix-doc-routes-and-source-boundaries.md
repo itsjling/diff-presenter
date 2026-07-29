@@ -7,10 +7,12 @@
 > `plans/README.md`, unless a reviewer told you that they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 8703ca8..HEAD -- README.md site/index.html docs/content/index.mdx docs/content/cli.mdx docs/content/agent-notes.mdx docs/content/data.mdx docs/content/development.mdx tests/rendered-html.test.mjs tests/docs-content.test.mjs plans/README.md`
+> `git diff --stat 1234de6..HEAD -- README.md site/index.html docs/content/index.mdx docs/content/cli.mdx docs/content/agent-notes.mdx docs/content/data.mdx docs/content/development.mdx tests/rendered-html.test.mjs tests/docs-content.test.mjs plans/README.md`
 > Plans 001-004 are expected to change several docs. Read their final text
 > before moving sections. Ignore status-only edits to `plans/README.md`. Stop
 > on any other unexplained mismatch.
+> Also run `git status --short` and record all pre-existing worktree changes.
+> Preserve them throughout this plan.
 
 ## Status
 
@@ -22,7 +24,7 @@
   `plans/003-make-doctor-honest-and-add-troubleshooting.md`,
   `plans/004-define-every-review-target.md`
 - **Category**: docs
-- **Planned at**: commit `8703ca8`, 2026-07-29
+- **Planned at**: commit `1234de6`, 2026-07-29
 
 ## Why this matters
 
@@ -48,20 +50,19 @@ routes and puts contributor commands in one Development page.
   Its published root is
   `https://itsjling.github.io/diffsplain/docs/`.
 
-- `site/index.html:291-298` links the full guide to
+- `site/index.html:294-301` links the full guide to
   `https://github.com/itsjling/diffsplain#run-it`. The README heading is
   `## Use` (`README.md:6`), so the target anchor is absent.
 - The landing-page header has a GitHub link but no docs link
   (`site/index.html:40-49`).
-- `README.md:84` links to the source directory with
-  `More guides are in [docs/](docs/).` A user who follows it on GitHub sees
-  files, not the built docs.
+- `README.md:84` sends “More guides” to the relative `docs/` source directory.
+  A user who follows it on GitHub sees files, not the built docs.
 - Product pages contain source-checkout commands:
   - `docs/content/cli.mdx:94-107`: `npm run diffsplain` and `npm run doctor`;
   - `docs/content/agent-notes.mdx:31-45`: `npm run summarize`;
   - `docs/content/data.mdx:15-19`, `41-50`, `58-72`, and `74-92`:
     `node scripts/build-diff-data.mjs` and demo maintenance commands.
-- `docs/content/development.mdx` already owns local app, checks, release, demo,
+- `docs/content/development.mdx` already contains local app, checks, release, demo,
   snapshot, and docs commands. It is the right home for source-only workflows.
 - `AGENTS.md:3-6` sets the boundary:
   - root README: command use and local development only;
@@ -72,6 +73,9 @@ routes and puts contributor commands in one Development page.
   that repo rule and the CI step at `.github/workflows/site.yml:33-36`.
 - `tests/rendered-html.test.mjs:94-117` already reads the landing HTML and checks
   its stable controls. Follow this pattern for route assertions.
+- Commit `1234de6` includes a landing-page headline/metadata rewrite. Preserve
+  that copy and edit only navigation, guide links, and the later prerequisite
+  line from Plan 006.
 
 ## Commands you will need
 
@@ -80,6 +84,7 @@ routes and puts contributor commands in one Development page.
 | Install | `npm ci` | exit 0 |
 | Content tests | `node --test tests/docs-content.test.mjs tests/rendered-html.test.mjs` | all tests pass |
 | Docs | `npm run docs:check` | exit 0 |
+| Static audit | `npm run fallow:audit` | exit 0, no new findings |
 | Lint | `npm run lint` | exit 0 |
 | Full tests | `npm test` | exit 0, all tests pass |
 
@@ -129,7 +134,7 @@ Add tests that assert:
 2. `site/index.html` contains:
    - a header docs link to the published docs root or its same-site relative
      form;
-   - a full-guide link to the published `/cli` route;
+   - a full-guide link to the published `/cli/` route;
    - no `#run-it` link.
 3. The user product pages (`index.mdx`, `cli.mdx`, `agent-notes.mdx`,
    `data.mdx`) contain no `npm run ...` or `node scripts/...` command.
@@ -139,7 +144,8 @@ Add tests that assert:
    - building/watching a snapshot;
    - rebuilding the demo;
    - running docs.
-5. README and Development both name `npm run docs:check` in their check lists.
+5. README and Development name `npm run lint`, `npm test`,
+   `npm run docs:check`, and `npm run fallow:audit` in their check lists.
 
 Use narrow regular expressions. Do not reject prose links to a source file when
 the page explains data shape; reject executable source commands.
@@ -159,7 +165,7 @@ In `site/index.html`:
   changing its layout classes;
 - point it to `/diffsplain/docs/` or `./docs/`;
 - change “Read the full guide” to the published CLI route
-  `/diffsplain/docs/cli` or `./docs/cli`;
+  `/diffsplain/docs/cli/` or `./docs/cli/`;
 - keep the GitHub link for source access.
 
 Prefer same-site relative links in the landing page so preview and production
@@ -237,18 +243,18 @@ npm run docs:check
 
 All commands must exit 0.
 
-### Step 4: Put the docs check in contributor instructions
+### Step 4: Put every required check in contributor instructions
 
-Add `npm run docs:check` to the existing check block in `README.md` and
-`docs/content/development.mdx`. State that contributors must run it after docs
-changes. Keep `npm run lint` and `npm test`.
+Add `npm run docs:check` and `npm run fallow:audit` to the existing check block
+in `README.md` and `docs/content/development.mdx`. State that contributors must
+run the docs check after docs changes. Keep `npm run lint` and `npm test`.
 
-Do not add a new package script; it already exists at `package.json:39`.
+Do not add a new package script; both already exist.
 
 **Verify**:
 
 ```sh
-rg -n "npm run lint|npm test|npm run docs:check" README.md docs/content/development.mdx
+rg -n "npm run lint|npm test|npm run docs:check|npm run fallow:audit" README.md docs/content/development.mdx
 node --test tests/docs-content.test.mjs
 ```
 
@@ -262,16 +268,17 @@ Both commands must exit 0.
 npm run lint
 npm test
 npm run docs:check
+npm run fallow:audit
 git status --short
 ```
 
-All checks must pass. Git status may list only in-scope files and the plan index
-status edit.
+All checks must pass. Compare Git status with the starting snapshot. This plan
+may add only in-scope files and the plan-index status edit.
 
 ## Test plan
 
 - Create `tests/docs-content.test.mjs` for published routes, audience
-  boundaries, source command ownership, and contributor checks.
+  boundaries, source command placement, and contributor checks.
 - Extend the existing landing HTML test with its docs routes.
 - Keep tests text-based and dependency-free.
 - Do not fetch the production site during tests; CI should validate checked-in
@@ -287,11 +294,13 @@ status edit.
 - [ ] README links to the published docs root.
 - [ ] Product user pages contain only commands that work through
       `npx diffsplain`.
-- [ ] Development owns every `npm run` and `node scripts/...` workflow.
-- [ ] README and Development both list `npm run docs:check`.
+- [ ] Development contains every `npm run` and `node scripts/...` workflow.
+- [ ] README and Development list lint, tests, docs check, and Fallow audit.
 - [ ] Automated tests guard the route and audience boundaries.
-- [ ] `npm run lint`, `npm test`, and `npm run docs:check` all exit 0.
-- [ ] `git status --short` lists no file outside the in-scope list.
+- [ ] `npm run lint`, `npm test`, `npm run docs:check`, and
+      `npm run fallow:audit` all exit 0.
+- [ ] Compared with the recorded starting status, this plan adds no change
+      outside the in-scope list.
 - [ ] The plan row in `plans/README.md` says `DONE`.
 
 ## STOP conditions
@@ -299,7 +308,7 @@ status edit.
 Stop and report back if:
 
 - The published docs base in `docs/blume.config.ts` changed or is not live.
-- Plans 002-004 left conflicting copies of a section and the right owner is not
+- Plans 002-004 left conflicting copies of a section and the right page is not
   clear.
 - A command shown on a user page has no public `npx diffsplain` equivalent and
   removing it would hide a required user workflow. Report that missing public
@@ -307,6 +316,8 @@ Stop and report back if:
 - Fixing routes requires a new deployment base or workflow change.
 - A focused or full check fails twice after a reasonable fix attempt.
 - The work requires a file outside the in-scope list.
+- Fallow reports a new issue that cannot be fixed within this plan. Do not edit
+  `.fallowrc.json` or `fallow-baselines/` to hide it.
 
 ## Maintenance notes
 
