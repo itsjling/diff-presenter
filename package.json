@@ -35,6 +35,7 @@
     "docs:check": "cd docs && blume check && blume validate",
     "docs:preview": "cd docs && blume preview",
     "present": "node scripts/present.mjs",
+    "release": "node scripts/release.mjs",
     "summarize": "node scripts/generate-summaries.mjs",
     "snapshot": "node scripts/build-diff-data.mjs",
     "watch:diff": "node scripts/build-diff-data.mjs --watch",

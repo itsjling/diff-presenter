@@ -26,6 +26,26 @@ npm test
 
 `npm test` builds the app and runs the Node test suite.
 
+## Publish a release
+
+Commit all release changes, then pass a version and any extra `npm version`
+options to the release script:
+
+```sh
+npm run release -- patch
+npm run release -- minor
+npm run release -- 1.0.0
+npm run release -- prerelease --preid beta
+```
+
+The script creates the npm version commit and tag, then publishes the public
+package. It stops when either command fails. It does not run the project
+checks. After a successful publish, push the commit and tag:
+
+```sh
+git push origin main --follow-tags
+```
+
 ## Refresh the demo
 
 `site/todo-demo.js` holds the ten sample files used by the landing page and the
