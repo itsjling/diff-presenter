@@ -28,6 +28,19 @@ npx diffsplain \
 The default batch size is 12 files. Smaller batches add the first notes to
 the open page sooner.
 
+## File limits and failed notes
+
+Diffsplain sends a file’s full patch when it is at most 180,000 bytes. For a
+larger patch, it sends the short patch excerpt shown in the page. If that
+excerpt still makes the file input larger than 2,000,000 bytes, Diffsplain
+rejects the file without starting an agent for it.
+
+A bad file note or a failed agent pass does not remove valid notes from other
+files. Diffsplain publishes each complete note, marks the run as failed, exits
+with an error, and lists each failed path and reason in `meta.failedFiles`.
+It ignores notes for paths outside the requested batch and reports those paths
+as failures.
+
 ## Run one note pass
 
 Generate or revise notes without starting the page:

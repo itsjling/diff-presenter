@@ -176,6 +176,22 @@ const completeChangeSummary = (value) =>
   completeText(value.why) &&
   completeList(value.highlights) &&
   completeList(value.risks);
+const failedFileRecords = (value) =>
+  Array.isArray(value)
+    ? value
+        .filter(
+          (item) =>
+            item &&
+            typeof item.path === 'string' &&
+            item.path.trim() &&
+            typeof item.reason === 'string' &&
+            item.reason.trim(),
+        )
+        .map((item) => ({
+          path: item.path.trim(),
+          reason: item.reason.trim(),
+        }))
+    : [];
 
 function fileSummary(path, value) {
   return {
@@ -931,8 +947,19 @@ function build() {
       : undefined;
   const summariesAreFresh = !generatedFor || generatedFor === reviewFingerprint;
   const sourceSummaries = summariesAreFresh ? summaryDoc : {};
+  const failedFiles = summariesAreFresh
+    ? failedFileRecords(summaryDoc.meta?.failedFiles)
+    : [];
+  const summaryErrors = summariesAreFresh
+    ? cleanList(summaryDoc.meta?.errors)
+    : [];
+  const failureByPath = new Map(
+    failedFiles.map((failure) => [failure.path, failure.reason]),
+  );
   const summariesAreComplete =
     summariesAreFresh &&
+    failedFiles.length === 0 &&
+    summaryErrors.length === 0 &&
     completeChangeSummary(sourceSummaries.change) &&
     filesWithoutSummaries.every((file) =>
       completeFileSummary(sourceSummaries.files?.[file.path]),
@@ -954,6 +981,9 @@ function build() {
     noteReady: Boolean(
       completeFileSummary(sourceSummaries.files?.[file.path]),
     ),
+    ...(failureByPath.has(file.path)
+      ? { noteFailure: failureByPath.get(file.path) }
+      : {}),
   }));
   const change = changeSummary(sourceSummaries.change, target.changeDefaults);
   const content = {
@@ -979,6 +1009,8 @@ function build() {
       status: noteStatus,
       completedFiles,
       totalFiles: filesWithoutSummaries.length,
+      ...(failedFiles.length ? { failedFiles } : {}),
+      ...(summaryErrors.length ? { errors: summaryErrors } : {}),
       ...(typeof summaryDoc.meta?.model === 'string'
         ? { model: summaryDoc.meta.model }
         : {}),
