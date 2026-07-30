@@ -74,5 +74,8 @@
     "typescript": "5.9.3",
     "vite": "8.1.5"
   },
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@pierre/diffs": "^1.2.12"
+  }
 }
