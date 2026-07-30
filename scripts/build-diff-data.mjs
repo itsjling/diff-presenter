@@ -387,6 +387,34 @@ function remoteDefaultBranch(remoteUrl) {
   return remoteDefaultBranchInfo(remoteUrl).name;
 }
 
+function remoteContainsCommits(remoteUrl, commits) {
+  let raw;
+  try {
+    raw = runRepo(['ls-remote', remoteUrl]);
+  } catch {
+    return false;
+  }
+  const tips = [
+    ...new Set(
+      raw
+        .split('\n')
+        .map((line) => line.trim().split(/\s+/, 1)[0])
+        .filter(Boolean),
+    ),
+  ];
+  return commits.every((commit) =>
+    tips.some((tip) => {
+      if (tip === commit) return true;
+      const result = spawnSync(
+        'git',
+        ['-C', repo, 'merge-base', '--is-ancestor', commit, tip],
+        { stdio: 'ignore' },
+      );
+      return result.status === 0;
+    }),
+  );
+}
+
 function localDefaultBranch(remote) {
   if (baseOption) return { name: baseOption };
 
@@ -535,6 +563,7 @@ function resolveBranchTarget() {
     remote,
     sourceRepositoryUrl: repository?.webUrl,
     baseRepositoryUrl: repository?.webUrl,
+    comparisonCommitsOnRemote: true,
     target: {
       kind: 'branch',
       remote: remote.name,
@@ -600,6 +629,7 @@ function resolvePullRequestTarget() {
         pr.url.replace(/\/pull\/\d+(?:\/.*)?$/, ''),
     baseRepositoryUrl:
       repository?.webUrl || pr.url.replace(/\/pull\/\d+(?:\/.*)?$/, ''),
+    comparisonCommitsOnRemote: true,
     target: {
       kind: 'pull-request',
       remote: remote.name,
@@ -646,6 +676,9 @@ function resolveCheckoutTarget() {
   const repository = githubRepository(remoteUrl);
   const headLabel = branch || currentHead;
   const hasCommittedChanges = mergeBaseOid !== currentHead;
+  const hasUncommittedChanges = Boolean(
+    tryRepo(['status', '--porcelain=v1', '-z']),
+  );
   const isDefaultBranchCheckout = branch === defaultBranch.name;
 
   return {
@@ -659,6 +692,12 @@ function resolveCheckoutTarget() {
     remote,
     sourceRepositoryUrl: repository?.webUrl,
     baseRepositoryUrl: repository?.webUrl,
+    comparisonCommitsOnRemote:
+      !hasUncommittedChanges &&
+      Boolean(
+        remote?.url &&
+          remoteContainsCommits(remote.url, [mergeBaseOid, currentHead]),
+      ),
     target: {
       kind: 'checkout',
       ...(remote ? { remote: remote.name } : {}),
@@ -712,6 +751,12 @@ function resolveLocalTarget() {
     baseRepositoryUrl: worktree
       ? undefined
       : githubRepository(remoteUrl)?.webUrl,
+    comparisonCommitsOnRemote:
+      !worktree &&
+      Boolean(
+        remoteUrl &&
+          remoteContainsCommits(remoteUrl, [resolvedBase, resolvedHead]),
+      ),
     target: worktree
       ? { kind: 'worktree', base: { ref: 'HEAD', oid: currentHead || null } }
       : {
@@ -812,6 +857,13 @@ function githubFileUrl(repositoryUrl, ref, path) {
   return `${repositoryUrl}/blob/${encodeURIComponent(ref)}/${filePath}`;
 }
 
+function githubComparisonUrl(repositoryUrl, base, head) {
+  if (!repositoryUrl || !base || !head || head === 'WORKTREE') {
+    return undefined;
+  }
+  return `${repositoryUrl}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`;
+}
+
 function build() {
   const localWorkspace =
     tryRepo(['rev-parse', '--is-inside-work-tree']) === 'true';
@@ -887,6 +939,13 @@ function build() {
       file.status === 'deleted' ? target.base : target.head,
       file.path,
     );
+    const comparisonUrl = githubComparisonUrl(
+      target.comparisonCommitsOnRemote
+        ? target.sourceRepositoryUrl
+        : undefined,
+      target.base,
+      target.head,
+    );
     return {
       path: file.path,
       ...(file.oldPath ? { oldPath: file.oldPath } : {}),
@@ -899,6 +958,7 @@ function build() {
       patch: textPatch,
       snippet: binary ? '' : compactSnippet(textPatch),
       ...(sourceUrl ? { sourceUrl } : {}),
+      ...(comparisonUrl ? { comparisonUrl } : {}),
     };
   });
 

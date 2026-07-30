@@ -23,9 +23,38 @@ function run(repo, args, options = {}) {
   );
 }
 
+async function proxyRemote(fixture, remoteUrl) {
+  const bin = join(fixture.root, "git-proxy");
+  const proxy = join(bin, "git");
+  await mkdir(bin);
+  await writeFile(
+    proxy,
+    `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2).map((arg) =>
+  arg === ${JSON.stringify(remoteUrl)}
+    ? ${JSON.stringify(fixture.remote)}
+    : arg
+);
+const result = spawnSync("git", args, {
+  env: { ...process.env, PATH: process.env.DIFFSPLAIN_REAL_PATH },
+  stdio: "inherit",
+});
+process.exit(result.status ?? 1);
+`,
+  );
+  await chmod(proxy, 0o755);
+  return {
+    ...process.env,
+    DIFFSPLAIN_REAL_PATH: process.env.PATH,
+    PATH: `${bin}:${process.env.PATH}`,
+  };
+}
+
 async function makeRemoteRepo() {
   const root = await mkdtemp(join(tmpdir(), "diffsplain-remote-"));
-  const remote = join(root, "origin.git");
+  await mkdir(join(root, "example"));
+  const remote = join(root, "example", "diffsplain.git");
   const repo = join(root, "checkout");
   execFileSync("git", ["init", "--bare", "-q", remote]);
   execFileSync("git", ["clone", "-q", remote, repo]);
@@ -141,8 +170,17 @@ test("names worktree-only checkout changes without comparing a branch to itself"
 
   try {
     await writeFile(join(fixture.repo, "working.txt"), "working tree work\n");
+    const githubRemote = "https://github.com/example/diffsplain.git";
+    const env = await proxyRemote(fixture, githubRemote);
+    git(
+      fixture.repo,
+      "remote",
+      "set-url",
+      "origin",
+      githubRemote,
+    );
 
-    run(fixture.repo, ["--checkout", "--output", output]);
+    run(fixture.repo, ["--checkout", "--output", output], { env });
     const payload = JSON.parse(await readFile(output, "utf8"));
 
     assert.equal(payload.repo.base, payload.repo.head);
@@ -152,15 +190,34 @@ test("names worktree-only checkout changes without comparing a branch to itself"
       payload.change.summary,
       "Shows staged, unstaged, and untracked changes in the current checkout.",
     );
+    assert.ok(
+      payload.files.every((file) => file.comparisonUrl === undefined),
+      "uncommitted work must not link to a commit-only comparison",
+    );
 
     git(fixture.repo, "add", "working.txt");
     git(fixture.repo, "commit", "-qm", "local main work");
 
-    run(fixture.repo, ["--checkout", "--output", output]);
+    run(fixture.repo, ["--checkout", "--output", output], { env });
     const committed = JSON.parse(await readFile(output, "utf8"));
 
     assert.notEqual(committed.repo.base, committed.repo.head);
     assert.equal(committed.change.title, "Local changes on main");
+    assert.ok(
+      committed.files.every((file) => file.comparisonUrl === undefined),
+      "local-only commits must not link to a remote comparison",
+    );
+
+    git(fixture.repo, "remote", "set-url", "origin", fixture.remote);
+    git(fixture.repo, "push", "-q", "origin", "HEAD:refs/heads/local-main");
+    git(fixture.repo, "remote", "set-url", "origin", githubRemote);
+    run(fixture.repo, ["--checkout", "--output", output], { env });
+    const pushed = JSON.parse(await readFile(output, "utf8"));
+
+    assert.match(
+      pushed.files[0].comparisonUrl,
+      /^https:\/\/github\.com\/example\/diffsplain\/compare\//,
+    );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -194,6 +251,128 @@ test("builds a remote repo target without a local checkout", async () => {
     assert.deepEqual(payload.files.map((file) => file.path), ["feature.txt"]);
     assert.equal(payload.repo.root, fixture.remote);
     assert.equal(payload.repo.baseBranch, "main");
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("renders uncommon range entries with the right content and GitHub links", async () => {
+  const fixture = await makeRemoteRepo();
+  const output = join(fixture.root, "uncommon-range.json");
+
+  try {
+    await writeFile(join(fixture.repo, "deleted.txt"), "remove me\n");
+    await writeFile(join(fixture.repo, "moved-from.txt"), "move me\n");
+    await writeFile(join(fixture.repo, "changed.bin"), Buffer.from([0, 1]));
+    await writeFile(
+      join(fixture.repo, "long.txt"),
+      Array.from({ length: 240 }, (_, index) => `before ${index}\n`).join(""),
+    );
+    git(fixture.repo, "add", ".");
+    git(fixture.repo, "commit", "-qm", "uncommon base");
+    const base = git(fixture.repo, "rev-parse", "HEAD");
+
+    await writeFile(join(fixture.repo, "changed.bin"), Buffer.from([0, 2]));
+    await writeFile(join(fixture.repo, "added.bin"), Buffer.from([0, 4]));
+    await rm(join(fixture.repo, "deleted.txt"));
+    git(fixture.repo, "mv", "moved-from.txt", "moved-to.txt");
+    await writeFile(
+      join(fixture.repo, "long.txt"),
+      Array.from({ length: 240 }, (_, index) => `after ${index}\n`).join(""),
+    );
+    git(fixture.repo, "add", ".");
+    git(fixture.repo, "commit", "-qm", "uncommon changes");
+    const head = git(fixture.repo, "rev-parse", "HEAD");
+    const githubRemote = "https://github.com/example/diffsplain.git";
+    const env = await proxyRemote(fixture, githubRemote);
+    git(fixture.repo, "remote", "set-url", "origin", githubRemote);
+    const beforeLocalOnly = checkoutState(fixture.repo);
+
+    run(
+      fixture.repo,
+      ["--base", base, "--head", head, "--output", output],
+      { env },
+    );
+    const localOnly = JSON.parse(await readFile(output, "utf8"));
+
+    assert.ok(
+      localOnly.files.every((file) => file.comparisonUrl === undefined),
+      "local-only ranges must not link to a remote comparison",
+    );
+    assert.deepEqual(checkoutState(fixture.repo), beforeLocalOnly);
+
+    git(fixture.repo, "remote", "set-url", "origin", fixture.remote);
+    git(fixture.repo, "push", "-q", "origin", "HEAD:refs/heads/uncommon");
+    git(fixture.repo, "remote", "set-url", "origin", githubRemote);
+    const before = checkoutState(fixture.repo);
+
+    run(
+      fixture.repo,
+      ["--base", base, "--head", head, "--output", output],
+      { env },
+    );
+    const payload = JSON.parse(await readFile(output, "utf8"));
+    const files = Object.fromEntries(payload.files.map((file) => [file.path, file]));
+    const source = (ref, path) =>
+      `https://github.com/example/diffsplain/blob/${ref}/${path}`;
+    const comparison = `https://github.com/example/diffsplain/compare/${base}...${head}`;
+
+    assert.deepEqual(
+      payload.files.map((file) => file.path),
+      ["added.bin", "changed.bin", "deleted.txt", "long.txt", "moved-to.txt"],
+    );
+    assert.equal(files["added.bin"].status, "binary");
+    assert.equal(files["added.bin"].isBinary, true);
+    assert.equal(files["added.bin"].patch, "");
+    assert.equal(files["added.bin"].sourceUrl, source(head, "added.bin"));
+    assert.equal(files["added.bin"].comparisonUrl, comparison);
+    assert.equal(files["changed.bin"].status, "binary");
+    assert.equal(files["changed.bin"].isBinary, true);
+    assert.equal(files["changed.bin"].patch, "");
+    assert.equal(files["changed.bin"].sourceUrl, source(head, "changed.bin"));
+    assert.equal(files["changed.bin"].comparisonUrl, comparison);
+    assert.equal(files["deleted.txt"].status, "deleted");
+    assert.equal(files["deleted.txt"].isBinary, false);
+    assert.match(files["deleted.txt"].patch, /-remove me/);
+    assert.equal(files["deleted.txt"].sourceUrl, source(base, "deleted.txt"));
+    assert.equal(files["deleted.txt"].comparisonUrl, comparison);
+    assert.equal(files["moved-to.txt"].status, "renamed");
+    assert.equal(files["moved-to.txt"].oldPath, "moved-from.txt");
+    assert.match(files["moved-to.txt"].patch, /similarity index 100%/);
+    assert.equal(files["moved-to.txt"].sourceUrl, source(head, "moved-to.txt"));
+    assert.equal(files["moved-to.txt"].comparisonUrl, comparison);
+    assert.equal(files["long.txt"].status, "modified");
+    assert.equal(files["long.txt"].isBinary, false);
+    assert.equal(files["long.txt"].isTruncated, true);
+    assert.ok(files["long.txt"].snippet.split("\n").length <= 180);
+    assert.match(files["long.txt"].snippet, /^@@ /m);
+    assert.equal(files["long.txt"].sourceUrl, source(head, "long.txt"));
+    assert.equal(files["long.txt"].comparisonUrl, comparison);
+    assert.deepEqual(checkoutState(fixture.repo), before);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("keeps links out of worktree entries and leaves the checkout untouched", async () => {
+  const fixture = await makeRemoteRepo();
+  const output = join(fixture.root, "uncommon-worktree.json");
+
+  try {
+    await writeFile(join(fixture.repo, "worktree.bin"), Buffer.from([0, 1]));
+    const before = checkoutState(fixture.repo);
+
+    run(fixture.repo, ["--worktree", "--output", output]);
+    const payload = JSON.parse(await readFile(output, "utf8"));
+    const [file] = payload.files;
+
+    assert.equal(file.path, "worktree.bin");
+    assert.equal(file.status, "binary");
+    assert.equal(file.isBinary, true);
+    assert.equal(file.patch, "");
+    assert.equal(file.sourceUrl, undefined);
+    assert.equal(file.comparisonUrl, undefined);
+    assert.deepEqual(checkoutState(fixture.repo), before);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
