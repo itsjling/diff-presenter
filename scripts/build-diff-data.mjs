@@ -79,6 +79,7 @@ const cacheRoot = cacheOption
   : resolve(projectRoot, '.cache/git');
 const remoteMode = Boolean(prOption || branchOption);
 const watching = has('--watch');
+const watchContent = has('--watch-content');
 const ignoreSummaryWatch = has('--ignore-summary-watch');
 
 if (prOption && branchOption) fail('--pr and --branch cannot be used together');
@@ -1053,7 +1054,7 @@ if (watching && started) {
     const next = fingerprint();
     remoteWait += 2_000;
     const remoteDue = remoteMode && remoteWait >= 30_000;
-    if (next !== last || remoteDue) {
+    if (next !== last || remoteDue || watchContent) {
       last = next;
       remoteWait = 0;
       refresh();

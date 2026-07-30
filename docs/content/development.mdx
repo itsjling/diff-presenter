@@ -20,6 +20,30 @@ or remote Git request. Vite refreshes the page as you edit the app or fixture.
 
 `npm run dev` starts the same local Vite server.
 
+## Develop live reviews
+
+Run a local worktree review through the app without building production files:
+
+```sh
+npm run dev:live -- --repo /path/to/repo
+```
+
+The command starts the Git watcher, live JSON route, event stream, and Vite.
+It picks the next free port when `2299` is busy and prints the ready URL. Stop
+it with Ctrl-C; it stops its child processes and removes its temporary data.
+
+Use a deterministic local agent sequence when you do not need Git, agent
+credentials, or network access:
+
+```sh
+npm run dev:mock
+```
+
+The mock starts with delayed note generation, reports file progress, fails,
+retries, then completes. It reads `public/demo-diff-data.json`; pass
+`--fixture PATH` to use another local JSON fixture. Vite updates source edits,
+and fixture changes update the browser through the event stream.
+
 ## Run checks
 
 ```sh

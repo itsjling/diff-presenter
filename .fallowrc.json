@@ -4,6 +4,8 @@
     "benchmarks/*.mjs",
     "docs/blume.config.ts",
     "docs/content/**/*.mdx",
+    "scripts/dev.mjs",
+    "scripts/mock-agent.mjs",
     "scripts/write-todo-demo.mjs"
   ],
   // These imports assert that generated and removed files stay absent.

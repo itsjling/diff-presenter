@@ -30,8 +30,10 @@
     "scripts/build-diff-data.mjs",
     "scripts/cli-args.mjs",
     "scripts/coding-agents.mjs",
+    "scripts/dev.mjs",
     "scripts/doctor.mjs",
     "scripts/generate-summaries.mjs",
+    "scripts/mock-agent.mjs",
     "scripts/present.mjs",
     "scripts/serve-built.mjs",
     "scripts/summary-path.mjs"
@@ -42,6 +44,8 @@
   "scripts": {
     "demo": "vite --port 2299",
     "dev": "vite --port 2299",
+    "dev:live": "node scripts/dev.mjs live",
+    "dev:mock": "node scripts/dev.mjs mock",
     "docs:dev": "cd docs && blume dev",
     "docs:build": "cd docs && blume build",
     "docs:check": "cd docs && blume check && blume validate",
