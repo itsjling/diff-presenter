@@ -310,6 +310,7 @@ function scheduleAgent(fingerprint) {
     selectedFingerprint === state.fingerprint
   ) {
     agentFingerprint = selectedFingerprint;
+    console.log('Reusing current agent notes.');
     return;
   }
   if (!selectedFingerprint || selectedFingerprint === agentFingerprint) return;

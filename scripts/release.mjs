@@ -5,10 +5,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+export function npmCommand(platform = process.platform) {
+  return platform === 'win32' ? 'npm.cmd' : 'npm';
+}
 
 function runNpm(args) {
-  const result = spawnSync(npm, args, {
+  const result = spawnSync(npmCommand(), args, {
     cwd: root,
     stdio: 'inherit',
   });

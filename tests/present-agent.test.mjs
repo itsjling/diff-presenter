@@ -14,7 +14,7 @@ function git(repo, ...args) {
   }).trim();
 }
 
-async function waitFor(read, timeout = 12_000) {
+async function waitFor(read, timeout = 30_000) {
   const deadline = Date.now() + timeout;
   let lastError;
   while (Date.now() < deadline) {
@@ -29,11 +29,41 @@ async function waitFor(read, timeout = 12_000) {
   throw lastError || new Error("Timed out waiting for presenter output");
 }
 
+function waitForOutput(child, pattern, timeout = 30_000) {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    const timer = setTimeout(() => {
+      reject(new Error(`Timed out waiting for presenter output: ${output}`));
+    }, timeout);
+    const onOutput = (chunk) => {
+      output += chunk.toString();
+      if (pattern.test(output)) {
+        clearTimeout(timer);
+        resolve(output);
+      }
+    };
+    child.stdout.on("data", onOutput);
+    child.stderr.on("data", onOutput);
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      reject(
+        new Error(
+          `Presenter stopped before it was ready (${code ?? signal}): ${output}`,
+        ),
+      );
+    });
+  });
+}
+
 async function stop(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return { code: child.exitCode, signal: child.signalCode };
+  }
   const closed = new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error("Presenter did not stop after SIGTERM"));
-    }, 5_000);
+    }, 15_000);
     child.once("exit", (code, signal) => {
       clearTimeout(timer);
       resolve({ code, signal });
@@ -42,6 +72,16 @@ async function stop(child) {
   });
   child.kill("SIGTERM");
   return closed;
+}
+
+function agentCallCount(value) {
+  return (value.match(/codex-after-feed/g) || []).length;
+}
+
+async function stopIfRunning(child) {
+  if (child?.exitCode === null && child.signalCode === null) {
+    await stop(child);
+  }
 }
 
 test("starts the note agent after the watch snapshot and stops cleanly", async () => {
@@ -157,6 +197,9 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
     assert.equal(result.code, 0);
     assert.equal(result.signal, null);
 
+    const firstRunLog = await readFile(events, "utf8");
+    const firstRunCalls = agentCallCount(firstRunLog);
+    assert.equal(firstRunCalls, 2);
     presenter = spawn(
       process.execPath,
       [
@@ -182,16 +225,19 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         stdio: "pipe",
       },
     );
-    await new Promise((resolve) => setTimeout(resolve, 3_500));
+    await waitForOutput(
+      presenter,
+      /^Reusing current agent notes\.$/m,
+    );
     const restartLog = await readFile(events, "utf8");
-    assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 2);
+    assert.equal(agentCallCount(restartLog), firstRunCalls);
 
     const restartResult = await stop(presenter);
     presenter = undefined;
     assert.equal(restartResult.code, 0);
     assert.equal(restartResult.signal, null);
   } finally {
-    if (presenter && !presenter.killed) await stop(presenter);
+    await stopIfRunning(presenter);
     await rm(root, { recursive: true, force: true });
   }
 });

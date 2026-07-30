@@ -46,15 +46,46 @@ and fixture changes update the browser through the event stream.
 
 ## Run checks
 
+Run one lane for quick feedback:
+
 ```sh
 npm run lint
 npm run test:browser:install
+npm run test:unit
+npm run test:integration
+npm run test:browser
+```
+
+Run the full test gate before you send a change:
+
+```sh
 npm test
 ```
 
-Install Chromium once after `npm ci`, and again when Playwright changes.
-`npm test` builds the app, runs the Node tests, then runs the desktop and
-mobile browser checks without downloading a browser.
+The lanes have clear bounds:
+
+| Command | What it checks |
+| --- | --- |
+| `npm run test:unit` | Fast parser, provider, doctor, release, and path checks. It does not build the app. |
+| `npm run test:integration` | The production build plus local Git, agent note, presenter, and server checks. |
+| `npm run test:browser` | The review journey in a real Chromium browser. It does not download a browser. |
+| `npm run test:coverage` | Per-file coverage for the CLI parser, target builder, agent note writer, and presenter. |
+| `npm test` | Unit, integration, coverage, and browser lanes in order. |
+
+Install Chromium once after `npm ci`, and again when Playwright changes. The
+pull request browser job installs Chromium before it runs the browser lane.
+
+The coverage lane writes text, JSON summary, and LCOV reports under
+`coverage/`. Each covered file must keep at least 80% statement and line
+coverage, 60% branch coverage, and 90% function coverage. The per-file check
+applies the floor to each path, not just the total.
+
+The pull request jobs run each main lane from a clean checkout on Ubuntu with
+local Git repos, fake coding agents, and checked-in browser data. They need no
+agent account or remote repo. A weekly workflow also runs
+`npm run test:platform` on macOS 15 and Windows 2025. That lane checks shell
+command lookup and the npm launcher with local fake tools. You can also start
+the **Test lanes** workflow by hand.
 
 ## Publish a release
 
