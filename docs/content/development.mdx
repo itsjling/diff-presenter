@@ -43,23 +43,32 @@ and `corepack npm test` builds the app and runs the Node test suite.
 
 ## Publish a release
 
-Commit all release changes, then pass a version and any extra `npm version`
-options to the release script:
+Publish from the protected **npm-publish** GitHub environment. It runs the
+product gate before versioning, verifies the exact tarball in a temporary
+consumer, then uses npm trusted publishing and provenance. Start the
+**Publish verified package** workflow on `main` with a version argument such
+as `patch`, `minor`, or `1.0.0`.
+
+Configure npmjs.com for trusted publishing from `itsjling/diffsplain`,
+workflow file `release.yml`, and environment `npm-publish`. In GitHub, require
+approval for that environment and protect `main` and release tags. Do not add
+an npm token to this repo or to the workflow.
+
+The workflow output names the tested commit, version, and registry result. If
+publication succeeds but pushing fails, inspect the release commit and tag,
+then push them without publishing again. If a check fails, fix it and restart
+the workflow before versioning.
 
 ```sh
-npm run release -- patch
-npm run release -- minor
-npm run release -- 1.0.0
-npm run release -- prerelease --preid beta
+corepack npm run package:verify
 ```
 
-The script creates the npm version commit and tag, then publishes the public
-package. It stops when either command fails. It does not run the project
-checks. After a successful publish, push the commit and tag:
-
-```sh
-git push origin main --follow-tags
-```
+This local command checks the built tarball without publishing it. The
+production audit has no findings. The full audit has 12 high and 5 low findings
+below the Blume docs tool.
+`npm audit fix --package-lock-only --dry-run` makes no change. We accept this
+limited risk while docs builds use only committed docs and do not handle user
+content.
 
 ## Refresh the demo
 

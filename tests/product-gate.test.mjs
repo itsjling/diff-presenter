@@ -36,3 +36,18 @@ for (const stage of ['test', 'lint', 'docs', 'build', 'package']) {
     assert.match(result.stderr, /Check stopped: .* failed: proof failure/);
   });
 }
+
+test('builds fresh assets before standalone package verification', () => {
+  const result = spawnSync(process.execPath, [check, '--package-only'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      DIFFSPLAIN_CHECK_PROOF_MODE: '1',
+      DIFFSPLAIN_CHECK_PROOF_FAIL_STAGE: 'build',
+    },
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Production app build failed: proof failure/);
+});

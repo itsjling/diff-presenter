@@ -1,7 +1,15 @@
 import { execFile, spawn } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  copyFile,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -44,6 +52,56 @@ const executeStage = proofMode
       if (proofFailure === id) throw new Error('proof failure');
     }
   : (_id, run) => run();
+const packageOnly = process.argv.includes('--package-only');
+const releaseTarballIndex = process.argv.indexOf('--release-tarball');
+const releaseTarball =
+  releaseTarballIndex === -1
+    ? undefined
+    : resolve(root, process.argv[releaseTarballIndex + 1]);
+const requiredPackageFiles = [
+  'README.md',
+  'package.json',
+  'dist/index.html',
+  'scripts/build-diff-data.mjs',
+  'scripts/cli-args.mjs',
+  'scripts/coding-agents.mjs',
+  'scripts/doctor.mjs',
+  'scripts/generate-summaries.mjs',
+  'scripts/present.mjs',
+  'scripts/serve-built.mjs',
+  'scripts/summary-path.mjs',
+];
+const allowedPackageFile = /^(README(?:\.md)?|LICENSE(?:\.md)?|NOTICE(?:\.md)?|package\.json|dist\/.+|scripts\/(?:build-diff-data|cli-args|coding-agents|doctor|generate-summaries|present|serve-built|summary-path)\.mjs)$/;
+const privatePackageFile = /(^|\/)(?:\.env|\.npmrc|\.git|\.github|\.agents|\.codex)(?:\/|$)|\.(?:pem|key)$/i;
+
+export function validatePackageManifest(pack) {
+  const files = pack.files ?? [];
+  const paths = new Set(files.map((file) => file.path));
+  const missing = requiredPackageFiles.filter((path) => !paths.has(path));
+  const unexpected = files.filter((file) => !allowedPackageFile.test(file.path));
+  const privateFiles = files.filter((file) => privatePackageFile.test(file.path));
+  const oversizedPackage = pack.unpackedSize > 12_000_000;
+  const oversizedFile = files.some((file) => file.size > 1_000_000);
+  const problems = [
+    { present: missing.length > 0, text: `missing ${missing.join(', ')}` },
+    {
+      present: unexpected.length > 0,
+      text: `unexpected ${unexpected.map((file) => file.path).join(', ')}`,
+    },
+    {
+      present: privateFiles.length > 0,
+      text: `private ${privateFiles.map((file) => file.path).join(', ')}`,
+    },
+    { present: oversizedPackage, text: 'package exceeds 12 MB' },
+    { present: oversizedFile, text: 'file exceeds 1 MB' },
+  ]
+    .filter((problem) => problem.present)
+    .map((problem) => problem.text);
+
+  if (problems.length) {
+    throw new Error(`Package manifest failed: ${problems.join('; ')}`);
+  }
+}
 
 async function runStage(id, name, run) {
   console.log(`\n==> ${name}`);
@@ -57,6 +115,67 @@ async function runStage(id, name, run) {
   console.log(`✓ ${name}`);
 }
 
+async function makeSmokeCommandFixtures(consumerRoot) {
+  const bin = join(consumerRoot, 'bin');
+  const windows = process.platform === 'win32';
+  const extension = windows ? '.cmd' : '';
+  const contents = windows
+    ? '@echo off\r\necho test version\r\n'
+    : '#!/bin/sh\nprintf "%s\\n" "test version"\n';
+  await mkdir(bin);
+  for (const command of ['git', 'gh', 'codex']) {
+    const path = join(bin, `${command}${extension}`);
+    await writeFile(path, contents);
+    await chmod(path, 0o755);
+  }
+  return bin;
+}
+
+async function makeSmokeRuntimeFixture(consumerRoot) {
+  const fixture = join(consumerRoot, 'fixture');
+  await mkdir(fixture);
+  await execFileAsync('git', ['init', '-q'], { cwd: fixture });
+  await execFileAsync('git', ['config', 'user.email', 'release@example.test'], {
+    cwd: fixture,
+  });
+  await execFileAsync('git', ['config', 'user.name', 'Release test'], {
+    cwd: fixture,
+  });
+  await writeFile(join(fixture, 'changed.txt'), 'before\n');
+  await execFileAsync('git', ['add', 'changed.txt'], { cwd: fixture });
+  await execFileAsync('git', ['commit', '-qm', 'base'], { cwd: fixture });
+  await writeFile(join(fixture, 'changed.txt'), 'after\n');
+  const runtimeOutput = join(consumerRoot, 'runtime.json');
+  await execFileAsync(
+    process.execPath,
+    [
+      resolve(
+        consumerRoot,
+        'node_modules/diffsplain/scripts/build-diff-data.mjs',
+      ),
+      '--repo',
+      fixture,
+      '--output',
+      runtimeOutput,
+    ],
+    { cwd: consumerRoot },
+  );
+  return JSON.parse(await readFile(runtimeOutput, 'utf8'));
+}
+
+function verifySmokeResults({ packageJson, version, help, doctor, runtime }) {
+  const checks = [
+    packageJson.name === 'diffsplain',
+    version.stdout.includes(packageJson.version),
+    help.stdout.includes('Usage:'),
+    doctor.stdout.includes('Diffsplain doctor'),
+    runtime.files?.[0]?.path === 'changed.txt',
+  ];
+  if (checks.includes(false)) {
+    throw new Error('packed package has the wrong name');
+  }
+}
+
 async function smokeTestPackage() {
   const packageRoot = await mkdtemp(join(tmpdir(), 'diffsplain-package-'));
   const consumerRoot = join(packageRoot, 'consumer');
@@ -68,6 +187,11 @@ async function smokeTestPackage() {
     );
     const [pack] = JSON.parse(stdout);
     const tarball = join(packageRoot, pack.filename);
+    validatePackageManifest(pack);
+    if (releaseTarball) {
+      await mkdir(dirname(releaseTarball), { recursive: true });
+      await copyFile(tarball, releaseTarball);
+    }
 
     await mkdir(consumerRoot);
     await writeFile(
@@ -87,13 +211,20 @@ async function smokeTestPackage() {
       'node_modules/diffsplain',
       packageJson.bin.diffsplain,
     );
-    await execFileAsync(process.execPath, [executable, '--version'], {
+    const version = await execFileAsync(process.execPath, [executable, '--version'], {
+      cwd: consumerRoot,
+    });
+    const help = await execFileAsync(process.execPath, [executable, '--help'], {
       cwd: consumerRoot,
     });
 
-    if (packageJson.name !== 'diffsplain') {
-      throw new Error('packed package has the wrong name');
-    }
+    const bin = await makeSmokeCommandFixtures(consumerRoot);
+    const doctor = await execFileAsync(process.execPath, [executable, 'doctor'], {
+      cwd: consumerRoot,
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}` },
+    });
+    const runtime = await makeSmokeRuntimeFixture(consumerRoot);
+    verifySmokeResults({ packageJson, version, help, doctor, runtime });
   } finally {
     await rm(packageRoot, { force: true, recursive: true });
   }
@@ -107,12 +238,21 @@ const stages = [
   ['docs', 'Production docs build', () => runNpm(['run', 'docs:build'])],
 ];
 
-try {
-  for (const [id, name, run] of stages) {
+export async function runCheck() {
+  const selectedStages = packageOnly
+    ? stages.filter(([id]) => id === 'build')
+    : stages;
+  for (const [id, name, run] of selectedStages) {
     await runStage(id, name, run);
   }
   await runStage('package', 'Packed-package smoke test', smokeTestPackage);
-} catch (error) {
-  console.error(`\nCheck stopped: ${error.message}`);
-  process.exitCode = 1;
+}
+
+if (resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    await runCheck();
+  } catch (error) {
+    console.error(`\nCheck stopped: ${error.message}`);
+    process.exitCode = 1;
+  }
 }
