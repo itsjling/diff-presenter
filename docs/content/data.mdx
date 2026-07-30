@@ -34,6 +34,12 @@ Each file records its path, status, line counts, full unified patch, short
 snippet, binary state, and agent note. The writer gives each snapshot a content
 hash and replaces the file only when its contents change.
 
+An opt-in failed-run support record is separate from this snapshot. It keeps
+only fixed version fields, numeric timings and byte counts, a run ID, and the
+exit state. It does not copy snapshot fields, patches, notes, paths, raw agent
+output, credentials, or environment values. See
+[failed run support records](/agent-notes#failed-run-support-records).
+
 `repo.base` and `repo.head` hold the exact commits used for the diff.
 `repo.target` records the target kind, remote refs, remote tips, and merge
 base.

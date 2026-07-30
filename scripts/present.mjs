@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -21,6 +22,12 @@ import {
 } from './coding-agents.mjs';
 import { doctorReport } from './doctor.mjs';
 import { cacheStatus, clearCache, formatCacheStatus, pruneCache } from './cache.mjs';
+import {
+  createSupportRecorder,
+  formatSupportRecord,
+  safeCommandVersion,
+  writeSupportRecord,
+} from './support-record.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callerDirectory = process.cwd();
@@ -104,11 +111,61 @@ if (cli.doctor) {
   process.exit(report.ready ? 0 : 1);
 }
 
+let supportRecorder;
+let supportRecordEmitted = false;
+
+function wantsSupportRecord() {
+  return cli.supportRecord || Boolean(cli.supportRecordFile);
+}
+
+function selectedProviderVersion(provider, binary) {
+  if (!binary) return null;
+  return safeCommandVersion(provider, binary);
+}
+
+function beginSupportRecord() {
+  if (supportRecorder) return;
+  if (!wantsSupportRecord()) return;
+  supportRecorder = createSupportRecorder();
+}
+
+function recordSelectedProvider(provider, binary) {
+  supportRecorder?.setProvider(
+    provider,
+    selectedProviderVersion(provider, binary),
+  );
+}
+
+function deliverSupportRecord(record) {
+  if (cli.supportRecordFile) {
+    writeSupportRecord(cli.supportRecordFile, record);
+    console.error(`Wrote support record to ${cli.supportRecordFile}`);
+    return;
+  }
+  process.stderr.write(
+    `Diffsplain support record:\n${formatSupportRecord(record)}`,
+  );
+}
+
+function emitSupportRecord(code = 1) {
+  if (!supportRecorder) return;
+  if (supportRecordEmitted) return;
+  supportRecordEmitted = true;
+  const record = supportRecorder.failure(code);
+  try {
+    deliverSupportRecord(record);
+  } catch {
+    console.error('Could not write the support record.');
+  }
+}
+
 const { agentEnabled, port } = cli;
 const feedArgs = [...cli.feedArgs];
 const agentArgs = [...cli.agentArgs];
 let selectedAgent;
+beginSupportRecord();
 if (agentEnabled) {
+  const selectionStarted = performance.now();
   try {
     selectedAgent = await selectCodingAgent(
       cli.agent,
@@ -118,9 +175,24 @@ if (agentEnabled) {
         ),
     );
     assertReasoningSupported(selectedAgent, cli.reasoning);
+    const agentBinary = codingAgentBinary(selectedAgent, {
+      codexBin: cli.codexBin,
+    });
+    recordSelectedProvider(selectedAgent, agentBinary);
+    supportRecorder?.addStage(
+      'agent',
+      performance.now() - selectionStarted,
+    );
     agentArgs.push('--agent', selectedAgent);
   } catch (error) {
+    recordSelectedProvider(cli.agent || 'unknown');
+    supportRecorder?.addStage(
+      'agent',
+      performance.now() - selectionStarted,
+      'failed',
+    );
     console.error(error.message);
+    emitSupportRecord();
     process.exit(1);
   }
 } else {
@@ -160,6 +232,8 @@ if (agentEnabled) {
   agentArgs.push('--snapshot', outputPath);
 }
 
+const snapshotStarted = performance.now();
+let snapshotReady = false;
 const builtPage = resolve(root, 'dist/index.html');
 if (!existsSync(builtPage)) {
   const result = spawnSync(
@@ -168,10 +242,24 @@ if (!existsSync(builtPage)) {
     { cwd: root, stdio: 'inherit' },
   );
   if (result.error) {
+    supportRecorder?.addStage(
+      'snapshot',
+      performance.now() - snapshotStarted,
+      'failed',
+    );
     console.error(`Could not build the local page: ${result.error.message}`);
+    emitSupportRecord();
     process.exit(1);
   }
-  if (result.status !== 0) process.exit(result.status || 1);
+  if (result.status !== 0) {
+    supportRecorder?.addStage(
+      'snapshot',
+      performance.now() - snapshotStarted,
+      'failed',
+    );
+    emitSupportRecord(result.status || 1);
+    process.exit(result.status || 1);
+  }
 }
 
 const feed = spawn(
@@ -190,6 +278,8 @@ let agentFingerprint;
 let queuedFingerprint;
 let browserOpened = false;
 let browserOpenTimer;
+let siteReady = false;
+let siteStarted;
 
 function openBrowser(url) {
   let command;
@@ -218,8 +308,38 @@ function openBrowser(url) {
   opener.unref();
 }
 
+function handleConnectedTab(line) {
+  if (line !== 'Diffsplain tab: connected') return false;
+  if (!browserOpened && browserOpenTimer) {
+    clearTimeout(browserOpenTimer);
+    browserOpenTimer = undefined;
+    browserOpened = true;
+    console.log('Reusing the open Diffsplain tab.');
+  }
+  return true;
+}
+
+function markSiteReady(match) {
+  if (siteReady || !match) return;
+  siteReady = true;
+  supportRecorder?.addStage(
+    'serve',
+    performance.now() - siteStarted,
+  );
+}
+
+function scheduleBrowserOpen(match) {
+  if (browserOpened || browserOpenTimer || !match) return;
+  browserOpenTimer = setTimeout(() => {
+    browserOpenTimer = undefined;
+    browserOpened = true;
+    openBrowser(match[1]);
+  }, 750);
+}
+
 function startSite() {
   if (closing || site) return;
+  siteStarted = performance.now();
   const child = spawn(
     process.execPath,
     [
@@ -239,33 +359,36 @@ function startSite() {
   if (child.stdout) {
     const siteLines = createInterface({ input: child.stdout });
     siteLines.on('line', (line) => {
-      if (line === 'Diffsplain tab: connected') {
-        if (!browserOpened && browserOpenTimer) {
-          clearTimeout(browserOpenTimer);
-          browserOpenTimer = undefined;
-          browserOpened = true;
-          console.log('Reusing the open Diffsplain tab.');
-        }
-        return;
-      }
+      if (handleConnectedTab(line)) return;
       console.log(line);
       const match = line.match(/^Diffsplain: (http:\/\/\S+)$/);
-      if (!browserOpened && !browserOpenTimer && match) {
-        browserOpenTimer = setTimeout(() => {
-          browserOpenTimer = undefined;
-          browserOpened = true;
-          openBrowser(match[1]);
-        }, 750);
-      }
+      markSiteReady(match);
+      scheduleBrowserOpen(match);
     });
   }
 
   child.on('exit', (code, signal) => {
-    if (!closing) stop(code || (signal ? 1 : 0));
+    if (!closing) {
+      if (code || signal) {
+        supportRecorder?.addStage(
+          'serve',
+          performance.now() - siteStarted,
+          'failed',
+        );
+        emitSupportRecord(code || 1);
+      }
+      stop(code || (signal ? 1 : 0));
+    }
   });
   child.on('error', (error) => {
     if (!closing) {
+      supportRecorder?.addStage(
+        'serve',
+        performance.now() - siteStarted,
+        'failed',
+      );
       console.error(`Could not start the local page: ${error.message}`);
+      emitSupportRecord();
       stop(1);
     }
   });
@@ -336,6 +459,7 @@ function runAgent(fingerprint) {
     return;
   }
   agentFingerprint = fingerprint;
+  const agentStarted = performance.now();
   const child = spawn(
     process.execPath,
     [resolve(root, 'scripts/generate-summaries.mjs'), ...agentArgs],
@@ -346,6 +470,15 @@ function runAgent(fingerprint) {
   const finish = (code, signal, error) => {
     if (settled) return;
     settled = true;
+    const needsFallbackRecord =
+      !closing && !queuedFingerprint && Boolean(error || signal);
+    if (needsFallbackRecord) {
+      supportRecorder?.addStage(
+        'agent',
+        performance.now() - agentStarted,
+        'failed',
+      );
+    }
     const finishedFingerprint = agentFingerprint;
     if (agent === child) agent = undefined;
     agentFingerprint = finishedFingerprint;
@@ -358,6 +491,7 @@ function runAgent(fingerprint) {
     const latest = queuedFingerprint || snapshotFingerprint();
     queuedFingerprint = undefined;
     if (latest && latest !== finishedFingerprint) scheduleAgent(latest);
+    if (needsFallbackRecord) emitSupportRecord(code || 1);
   };
   child.on('error', (error) => finish(1, undefined, error));
   child.on('exit', (code, signal) => finish(code, signal));
@@ -388,17 +522,44 @@ function scheduleAgent(fingerprint) {
   agentTimer = setTimeout(() => runAgent(selectedFingerprint), delay);
 }
 
+function markSnapshotReady() {
+  if (snapshotReady) return;
+  snapshotReady = true;
+  try {
+    supportRecorder?.addBytes('snapshot', statSync(outputPath).size);
+  } catch {}
+  supportRecorder?.addStage(
+    'snapshot',
+    performance.now() - snapshotStarted,
+  );
+}
+
+function isSnapshotLine(line) {
+  return line.startsWith('Wrote ') || line === 'No diff-data changes';
+}
+
+function startSnapshotDependents() {
+  markSnapshotReady();
+  startSite();
+  if (agentEnabled) scheduleAgent();
+}
+
+function shouldPrintFeedLine(line) {
+  return line !== 'No diff-data changes' || !agentEnabled;
+}
+
+function handleFeedLine(line) {
+  if (isSnapshotLine(line)) startSnapshotDependents();
+  if (shouldPrintFeedLine(line)) console.log(line);
+}
+
 if (feed.stdout) {
   const feedLines = createInterface({ input: feed.stdout });
-  feedLines.on('line', (line) => {
-    const snapshotReady =
-      line.startsWith('Wrote ') || line === 'No diff-data changes';
-    if (snapshotReady) {
-      startSite();
-      if (agentEnabled) scheduleAgent();
-    }
-    if (line !== 'No diff-data changes' || !agentEnabled) console.log(line);
-  });
+  feedLines.on('line', handleFeedLine);
+}
+
+function stopChild(child) {
+  if (child && !child.killed) child.kill('SIGTERM');
 }
 
 function stop(code = 0) {
@@ -406,18 +567,30 @@ function stop(code = 0) {
   closing = true;
   clearTimeout(browserOpenTimer);
   clearTimeout(agentTimer);
-  if (!feed.killed) feed.kill('SIGTERM');
-  if (site && !site.killed) site.kill('SIGTERM');
-  if (agent && !agent.killed) agent.kill('SIGTERM');
+  [feed, site, agent].forEach(stopChild);
   process.exitCode = code;
 }
 
 feed.on('exit', (code, signal) => {
-  if (!closing && (code || signal)) stop(code || 1);
+  if (!closing && (code || signal)) {
+    supportRecorder?.addStage(
+      'snapshot',
+      performance.now() - snapshotStarted,
+      'failed',
+    );
+    emitSupportRecord(code || 1);
+    stop(code || 1);
+  }
 });
 feed.on('error', (error) => {
   if (!closing) {
+    supportRecorder?.addStage(
+      'snapshot',
+      performance.now() - snapshotStarted,
+      'failed',
+    );
     console.error(`Could not start the diff watcher: ${error.message}`);
+    emitSupportRecord();
     stop(1);
   }
 });

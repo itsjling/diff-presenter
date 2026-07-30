@@ -26,6 +26,10 @@ const option = (name) => {
   if (!value || value.startsWith('--')) fail(`${name} needs a value`);
   return value;
 };
+const options = (name) =>
+  args.flatMap((argument, index) =>
+    argument === name && args[index + 1] ? [args[index + 1]] : [],
+  );
 const has = (name) => args.includes(name);
 
 if (has('--help')) {
@@ -52,7 +56,7 @@ Options:
 
 const repo = resolve(option('--repo') || process.cwd());
 const output = resolve(option('--output') || '.cache/diff-data.json');
-const excludedOutput = option('--exclude-output');
+const excludedOutputs = options('--exclude-output');
 const baseOption = option('--base');
 const headOption = option('--head');
 const prOption = option('--pr');
@@ -116,7 +120,7 @@ const excludedPaths = new Set(
     summariesRepoPath,
     summariesRepoPath ? `${summariesRepoPath}.lock` : undefined,
     repoPath(output),
-    excludedOutput ? repoPath(resolve(excludedOutput)) : undefined,
+    ...excludedOutputs.map((path) => repoPath(resolve(path))),
   ].filter(Boolean),
 );
 

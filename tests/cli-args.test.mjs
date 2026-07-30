@@ -181,6 +181,54 @@ test('forces note regeneration only in the agent process', () => {
   assert.equal(parsed.agentArgs.at(-1), '--force');
 });
 
+test('passes one opt-in support record only to the agent process', () => {
+  const printed = parseCliArgs(['--support-record'], {
+    callerDirectory: cwd,
+    pathExists: missing,
+  });
+  assert.equal(printed.agentArgs.at(-1), '--support-record');
+  assert.doesNotMatch(printed.feedArgs.join(' '), /support-record/);
+
+  const exported = parseCliArgs(
+    ['--support-record-file', 'support.json'],
+    {
+      callerDirectory: cwd,
+      pathExists: missing,
+    },
+  );
+  assert.deepEqual(exported.agentArgs.slice(-2), [
+    '--support-record-file',
+    resolve(cwd, 'support.json'),
+  ]);
+  assert.deepEqual(exported.feedArgs.slice(-2), [
+    '--exclude-output',
+    resolve(cwd, 'support.json'),
+  ]);
+});
+
+test('rejects conflicting or agent-free support record options', () => {
+  assert.throws(
+    () =>
+      parseCliArgs(
+        [
+          '--support-record',
+          '--support-record-file',
+          'support.json',
+        ],
+        { callerDirectory: cwd, pathExists: missing },
+      ),
+    /either --support-record/i,
+  );
+  assert.throws(
+    () =>
+      parseCliArgs(['--no-agent', '--support-record'], {
+        callerDirectory: cwd,
+        pathExists: missing,
+      }),
+    /--no-agent.*support record/i,
+  );
+});
+
 test('rejects invalid reasoning and batch settings', () => {
   assert.throws(
     () =>

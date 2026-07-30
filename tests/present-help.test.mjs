@@ -1,9 +1,26 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import {
+  chmod,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 const script = new URL('../scripts/present.mjs', import.meta.url).pathname;
+const supportRecordMarker = 'Diffsplain support record:\n';
+
+function parseLastSupportRecord(stderr) {
+  const markerIndex = stderr.lastIndexOf(supportRecordMarker);
+  assert.ok(markerIndex >= 0, stderr);
+  return JSON.parse(stderr.slice(markerIndex + supportRecordMarker.length));
+}
 
 test('prints help with either help flag', () => {
   for (const flag of ['-h', '--help']) {
@@ -14,6 +31,8 @@ test('prints help with either help flag', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Usage: diffsplain/m);
     assert.match(result.stdout, /doctor\s+Check Git/);
+    assert.match(result.stdout, /--support-record/);
+    assert.match(result.stdout, /--support-record-file FILE/);
     assert.match(result.stdout, /-v, --version/);
   }
 });
@@ -39,4 +58,212 @@ test('fails before startup when no coding agent is installed', () => {
   });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /no coding agent is available/i);
+});
+
+test('prints a support record when snapshot startup fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-present-support-'));
+  const repo = join(root, 'not-a-repo');
+  const bin = join(root, 'bin');
+
+  try {
+    await mkdir(repo);
+    await mkdir(bin);
+    await writeFile(
+      join(bin, 'codex'),
+      '#!/bin/sh\nprintf "codex-cli 7.6.5\\n"\n',
+    );
+    await chmod(join(bin, 'codex'), 0o755);
+    const result = spawnSync(
+      process.execPath,
+      [
+        script,
+        '--repo',
+        repo,
+        '--worktree',
+        '--support-record',
+        '--port',
+        '0',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+        },
+      },
+    );
+
+    assert.notEqual(result.status, 0);
+    const record = parseLastSupportRecord(result.stderr);
+    assert.deepEqual(record.provider, {
+      name: 'codex',
+      version: '7.6.5',
+    });
+    assert.ok(
+      record.durationMs >= record.stages.agent.durationMs,
+      JSON.stringify(record),
+    );
+    assert.equal(record.stages.snapshot.state, 'failed');
+    assert.deepEqual(record.exit, {
+      state: 'failed',
+      code: 1,
+      stage: 'snapshot',
+    });
+    assert.equal(JSON.stringify(record).includes(repo), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('keeps the failed build process exit code', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-present-build-'));
+  const repo = join(root, 'repo');
+  const bin = join(root, 'bin');
+  const copiedPackage = join(root, 'package');
+
+  try {
+    await mkdir(repo);
+    await mkdir(bin);
+    await mkdir(copiedPackage);
+    await cp(
+      new URL('../scripts/', import.meta.url),
+      join(copiedPackage, 'scripts'),
+      { recursive: true },
+    );
+    await cp(
+      new URL('../package.json', import.meta.url),
+      join(copiedPackage, 'package.json'),
+    );
+    await writeFile(
+      join(bin, 'codex'),
+      '#!/bin/sh\nprintf "codex-cli 7.6.5\\n"\n',
+    );
+    await writeFile(join(bin, 'npm'), '#!/bin/sh\nexit 23\n');
+    await chmod(join(bin, 'codex'), 0o755);
+    await chmod(join(bin, 'npm'), 0o755);
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(copiedPackage, 'scripts/present.mjs'),
+        '--repo',
+        repo,
+        '--worktree',
+        '--support-record',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+        },
+      },
+    );
+
+    assert.equal(result.status, 23, result.stderr);
+    assert.equal(parseLastSupportRecord(result.stderr).exit.code, 23);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('prints a support record when the summary generator is killed', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-present-signal-'));
+  const repo = join(root, 'repo');
+  const agent = join(root, 'codex');
+  let child;
+
+  try {
+    await mkdir(repo);
+    spawnSync('git', ['init'], { cwd: repo });
+    spawnSync('git', ['config', 'user.email', 'test@example.com'], {
+      cwd: repo,
+    });
+    spawnSync('git', ['config', 'user.name', 'Test User'], {
+      cwd: repo,
+    });
+    await writeFile(join(repo, 'file.txt'), 'before\n');
+    spawnSync('git', ['add', 'file.txt'], { cwd: repo });
+    spawnSync('git', ['commit', '-m', 'Initial'], { cwd: repo });
+    await writeFile(join(repo, 'file.txt'), 'after\n');
+    await writeFile(
+      agent,
+      [
+        '#!/bin/sh',
+        'if [ "$1" = "--version" ]; then',
+        '  printf "codex-cli 7.6.5\\n"',
+        '  exit 0',
+        'fi',
+        'kill -KILL "$PPID"',
+        '',
+      ].join('\n'),
+    );
+    await chmod(agent, 0o755);
+
+    let stderr = '';
+    const record = await new Promise((resolvePromise, rejectPromise) => {
+      const timeout = setTimeout(() => {
+        child?.kill('SIGTERM');
+        rejectPromise(new Error(stderr || 'Timed out waiting for support record'));
+      }, 15_000);
+      child = spawn(
+        process.execPath,
+        [
+          script,
+          '--repo',
+          repo,
+          '--worktree',
+          '--support-record',
+          '--codex-bin',
+          agent,
+          '--port',
+          '0',
+        ],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            BROWSER: '/usr/bin/true',
+          },
+          stdio: ['ignore', 'ignore', 'pipe'],
+        },
+      );
+      child.stderr.setEncoding('utf8');
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk;
+        const markerIndex = stderr.lastIndexOf(supportRecordMarker);
+        if (markerIndex === -1 || !stderr.endsWith('\n}\n')) return;
+        clearTimeout(timeout);
+        try {
+          resolvePromise(parseLastSupportRecord(stderr));
+        } catch (error) {
+          rejectPromise(error);
+        }
+      });
+      child.once('error', (error) => {
+        clearTimeout(timeout);
+        rejectPromise(error);
+      });
+      child.once('exit', (code) => {
+        if (!stderr.includes(supportRecordMarker)) {
+          clearTimeout(timeout);
+          rejectPromise(
+            new Error(`Presenter exited with ${code}: ${stderr}`),
+          );
+        }
+      });
+    });
+
+    assert.equal(record.stages.agent.state, 'failed');
+    assert.deepEqual(record.exit, {
+      state: 'failed',
+      code: 1,
+      stage: 'agent',
+    });
+  } finally {
+    child?.kill('SIGTERM');
+    await rm(root, { recursive: true, force: true });
+  }
 });

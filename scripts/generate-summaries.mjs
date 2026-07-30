@@ -26,6 +26,12 @@ import {
   refreshLease,
   releaseLease,
 } from './cache.mjs';
+import {
+  createSupportRecorder,
+  formatSupportRecord,
+  safeCommandVersion,
+  writeSupportRecord,
+} from './support-record.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callerDirectory = process.cwd();
@@ -48,8 +54,14 @@ const valueFlags = new Set([
   '--batch-size',
   '--jobs',
   '--snapshot',
+  '--support-record-file',
 ]);
-const booleanFlags = new Set(['--checkout', '--force', '--worktree']);
+const booleanFlags = new Set([
+  '--checkout',
+  '--force',
+  '--support-record',
+  '--worktree',
+]);
 
 function fail(message) {
   console.error(message);
@@ -97,6 +109,9 @@ Options:
   --reasoning LEVEL   Agent reasoning effort when supported
   --batch-size COUNT  Maximum files per agent pass (default: 12)
   --jobs COUNT        Agent passes to run at once (default: 3)
+  --support-record    Print a safe record if this run fails
+  --support-record-file FILE
+                      Write a safe record if this run fails
   --force             Regenerate all notes instead of using cached notes`);
   process.exit(0);
 }
@@ -106,18 +121,38 @@ const outputPath = resolve(
   callerDirectory,
   option('--output') || resolve(root, '.cache/diff-data.json'),
 );
+const printSupportRecord = rawArgs.includes('--support-record');
+const supportRecordFile = option('--support-record-file');
+if (printSupportRecord && supportRecordFile) {
+  fail('Pass either --support-record or --support-record-file, not both');
+}
+const supportRecordPath = supportRecordFile
+  ? resolve(callerDirectory, supportRecordFile)
+  : undefined;
 const codexBin = option('--codex-bin') || process.env.CODEX_BIN;
+const requestedAgent = option('--agent');
+const supportRecorder =
+  printSupportRecord || supportRecordPath
+    ? createSupportRecorder()
+    : undefined;
 let selectedAgent;
 try {
   selectedAgent = await selectCodingAgent(
-    option('--agent'),
+    requestedAgent,
     (agent) =>
       commandAvailable(codingAgentBinary(agent, { codexBin })),
   );
 } catch (error) {
-  fail(error.message);
+  supportRecorder?.setProvider(requestedAgent || 'unknown');
+  console.error(error.message);
+  emitFailedSupportRecord(2);
+  process.exit(2);
 }
 const agentBinary = codingAgentBinary(selectedAgent, { codexBin });
+supportRecorder?.setProvider(
+  selectedAgent,
+  safeCommandVersion(selectedAgent, agentBinary),
+);
 const model = option('--model');
 const reasoning = option('--reasoning');
 const batchSizeValue = option('--batch-size') || '12';
@@ -157,6 +192,30 @@ const force = rawArgs.includes('--force');
 const snapshotPath = option('--snapshot');
 const activeAgentProcesses = new Set();
 let interrupted = false;
+
+function recordSyncStage(name, action) {
+  const finishStage = supportRecorder?.startStage(name);
+  try {
+    const result = action();
+    finishStage?.();
+    return result;
+  } catch (error) {
+    finishStage?.('failed');
+    throw error;
+  }
+}
+
+async function recordAsyncStage(name, action) {
+  const finishStage = supportRecorder?.startStage(name);
+  try {
+    const result = await action();
+    finishStage?.();
+    return result;
+  } catch (error) {
+    finishStage?.('failed');
+    throw error;
+  }
+}
 
 process.once('SIGTERM', () => {
   interrupted = true;
@@ -214,6 +273,9 @@ function acquireOwnership() {
 }
 if (selectedBase) targetArgs.push('--base', selectedBase);
 if (selectedHead) targetArgs.push('--head', selectedHead);
+if (supportRecordPath) {
+  targetArgs.push('--exclude-output', supportRecordPath);
+}
 const cacheDirectory = option('--cache-dir');
 if (cacheDirectory) {
   targetArgs.push('--cache-dir', resolve(callerDirectory, cacheDirectory));
@@ -605,6 +667,30 @@ function publish(snapshot, summaries) {
   }
 }
 
+function storeProgress(snapshot, summaries) {
+  recordSyncStage('publish', () => {
+    writeJsonAtomic(summariesPath, summaries);
+    publish(snapshot, summaries);
+  });
+}
+
+function emitFailedSupportRecord(code = 1) {
+  if (!supportRecorder) return;
+  const record = supportRecorder.failure(code);
+  try {
+    if (supportRecordPath) {
+      writeSupportRecord(supportRecordPath, record);
+      console.error(`Wrote support record to ${supportRecordPath}`);
+    } else {
+      process.stderr.write(
+        `Diffsplain support record:\n${formatSupportRecord(record)}`,
+      );
+    }
+  } catch {
+    console.error('Could not write the support record.');
+  }
+}
+
 function readJson(file, fallback) {
   try {
     return JSON.parse(readFileSync(file, 'utf8'));
@@ -630,6 +716,7 @@ function runAgent(invocation, input) {
     const maxBuffer = 10 * 1024 * 1024;
     const collect = (chunks, chunk) => {
       outputBytes += chunk.length;
+      supportRecorder?.addBytes('agentOutput', chunk.length);
       if (outputBytes > maxBuffer) {
         child.kill('SIGTERM');
         rejectPromise(new Error(`${selectedAgent} returned too much output`));
@@ -674,6 +761,23 @@ function runAgent(invocation, input) {
     });
     if (invocation.input === 'stdin') child.stdin.end(input);
     else child.stdin.end();
+  });
+}
+
+async function requestAgentNotes(
+  invocation,
+  input,
+  paths,
+  options,
+) {
+  supportRecorder?.addBytes('agentInput', Buffer.byteLength(input));
+  return recordAsyncStage('agent', async () => {
+    const stdout = await runAgent(invocation, input);
+    return normalizeResponse(
+      parseAgentResponse(selectedAgent, stdout),
+      paths,
+      options,
+    );
   });
 }
 
@@ -753,13 +857,21 @@ let workingSummaries;
 let workingSnapshot;
 
 try {
-  acquireOwnership();
-  const rawSnapshotPath = resolve(temporaryDirectory, 'diff-data.json');
-  if (!snapshotPath) runBuilder(rawSnapshotPath, true);
-  const rawSnapshot = JSON.parse(
-    readFileSync(snapshotPath || rawSnapshotPath, 'utf8'),
-  );
-  const snapshot = cleanSnapshot(rawSnapshot);
+  recordSyncStage('cache', acquireOwnership);
+  const { rawSnapshot, snapshot } = recordSyncStage('snapshot', () => {
+    const rawSnapshotPath = resolve(temporaryDirectory, 'diff-data.json');
+    if (!snapshotPath) runBuilder(rawSnapshotPath, true);
+    const rawSnapshotText = readFileSync(
+      snapshotPath || rawSnapshotPath,
+      'utf8',
+    );
+    supportRecorder?.addBytes(
+      'snapshot',
+      Buffer.byteLength(rawSnapshotText),
+    );
+    const value = JSON.parse(rawSnapshotText);
+    return { rawSnapshot: value, snapshot: cleanSnapshot(value) };
+  });
   const paths = snapshot.files.map((file) => file.path);
   const previousSummaries = readJson(summariesPath, {});
   if (paths.length === 0) {
@@ -776,8 +888,7 @@ try {
         ...(reasoning ? { reasoning } : {}),
       },
     };
-    writeJsonAtomic(summariesPath, workingSummaries);
-    publish(rawSnapshot, workingSummaries);
+    storeProgress(rawSnapshot, workingSummaries);
     console.log('No changed files to summarize.');
   } else {
     const startedAt = new Date().toISOString();
@@ -840,8 +951,7 @@ try {
         ...(reasoning ? { reasoning } : {}),
       },
     };
-    writeJsonAtomic(summariesPath, workingSummaries);
-    publish(rawSnapshot, workingSummaries);
+    storeProgress(rawSnapshot, workingSummaries);
 
     const batches = [];
     let batch = [];
@@ -904,11 +1014,14 @@ try {
       console.error(
         `Asking ${selectedAgent} for batch ${index + 1} of ${batches.length} (${batchPaths.length} changed files)...`,
       );
-      const stdout = await runAgent(invocation, input);
-      const response = parseAgentResponse(selectedAgent, stdout);
-      const normalized = normalizeResponse(response, batchPaths, {
+      const normalized = await requestAgentNotes(
+        invocation,
+        input,
+        batchPaths,
+        {
         includeChange: false,
-      });
+        },
+      );
       workingSummaries = {
         ...(workingSummaries.change
           ? { change: workingSummaries.change }
@@ -923,8 +1036,7 @@ try {
           generatedAt: new Date().toISOString(),
         },
       };
-      writeJsonAtomic(summariesPath, workingSummaries);
-      publish(rawSnapshot, workingSummaries);
+      storeProgress(rawSnapshot, workingSummaries);
       if (batchPaths.length) {
         console.log(
           `Wrote ${Object.keys(workingSummaries.files).length} of ${paths.length} agent notes to ${summariesPath}`,
@@ -975,9 +1087,9 @@ try {
         workingDirectory: root,
       });
       console.error(`Asking ${selectedAgent} for the change note...`);
-      const stdout = await runAgent(invocation, input);
-      const normalized = normalizeResponse(
-        parseAgentResponse(selectedAgent, stdout),
+      const normalized = await requestAgentNotes(
+        invocation,
+        input,
         [],
       );
       workingSummaries = {
@@ -989,8 +1101,7 @@ try {
           generatedAt: new Date().toISOString(),
         },
       };
-      writeJsonAtomic(summariesPath, workingSummaries);
-      publish(rawSnapshot, workingSummaries);
+      storeProgress(rawSnapshot, workingSummaries);
       console.log(`Updated the change note in ${summariesPath}`);
     } else if (batches.length) {
       workingSummaries = {
@@ -1001,8 +1112,7 @@ try {
           generatedAt: new Date().toISOString(),
         },
       };
-      writeJsonAtomic(summariesPath, workingSummaries);
-      publish(rawSnapshot, workingSummaries);
+      storeProgress(rawSnapshot, workingSummaries);
     }
     if (batches.length === 0) {
       console.log('No file summaries changed.');
@@ -1020,12 +1130,12 @@ try {
           generatedAt: new Date().toISOString(),
         },
       };
-      writeJsonAtomic(summariesPath, workingSummaries);
-      publish(workingSnapshot, workingSummaries);
+      storeProgress(workingSnapshot, workingSummaries);
     } catch {}
   }
   if (!interrupted) {
     console.error(error instanceof Error ? error.message : String(error));
+    emitFailedSupportRecord();
     process.exitCode = 1;
   }
 } finally {

@@ -108,3 +108,28 @@ The file has one change note and notes keyed by file path:
 ```
 
 Missing notes get a plain fallback, so new files still appear at once.
+
+## Failed run support records
+
+Support records are off by default. If review setup or agent notes fail, print
+one JSON record:
+
+```sh
+npx diffsplain --support-record
+```
+
+Or write it to a file:
+
+```sh
+npx diffsplain --support-record-file ./diffsplain-support.json
+```
+
+The file contains a new run ID, the agent and its CLI version, Diffsplain and
+Node.js versions, stage timings, byte counts, and the failed exit state. The
+stage totals cover cache access, snapshot work, agent calls, note publication,
+and local page startup. The export uses private file permissions.
+
+The fixed record does not copy repo paths, file paths, prompts, patches, raw
+agent output, error text, credentials, or environment values. It records byte
+counts instead of data. A successful run writes no record. The print form goes
+to standard error, so the diff snapshot output stays unchanged.
