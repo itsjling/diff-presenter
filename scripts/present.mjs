@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -19,6 +18,13 @@ import {
   selectCodingAgent,
 } from './coding-agents.mjs';
 import { doctorReport } from './doctor.mjs';
+import {
+  agentRunCompleted,
+  agentRunNeeded,
+  ensureBuiltAssets,
+  failedAgentRunForFingerprint,
+  openBrowser,
+} from './presenter-runtime.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callerDirectory = process.cwd();
@@ -100,18 +106,11 @@ if (agentEnabled) {
   agentArgs.push('--snapshot', outputPath);
 }
 
-const builtPage = resolve(root, 'dist/index.html');
-if (!existsSync(builtPage)) {
-  const result = spawnSync(
-    process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    ['run', 'build'],
-    { cwd: root, stdio: 'inherit' },
-  );
-  if (result.error) {
-    console.error(`Could not build the local page: ${result.error.message}`);
-    process.exit(1);
-  }
-  if (result.status !== 0) process.exit(result.status || 1);
+try {
+  ensureBuiltAssets({ root });
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
 }
 
 const feed = spawn(
@@ -127,36 +126,11 @@ let site;
 let agent;
 let agentTimer;
 let agentFingerprint;
+let completedAgentFingerprint;
+let failedAgentFingerprint;
 let queuedFingerprint;
 let browserOpened = false;
 let browserOpenTimer;
-
-function openBrowser(url) {
-  let command;
-  let args;
-  if (process.env.BROWSER) {
-    command = process.env.BROWSER;
-    args = [url];
-  } else if (process.platform === 'darwin') {
-    command = 'open';
-    args = [url];
-  } else if (process.platform === 'win32') {
-    command = 'cmd.exe';
-    args = ['/d', '/s', '/c', 'start', '', url];
-  } else {
-    command = 'xdg-open';
-    args = [url];
-  }
-
-  const opener = spawn(command, args, {
-    detached: true,
-    stdio: 'ignore',
-  });
-  opener.once('error', (error) => {
-    console.error(`Could not open the browser: ${error.message}`);
-  });
-  opener.unref();
-}
 
 function startSite() {
   if (closing || site) return;
@@ -196,7 +170,10 @@ function startSite() {
         browserOpenTimer = setTimeout(() => {
           browserOpenTimer = undefined;
           browserOpened = true;
-          openBrowser(match[1]);
+          openBrowser(match[1], {
+            onError: (error) =>
+              console.error(`Could not open the browser: ${error.message}`),
+          });
         }, 750);
       }
     });
@@ -287,11 +264,17 @@ function runAgent(fingerprint) {
     settled = true;
     const finishedFingerprint = agentFingerprint;
     if (agent === child) agent = undefined;
-    agentFingerprint = finishedFingerprint;
-    if (!closing && (error || code || signal)) {
+    agentFingerprint = undefined;
+    const superseded =
+      queuedFingerprint && queuedFingerprint !== finishedFingerprint;
+    if (agentRunCompleted({ code, error, signal, superseded })) {
+      completedAgentFingerprint = finishedFingerprint;
+    }
+    if (!closing && (error || code || signal) && !superseded) {
+      failedAgentFingerprint = finishedFingerprint;
       if (error) console.error(error.message);
       console.error(
-        'The coding agent could not write notes. The diff page will stay open.',
+        'The coding agent could not write notes. It will retry after the diff changes or Diffsplain restarts.',
       );
     }
     const latest = queuedFingerprint || snapshotFingerprint();
@@ -305,16 +288,27 @@ function runAgent(fingerprint) {
 function scheduleAgent(fingerprint) {
   const state = snapshotState();
   const selectedFingerprint = fingerprint || state?.fingerprint;
+  failedAgentFingerprint = failedAgentRunForFingerprint(
+    failedAgentFingerprint,
+    selectedFingerprint,
+  );
   if (
     !cli.forceSummaryRegeneration &&
     !agentFingerprint &&
     state?.hasCurrentAgentNotes &&
     selectedFingerprint === state.fingerprint
   ) {
-    agentFingerprint = selectedFingerprint;
     return;
   }
-  if (!selectedFingerprint || selectedFingerprint === agentFingerprint) return;
+  if (
+    !agentRunNeeded(selectedFingerprint, {
+      activeFingerprint: agentFingerprint,
+      completedFingerprint: completedAgentFingerprint,
+      failedFingerprint: failedAgentFingerprint,
+    })
+  ) {
+    return;
+  }
   if (agent) {
     if (selectedFingerprint !== agentFingerprint) {
       queuedFingerprint = selectedFingerprint;
