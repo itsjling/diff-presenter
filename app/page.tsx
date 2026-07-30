@@ -158,6 +158,33 @@ function shortRef(ref: string) {
   return ref.length > 16 ? ref.slice(0, 8) : ref;
 }
 
+function changeScope(snapshot: DiffSnapshot) {
+  const { repo } = snapshot;
+  if (snapshot.change.number) return `PR #${snapshot.change.number}`;
+  if (repo.target?.kind === "branch" && repo.baseBranch && repo.branch) {
+    return `${repo.baseBranch} → ${repo.branch}`;
+  }
+  if (repo.target?.kind === "worktree") {
+    return repo.head === "WORKTREE"
+      ? "Empty repo → working tree"
+      : "HEAD → working tree";
+  }
+  if (repo.target?.kind === "checkout") {
+    if (repo.base === repo.head) {
+      return "HEAD → working tree";
+    }
+    const base =
+      repo.baseBranch && repo.baseBranch !== repo.branch
+        ? repo.baseBranch
+        : shortRef(repo.base);
+    const checkout = repo.branch
+      ? `${repo.branch} checkout`
+      : `${shortRef(repo.head)} checkout`;
+    return `${base} → ${checkout}`;
+  }
+  return `${shortRef(repo.base)} → ${shortRef(repo.head)}`;
+}
+
 function relativeTime(value: string | null) {
   if (!value) return "Connecting";
   const seconds = Math.max(
@@ -426,13 +453,7 @@ export default function Home() {
     currentFile.isTruncated && !showFull
       ? currentFile.snippet
       : currentFile.patch;
-  const changeLabel = snapshot.change.number
-    ? `PR #${snapshot.change.number}`
-    : snapshot.repo.target?.kind === "branch" &&
-        snapshot.repo.baseBranch &&
-        snapshot.repo.branch
-      ? `${snapshot.repo.baseBranch} → ${snapshot.repo.branch}`
-      : `${shortRef(snapshot.repo.base)} → ${shortRef(snapshot.repo.head)}`;
+  const changeLabel = changeScope(snapshot);
   const noteReady =
     currentFile.noteReady ?? snapshot.notes?.complete ?? true;
   const notesGenerating = snapshot.notes?.status === "generating";

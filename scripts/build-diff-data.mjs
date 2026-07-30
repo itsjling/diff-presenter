@@ -631,6 +631,8 @@ function resolveCheckoutTarget() {
   const mergeBaseOid = uniqueMergeBase(runRepo, defaultHead, currentHead);
   const repository = githubRepository(remoteUrl);
   const headLabel = branch || currentHead;
+  const hasCommittedChanges = mergeBaseOid !== currentHead;
+  const isDefaultBranchCheckout = branch === defaultBranch.name;
 
   return {
     kind: 'checkout',
@@ -651,8 +653,14 @@ function resolveCheckoutTarget() {
       mergeBaseOid,
     },
     changeDefaults: {
-      title: `Compare ${headLabel} to ${defaultBranch.name}`,
-      summary: `Shows changes in the current checkout since it split from ${defaultBranch.name}.`,
+      title: hasCommittedChanges
+        ? isDefaultBranchCheckout
+          ? `Local changes on ${headLabel}`
+          : `Changes on ${headLabel} since ${defaultBranch.name}`
+        : `Uncommitted changes on ${headLabel}`,
+      summary: hasCommittedChanges
+        ? `Shows changes in the current checkout since it split from ${defaultBranch.name}, including any uncommitted work.`
+        : 'Shows staged, unstaged, and untracked changes in the current checkout.',
       why: 'Reviews the checked-out work without changing the repo.',
       highlights: [],
       risks: [],
@@ -663,6 +671,7 @@ function resolveCheckoutTarget() {
 function resolveLocalTarget() {
   const currentHead = tryRepo(['rev-parse', '--verify', 'HEAD']);
   const worktree = !baseOption && !headOption;
+  const branch = tryRepo(['branch', '--show-current']) || undefined;
   let range;
   if (worktree) {
     range = currentHead ? [currentHead] : [runRepo(['mktree']).trim()];
@@ -681,7 +690,7 @@ function resolveLocalTarget() {
     range,
     base: resolvedBase,
     head: resolvedHead,
-    branch: tryRepo(['branch', '--show-current']) || undefined,
+    branch,
     remote: remoteUrl ? { name: 'origin', url: remoteUrl } : undefined,
     sourceRepositoryUrl: worktree
       ? undefined
@@ -696,7 +705,18 @@ function resolveLocalTarget() {
           base: { ref: baseOption, oid: resolvedBase },
           head: { ref: headOption, oid: resolvedHead },
         },
-    changeDefaults: {},
+    changeDefaults: worktree
+      ? {
+          title: branch
+            ? `Uncommitted changes on ${branch}`
+            : 'Uncommitted changes',
+          summary:
+            'Shows staged, unstaged, and untracked changes in the working tree.',
+          why: 'Reviews the working tree without changing the repo.',
+          highlights: [],
+          risks: [],
+        }
+      : {},
   };
 }
 

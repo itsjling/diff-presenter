@@ -122,6 +122,45 @@ test("builds the current checkout against the default branch", async () => {
     assert.equal(payload.repo.baseBranch, "main");
     assert.equal(payload.repo.target.kind, "checkout");
     assert.equal(payload.repo.target.base.oid, fixture.mainOid);
+    assert.equal(
+      payload.change.title,
+      "Changes on local-feature since main",
+    );
+    assert.equal(
+      payload.change.summary,
+      "Shows changes in the current checkout since it split from main, including any uncommitted work.",
+    );
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("names worktree-only checkout changes without comparing a branch to itself", async () => {
+  const fixture = await makeRemoteRepo();
+  const output = join(fixture.root, "checkout-worktree.json");
+
+  try {
+    await writeFile(join(fixture.repo, "working.txt"), "working tree work\n");
+
+    run(fixture.repo, ["--checkout", "--output", output]);
+    const payload = JSON.parse(await readFile(output, "utf8"));
+
+    assert.equal(payload.repo.base, payload.repo.head);
+    assert.equal(payload.repo.branch, "main");
+    assert.equal(payload.change.title, "Uncommitted changes on main");
+    assert.equal(
+      payload.change.summary,
+      "Shows staged, unstaged, and untracked changes in the current checkout.",
+    );
+
+    git(fixture.repo, "add", "working.txt");
+    git(fixture.repo, "commit", "-qm", "local main work");
+
+    run(fixture.repo, ["--checkout", "--output", output]);
+    const committed = JSON.parse(await readFile(output, "utf8"));
+
+    assert.notEqual(committed.repo.base, committed.repo.head);
+    assert.equal(committed.change.title, "Local changes on main");
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
