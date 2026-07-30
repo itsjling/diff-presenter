@@ -622,6 +622,9 @@ function runAgent(invocation, input) {
     };
     child.stdout.on('data', (chunk) => collect(stdout, chunk));
     child.stderr.on('data', (chunk) => collect(stderr, chunk));
+    child.stdin.on('error', (error) => {
+      if (error.code !== 'EPIPE') rejectPromise(error);
+    });
     child.once('error', (error) => {
       activeAgentProcesses.delete(child);
       rejectPromise(error);

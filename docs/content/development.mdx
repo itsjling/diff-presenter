@@ -29,6 +29,10 @@ lint, builds the app, runs the Node unit and integration tests, checks and
 builds the docs, then installs the packed package in a temporary folder and
 runs its CLI. Each stage names its failure before the command stops.
 
+Pull requests run this same gate from `package-lock.json` on Node 22.13.0 and
+the current Node 24 line. The changed-code Fallow audit and the site deployment
+remain separate checks; neither replaces the product gate.
+
 `npm run setup` uses `npm ci`, so it installs only what `package-lock.json`
 pins. It is safe to run again and needs no ignored or generated files. Node
 22.13.0 and npm 10.9.2 are pinned in `.nvmrc` and `package.json`; the
