@@ -44,6 +44,7 @@ Show the current checkout against its default branch:
 
 Commands:
   doctor              Check Git, GitHub CLI, and coding agents
+  cache               Show or prune saved agent notes
 
 Targets:
   --branch NAME       Show a remote branch against its default branch
@@ -73,6 +74,7 @@ Agent fallback:
 Examples:
   diffsplain
   diffsplain doctor
+  diffsplain cache status
   diffsplain --repo owner/project --pr 42
   diffsplain owner/project --branch feature/search
   diffsplain --agent claude`;

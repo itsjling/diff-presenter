@@ -29,6 +29,7 @@
     "dist",
     "scripts/build-diff-data.mjs",
     "scripts/cli-args.mjs",
+    "scripts/cache.mjs",
     "scripts/coding-agents.mjs",
     "scripts/doctor.mjs",
     "scripts/generate-summaries.mjs",

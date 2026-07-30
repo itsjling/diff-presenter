@@ -227,7 +227,7 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
       }),
     );
 
-    const result = run(repo, [
+    const commandArgs = [
       "--range",
       "HEAD~1..HEAD",
       "--codex-bin",
@@ -240,7 +240,8 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
       summaries,
       "--output",
       output,
-    ]);
+    ];
+    const result = run(repo, commandArgs);
     assert.equal(result.status, 0, result.stderr);
 
     const args = JSON.parse(await readFile(codex.argsFile, "utf8"));
@@ -280,6 +281,17 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
     );
     assert.equal(snapshot.notes.fresh, true);
     assert.equal(snapshot.notes.complete, true);
+
+    await chmod(output, 0o640);
+    const snapshotResult = run(repo, [
+      ...commandArgs,
+      "--snapshot",
+      output,
+      "--force",
+    ]);
+    assert.equal(snapshotResult.status, 0, snapshotResult.stderr);
+    assert.equal((await stat(output)).mode & 0o777, 0o640);
+    assert.equal((await stat(summaries)).mode & 0o077, 0);
   } finally {
     await rm(repo, { recursive: true, force: true });
   }
