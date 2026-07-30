@@ -48,10 +48,13 @@ and fixture changes update the browser through the event stream.
 
 ```sh
 npm run lint
+npm run test:browser:install
 npm test
 ```
 
-`npm test` builds the app and runs the Node test suite.
+Install Chromium once after `npm ci`, and again when Playwright changes.
+`npm test` builds the app, runs the Node tests, then runs the desktop and
+mobile browser checks without downloading a browser.
 
 ## Publish a release
 
