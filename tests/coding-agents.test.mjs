@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  agentDisabledReason,
   agentCommand,
   codingAgentBinary,
   parseAgentResponse,
@@ -19,16 +20,47 @@ test('selects the first available agent in fallback order', async () => {
 });
 
 test('fails when no coding agent is available', async () => {
+  const checked = [];
   await assert.rejects(
-    selectCodingAgent(undefined, async () => false),
-    /no coding agent is available/i,
+    selectCodingAgent(undefined, async (agent) => {
+      checked.push(agent);
+      return false;
+    }),
+    (error) => {
+      assert.match(error.message, /no coding agent is available/i);
+      assert.match(error.message, /Cursor review is disabled/i);
+      return true;
+    },
   );
+  assert.deepEqual(checked, ['codex', 'claude', 'copilot', 'opencode']);
 });
 
 test('fails when the requested coding agent is unavailable', async () => {
   await assert.rejects(
     selectCodingAgent('claude', async () => false),
     /claude.*not available/i,
+  );
+});
+
+test('suggests only enabled agents for an unknown name', async () => {
+  await assert.rejects(
+    selectCodingAgent('gemini'),
+    (error) => {
+      assert.match(error.message, /Choose codex, claude, copilot, opencode/);
+      assert.doesNotMatch(error.message, /Choose .*cursor/);
+      return true;
+    },
+  );
+});
+
+test('disables Cursor because it cannot enforce the review boundary', async () => {
+  assert.match(
+    agentDisabledReason('cursor'),
+    /read-only, no-network, no-tool mode/,
+  );
+  await assert.rejects(
+    selectCodingAgent('cursor', async () => true),
+    /Cursor review is disabled/,
   );
 });
 
@@ -61,18 +93,10 @@ test('builds non-interactive commands for each coding agent', () => {
   assert.ok(copilot.args.includes('--no-ask-user'));
   assert.match(copilot.args.at(-1), /@\/tmp\/input\.json/);
 
-  const cursor = agentCommand({ ...common, agent: 'cursor' });
-  assert.deepEqual(cursor.args.slice(0, 4), [
-    '--print',
-    '--trust',
-    '--output-format',
-    'json',
-  ]);
-  assert.ok(!cursor.args.includes('--force'));
-  assert.ok(!cursor.args.includes('--yolo'));
-  assert.ok(cursor.args.includes('--model'));
-  assert.match(cursor.args.at(-1), /@input\.json/);
-  assert.equal(cursor.cwd, '/tmp');
+  assert.throws(
+    () => agentCommand({ ...common, agent: 'cursor' }),
+    /Cursor review is disabled/,
+  );
 
   const opencode = agentCommand({ ...common, agent: 'opencode' });
   assert.deepEqual(opencode.args.slice(0, 4), [

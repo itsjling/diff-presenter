@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import {
+  agentDisabledReason,
   codingAgentBinary,
   codingAgents,
   findCommand,
@@ -52,6 +53,9 @@ async function inspectDependency(
 
 function dependencyLine(dependency) {
   const label = dependency.label.padEnd(9);
+  if (dependency.disabled) {
+    return `  ! ${label} disabled (${dependency.disabled})`;
+  }
   if (!dependency.installed) {
     return `  ✗ ${label} not found (${dependency.command})`;
   }
@@ -74,13 +78,22 @@ export async function doctorReport({
   const [git, gh, ...agents] = await Promise.all([
     inspectDependency('Git', 'git', { env, platform }),
     inspectDependency('gh', 'gh', { env, platform }),
-    ...codingAgents.map((agent) =>
-      inspectDependency(
+    ...codingAgents.map((agent) => {
+      const disabled = agentDisabledReason(agent);
+      if (disabled) {
+        return Promise.resolve({
+          label: agentLabels[agent],
+          command: codingAgentBinary(agent, { env }),
+          installed: false,
+          disabled,
+        });
+      }
+      return inspectDependency(
         agentLabels[agent],
         codingAgentBinary(agent, { env }),
         { env, platform },
-      ),
-    ),
+      );
+    }),
   ]);
   const installedAgents = agents.filter((agent) => agent.installed);
   const agentCount = installedAgents.length
