@@ -7,6 +7,12 @@ export default defineConfig({
   content: {
     root: "content",
   },
+  analytics: {
+    posthog: {
+      key: "phc_sBYbvzcu7jj5Qh6jr6sZyXmZXsQs6DcwRxkLCKExHmiF",
+      host: "https://us.i.posthog.com",
+    },
+  },
   deployment: {
     base: "/diffsplain/docs",
     output: "static",

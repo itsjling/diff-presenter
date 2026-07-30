@@ -116,6 +116,21 @@ test("makes the landing-page demo interactive", async () => {
   );
 });
 
+test("adds PostHog analytics to the public site and docs", async () => {
+  const [site, docsConfig] = await Promise.all([
+    readFile(new URL("../site/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../docs/blume.config.ts", import.meta.url), "utf8"),
+  ]);
+
+  for (const source of [site, docsConfig]) {
+    assert.match(source, /phc_sBYbvzcu7jj5Qh6jr6sZyXmZXsQs6DcwRxkLCKExHmiF/);
+    assert.match(source, /https:\/\/us\.i\.posthog\.com/);
+  }
+
+  assert.match(site, /window\.location\.hostname === "itsjling\.github\.io"/);
+  assert.match(docsConfig, /analytics:\s*\{\s*posthog:/);
+});
+
 test("falls back to the bundled demo when no live snapshot exists", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
 
