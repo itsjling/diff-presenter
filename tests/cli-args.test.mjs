@@ -167,6 +167,7 @@ test('passes agent model, reasoning, and batch settings through', () => {
     '--jobs',
     '4',
   ]);
+  assert.equal(parsed.model, 'gpt-test');
 });
 
 test('forces note regeneration only in the agent process', () => {
@@ -204,6 +205,28 @@ test('rejects invalid reasoning and batch settings', () => {
         pathExists: missing,
       }),
     /--jobs must be/i,
+  );
+});
+
+test('rejects supplied notes with --no-agent', () => {
+  assert.throws(
+    () =>
+      parseCliArgs(['--no-agent', '--summaries', 'notes.json'], {
+        callerDirectory: cwd,
+        pathExists: missing,
+      }),
+    /--no-agent.*--summaries/i,
+  );
+});
+
+test('rejects reasoning for an unsupported requested agent', () => {
+  assert.throws(
+    () =>
+      parseCliArgs(['--agent', 'claude', '--reasoning', 'low'], {
+        callerDirectory: cwd,
+        pathExists: missing,
+      }),
+    /reasoning.*codex.*opencode/i,
   );
 });
 

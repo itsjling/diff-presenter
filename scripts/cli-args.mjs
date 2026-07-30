@@ -1,6 +1,9 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { codingAgents } from './coding-agents.mjs';
+import {
+  assertReasoningSupported,
+  codingAgents,
+} from './coding-agents.mjs';
 
 const valueOptions = new Set([
   '--repo',
@@ -192,6 +195,9 @@ export function parseCliArgs(
     fail('Pass the repo once, either as REPO or with --repo');
   }
   if (noAgent && agentSet) fail('--agent and --no-agent cannot be used together');
+  if (noAgent && options.has('--summaries')) {
+    fail('--no-agent cannot be used with --summaries');
+  }
   if (!noAgent && agent && !codingAgents.includes(agent)) {
     fail(
       `Unsupported agent "${agent}". Choose ${codingAgents.join(', ')}.`,
@@ -292,6 +298,7 @@ export function parseCliArgs(
       '--reasoning must be minimal, low, medium, high, or xhigh',
     );
   }
+  if (reasoning && agent) assertReasoningSupported(agent, reasoning);
   const batchSize = options.get('--batch-size');
   if (
     batchSize &&
@@ -317,6 +324,8 @@ export function parseCliArgs(
     version: false,
     agentEnabled: !noAgent,
     agent,
+    model: options.get('--model'),
+    reasoning,
     codexBin: options.get('--codex-bin'),
     feedArgs: commonArgs,
     agentArgs,

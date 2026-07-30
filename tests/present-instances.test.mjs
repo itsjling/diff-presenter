@@ -9,8 +9,9 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { summaryPath } from '../scripts/summary-path.mjs';
 
 const script = new URL('../scripts/present.mjs', import.meta.url).pathname;
 
@@ -144,6 +145,71 @@ test('keeps simultaneous presenters on separate ports and data files', async () 
   } finally {
     if (first && first.exitCode === null) await stop(first);
     if (second && second.exitCode === null) await stop(second);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('does not expose cached notes when --no-agent is set', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-no-agent-'));
+  let summaries;
+  let child;
+
+  try {
+    const repo = await makeRepo(root, 'repo', 'note.txt');
+    const cacheBase = join(root, 'cache');
+    summaries = summaryPath({
+      cacheRoot: join(cacheBase, 'diffsplain'),
+      callerDirectory: root,
+      repo,
+    });
+    await mkdir(dirname(summaries), { recursive: true });
+    await writeFile(
+      summaries,
+      JSON.stringify({
+        change: {
+          title: 'Seeded change title',
+          summary: 'Seeded change body',
+          why: 'Seeded reason',
+          highlights: [],
+          risks: [],
+        },
+        files: {
+          'note.txt': {
+            title: 'Seeded file title',
+            what: 'Seeded file body',
+            why: 'Seeded file reason',
+            details: [],
+            risks: [],
+          },
+        },
+      }),
+    );
+    child = spawn(
+      process.execPath,
+      [script, '--repo', repo, '--worktree', '--no-agent'],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          BROWSER: 'true',
+          XDG_CACHE_HOME: cacheBase,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const url = await waitForUrl(child);
+    const data = await waitFor(async () => {
+      const response = await fetch(new URL('diff-data.json', url));
+      return response.ok ? response.json() : undefined;
+    });
+
+    assert.doesNotMatch(JSON.stringify(data), /Seeded (change|file) (title|body)/);
+    assert.equal(data.notes.complete, false);
+    assert.equal(data.notes.completedFiles, 0);
+    assert.equal(data.notes.status, 'idle');
+  } finally {
+    if (child && child.exitCode === null) await stop(child);
+    if (summaries) await rm(summaries, { force: true });
     await rm(root, { recursive: true, force: true });
   }
 });

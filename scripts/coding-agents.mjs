@@ -8,13 +8,27 @@ import {
   join,
 } from 'node:path';
 
-export const codingAgents = [
-  'codex',
-  'claude',
-  'copilot',
-  'cursor',
-  'opencode',
-];
+export const codingAgentCapabilities = {
+  codex: { binary: 'codex', model: true, reasoning: true },
+  claude: { binary: 'claude', model: true, reasoning: false },
+  copilot: { binary: 'copilot', model: true, reasoning: false },
+  cursor: { binary: 'cursor-agent', model: true, reasoning: false },
+  opencode: { binary: 'opencode', model: true, reasoning: true },
+};
+
+export const codingAgents = Object.keys(codingAgentCapabilities);
+
+export function agentSupportsReasoning(agent) {
+  return codingAgentCapabilities[agent]?.reasoning === true;
+}
+
+export function assertReasoningSupported(agent, reasoning) {
+  if (reasoning && !agentSupportsReasoning(agent)) {
+    throw new Error(
+      `--reasoning is supported only by codex and opencode; ${agent} does not support it.`,
+    );
+  }
+}
 
 async function executable(path) {
   try {
@@ -94,8 +108,14 @@ export function codingAgentBinary(
   } = {},
 ) {
   if (agent === 'codex') return codexBin || env.CODEX_BIN || agent;
-  if (agent === 'cursor') return env.CURSOR_BIN || 'cursor-agent';
-  return env[`${agent.toUpperCase()}_BIN`] || agent;
+  if (agent === 'cursor') {
+    return env.CURSOR_BIN || codingAgentCapabilities.cursor.binary;
+  }
+  return (
+    env[`${agent.toUpperCase()}_BIN`] ||
+    codingAgentCapabilities[agent]?.binary ||
+    agent
+  );
 }
 
 function parseJsonText(text, agent) {

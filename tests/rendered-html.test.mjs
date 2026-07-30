@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   access,
-  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -156,6 +155,7 @@ test("shows a content skeleton while the agent writes a file summary", async () 
 test("builds live data for tracked and untracked workspace files", async () => {
   const repo = await mkdtemp(join(tmpdir(), "diffsplain-test-"));
   const output = join(repo, "snapshot.json");
+  const summariesPath = `${repo}-summaries.json`;
   const git = (...args) =>
     execFileSync("git", ["-C", repo, ...args], {
       encoding: "utf8",
@@ -182,9 +182,8 @@ test("builds live data for tracked and untracked workspace files", async () => {
       `${"other before\n".repeat(10)}renamed after\n`,
     );
     await writeFile(join(repo, "new.txt"), "new line\n");
-    await mkdir(join(repo, ".diffsplain"));
     await writeFile(
-      join(repo, ".diffsplain/summaries.json"),
+      summariesPath,
       JSON.stringify({
         change: {
           title: "Test change",
@@ -218,6 +217,8 @@ test("builds live data for tracked and untracked workspace files", async () => {
         new URL("../scripts/build-diff-data.mjs", import.meta.url).pathname,
         "--repo",
         repo,
+        "--summaries",
+        summariesPath,
         "--output",
         output,
       ],
@@ -238,11 +239,11 @@ test("builds live data for tracked and untracked workspace files", async () => {
 
     const oldVersion = first.version;
     const summaries = JSON.parse(
-      await readFile(join(repo, ".diffsplain/summaries.json"), "utf8"),
+      await readFile(summariesPath, "utf8"),
     );
     summaries.files["new.txt"].title = "Revised note";
     await writeFile(
-      join(repo, ".diffsplain/summaries.json"),
+      summariesPath,
       JSON.stringify(summaries),
     );
     execFileSync(
@@ -251,6 +252,8 @@ test("builds live data for tracked and untracked workspace files", async () => {
         new URL("../scripts/build-diff-data.mjs", import.meta.url).pathname,
         "--repo",
         repo,
+        "--summaries",
+        summariesPath,
         "--output",
         output,
       ],
@@ -263,7 +266,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
 
     summaries.meta = { reviewFingerprint: "0".repeat(64) };
     await writeFile(
-      join(repo, ".diffsplain/summaries.json"),
+      summariesPath,
       JSON.stringify(summaries),
     );
     execFileSync(
@@ -272,6 +275,8 @@ test("builds live data for tracked and untracked workspace files", async () => {
         new URL("../scripts/build-diff-data.mjs", import.meta.url).pathname,
         "--repo",
         repo,
+        "--summaries",
+        summariesPath,
         "--output",
         output,
       ],
@@ -284,6 +289,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
     assert.equal(stale.notes.fresh, false);
     assert.equal(stale.notes.complete, false);
   } finally {
+    await rm(summariesPath, { force: true });
     await rm(repo, { recursive: true, force: true });
   }
 });

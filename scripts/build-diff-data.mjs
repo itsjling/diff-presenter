@@ -80,6 +80,7 @@ const cacheRoot = cacheOption
 const remoteMode = Boolean(prOption || branchOption);
 const watching = has('--watch');
 const ignoreSummaryWatch = has('--ignore-summary-watch');
+const noSummaries = has('--no-summaries');
 
 if (prOption && branchOption) fail('--pr and --branch cannot be used together');
 if (prOption && (baseOption || headOption)) fail('--pr cannot be used with --base or --head');
@@ -820,7 +821,7 @@ function build() {
   }
   const target = resolveTarget();
   const remoteRepository = githubRepository(target.remote?.url);
-  const summaryDoc = readJson(summariesPath, {}) || {};
+  const summaryDoc = noSummaries ? {} : readJson(summariesPath, {}) || {};
   const allTrackedFiles = parseNameStatus(
     target.runGit([
       'diff',
@@ -926,10 +927,12 @@ function build() {
     )
     .digest('hex');
   const generatedFor =
+    !noSummaries &&
     typeof summaryDoc.meta?.reviewFingerprint === 'string'
       ? summaryDoc.meta.reviewFingerprint
       : undefined;
-  const summariesAreFresh = !generatedFor || generatedFor === reviewFingerprint;
+  const summariesAreFresh =
+    !noSummaries && (!generatedFor || generatedFor === reviewFingerprint);
   const sourceSummaries = summariesAreFresh ? summaryDoc : {};
   const summariesAreComplete =
     summariesAreFresh &&
@@ -937,17 +940,21 @@ function build() {
     filesWithoutSummaries.every((file) =>
       completeFileSummary(sourceSummaries.files?.[file.path]),
     );
-  const completedFiles = filesWithoutSummaries.filter((file) =>
-    completeFileSummary(sourceSummaries.files?.[file.path]),
-  ).length;
+  const completedFiles = noSummaries
+    ? 0
+    : filesWithoutSummaries.filter((file) =>
+        completeFileSummary(sourceSummaries.files?.[file.path]),
+      ).length;
   const storedStatus = summaryDoc.meta?.status;
-  const noteStatus = summariesAreComplete
-    ? 'complete'
-    : !summariesAreFresh
-      ? 'stale'
-      : ['generating', 'failed'].includes(storedStatus)
-        ? storedStatus
-        : 'idle';
+  const noteStatus = noSummaries
+    ? 'idle'
+    : summariesAreComplete
+      ? 'complete'
+      : !summariesAreFresh
+        ? 'stale'
+        : ['generating', 'failed'].includes(storedStatus)
+          ? storedStatus
+          : 'idle';
   const files = filesWithoutSummaries.map((file) => ({
     ...file,
     summary: fileSummary(file.path, sourceSummaries.files?.[file.path]),
@@ -982,6 +989,9 @@ function build() {
       ...(typeof summaryDoc.meta?.model === 'string'
         ? { model: summaryDoc.meta.model }
         : {}),
+      ...(typeof summaryDoc.meta?.agent === 'string'
+        ? { agent: summaryDoc.meta.agent }
+        : {}),
       ...(typeof summaryDoc.meta?.reasoning === 'string'
         ? { reasoning: summaryDoc.meta.reasoning }
         : {}),
@@ -1013,7 +1023,7 @@ function build() {
 
 function fingerprint() {
   let summariesTime = '';
-  if (!ignoreSummaryWatch) {
+  if (!ignoreSummaryWatch && !noSummaries) {
     try {
       summariesTime = String(statSync(summariesPath).mtimeMs);
     } catch {}

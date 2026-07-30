@@ -49,14 +49,18 @@ agent pass. Use `npx diffsplain --force` when you want new notes.
 
 ## Note files
 
-Worktree notes default to:
+Implicit notes use one file per target in the user cache:
 
 ```text
-/path/to/repo/.diffsplain/summaries.json
+$XDG_CACHE_HOME/diffsplain/summaries/<target-kind>-<target-key>.json
 ```
 
-Other targets use separate files in Diffsplain’s ignored
-`.cache/summaries/` folder. Pass `--summaries FILE` to use another path.
+Without `XDG_CACHE_HOME`, macOS uses
+`~/Library/Caches/diffsplain/summaries/`, Windows uses
+`%LOCALAPPDATA%\diffsplain\summaries\`, and other systems use
+`~/.cache/diffsplain/summaries/`. Worktree, checkout, branch, pull request,
+and range targets each get a distinct keyed file. Pass `--summaries FILE` to
+use another path.
 
 The file has one change note and notes keyed by file path:
 

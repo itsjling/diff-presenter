@@ -2,10 +2,37 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   agentCommand,
+  agentSupportsReasoning,
+  codingAgentCapabilities,
   codingAgentBinary,
   parseAgentResponse,
   selectCodingAgent,
 } from '../scripts/coding-agents.mjs';
+
+test('declares reasoning support for each coding agent', () => {
+  const expected = {
+    codex: true,
+    claude: false,
+    copilot: false,
+    cursor: false,
+    opencode: true,
+  };
+
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.keys(codingAgentCapabilities).map((agent) => [
+        agent,
+        agentSupportsReasoning(agent),
+      ]),
+    ),
+    expected,
+  );
+  assert.ok(
+    Object.values(codingAgentCapabilities).every(
+      (capability) => capability.model,
+    ),
+  );
+});
 
 test('selects the first available agent in fallback order', async () => {
   const checked = [];
