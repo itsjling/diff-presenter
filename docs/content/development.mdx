@@ -10,8 +10,9 @@ sidebar:
 Install packages and start Vite:
 
 ```sh
-npm install
-npm run dev
+corepack enable
+corepack npm run setup
+corepack npm run dev
 ```
 
 Open `http://localhost:2299`. Without live review data, the page uses the
@@ -20,11 +21,21 @@ checked-in todo-list demo from `public/demo-diff-data.json`.
 ## Run checks
 
 ```sh
-npm run lint
-npm test
+corepack npm run check
 ```
 
-`npm test` builds the app and runs the Node test suite.
+`corepack npm run check` is the product gate. It runs React and TypeScript
+lint, builds the app, runs the Node unit and integration tests, checks and
+builds the docs, then installs the packed package in a temporary folder and
+runs its CLI. Each stage names its failure before the command stops.
+
+`npm run setup` uses `npm ci`, so it installs only what `package-lock.json`
+pins. It is safe to run again and needs no ignored or generated files. Node
+22.13.0 and npm 10.9.2 are pinned in `.nvmrc` and `package.json`; the
+`corepack npm` commands use the pinned npm version.
+
+For a shorter local loop, `corepack npm run lint` checks types and lint rules,
+and `corepack npm test` builds the app and runs the Node test suite.
 
 ## Publish a release
 
@@ -58,7 +69,7 @@ node scripts/write-todo-demo.mjs
 To build a live snapshot from another repo:
 
 ```sh
-npm run snapshot -- --repo /path/to/repo
+corepack npm run snapshot -- --repo /path/to/repo
 ```
 
 The writer stores live data in the ignored `.cache/diff-data.json`. The local
@@ -69,14 +80,14 @@ server exposes it at `/diff-data.json`.
 The docs use [Blume](https://useblume.dev/) and live under `docs/`.
 
 ```sh
-npm run docs:dev
+corepack npm run docs:dev
 ```
 
 Build or preview the static output:
 
 ```sh
-npm run docs:build
-npm run docs:preview
+corepack npm run docs:build
+corepack npm run docs:preview
 ```
 
 Blume writes its output to `docs/dist/`. The Pages workflow publishes it under

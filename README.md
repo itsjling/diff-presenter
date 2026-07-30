@@ -56,29 +56,29 @@ Arguments:
 ## Local development
 
 ```sh
-npm install
-npm run dev
+corepack enable
+corepack npm run setup
+corepack npm run dev
 ```
 
 Run the public CLI from this checkout:
 
 ```sh
-npm run diffsplain -- --worktree
-npm run diffsplain -- doctor
-npm run doctor
+corepack npm run diffsplain -- --worktree
+corepack npm run diffsplain -- doctor
+corepack npm run doctor
 ```
 
 Run the checks:
 
 ```sh
-npm run lint
-npm test
+corepack npm run check
 ```
 
 Run the Blume docs:
 
 ```sh
-npm run docs:dev
+corepack npm run docs:dev
 ```
 
 More guides are in [`docs/`](docs/).
