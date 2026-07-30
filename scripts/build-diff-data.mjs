@@ -934,12 +934,17 @@ function build() {
   const summariesAreFresh =
     !noSummaries && (!generatedFor || generatedFor === reviewFingerprint);
   const sourceSummaries = summariesAreFresh ? summaryDoc : {};
+  const emptyReviewComplete =
+    filesWithoutSummaries.length === 0 &&
+    generatedFor === reviewFingerprint &&
+    sourceSummaries.meta?.status === 'complete';
   const summariesAreComplete =
     summariesAreFresh &&
-    completeChangeSummary(sourceSummaries.change) &&
-    filesWithoutSummaries.every((file) =>
-      completeFileSummary(sourceSummaries.files?.[file.path]),
-    );
+    (emptyReviewComplete ||
+      (completeChangeSummary(sourceSummaries.change) &&
+        filesWithoutSummaries.every((file) =>
+          completeFileSummary(sourceSummaries.files?.[file.path]),
+        )));
   const completedFiles = noSummaries
     ? 0
     : filesWithoutSummaries.filter((file) =>

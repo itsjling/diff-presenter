@@ -3,6 +3,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -104,16 +105,7 @@ const outputPath = resolve(
 );
 const codexBin = option('--codex-bin') || process.env.CODEX_BIN;
 let selectedAgent;
-try {
-  selectedAgent = await selectCodingAgent(
-    option('--agent'),
-    (agent) =>
-      commandAvailable(codingAgentBinary(agent, { codexBin })),
-  );
-} catch (error) {
-  fail(error.message);
-}
-const agentBinary = codingAgentBinary(selectedAgent, { codexBin });
+let agentBinary;
 const model = option('--model');
 const reasoning = option('--reasoning');
 const batchSizeValue = option('--batch-size') || '12';
@@ -126,11 +118,6 @@ const reasoningLevels = new Set([
 ]);
 if (reasoning && !reasoningLevels.has(reasoning)) {
   fail('--reasoning must be minimal, low, medium, high, or xhigh');
-}
-try {
-  assertReasoningSupported(selectedAgent, reasoning);
-} catch (error) {
-  fail(error.message);
 }
 if (!/^[1-9]\d*$/.test(batchSizeValue) || Number(batchSizeValue) > 50) {
   fail('--batch-size must be a number from 1 to 50');
@@ -154,10 +141,13 @@ const snapshotPath = option('--snapshot');
 const activeAgentProcesses = new Set();
 let interrupted = false;
 
-process.once('SIGTERM', () => {
+function interrupt() {
   interrupted = true;
   for (const child of activeAgentProcesses) child.kill('SIGTERM');
-});
+}
+
+process.once('SIGINT', interrupt);
+process.once('SIGTERM', interrupt);
 
 if (range && (base || head)) {
   fail('--range cannot be used with --base or --head');
@@ -542,11 +532,16 @@ function publishSnapshot(snapshot, summaries) {
     throw new Error('The diff changed while agent notes were being written');
   }
 
+  const emptyReviewComplete =
+    snapshot.files.length === 0 &&
+    summaries.meta?.status === 'complete' &&
+    summaries.meta?.reviewFingerprint === reviewFingerprint;
   const complete =
-    completeChangeNote(summaries.change) &&
-    snapshot.files.every((file) =>
-      completeFileNote(summaries.files?.[file.path]),
-    );
+    emptyReviewComplete ||
+    (completeChangeNote(summaries.change) &&
+      snapshot.files.every((file) =>
+        completeFileNote(summaries.files?.[file.path]),
+      ));
   const files = snapshot.files.map((file) => {
     const note = summaries.files?.[file.path];
     return completeFileNote(note)
@@ -601,6 +596,30 @@ function readJson(file, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function readSummaryState(file) {
+  try {
+    const value = JSON.parse(readFileSync(file, 'utf8'));
+    const valid =
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value);
+    return valid
+      ? { value, damaged: false }
+      : { value: {}, damaged: true };
+  } catch {
+    return { value: {}, damaged: existsSync(file) };
+  }
+}
+
+async function selectAgentForNotes() {
+  selectedAgent = await selectCodingAgent(
+    option('--agent'),
+    (agent) => commandAvailable(codingAgentBinary(agent, { codexBin })),
+  );
+  assertReasoningSupported(selectedAgent, reasoning);
+  agentBinary = codingAgentBinary(selectedAgent, { codexBin });
 }
 
 function runAgent(invocation, input) {
@@ -718,13 +737,7 @@ function fileFingerprint(file) {
     .digest('hex');
 }
 
-const generationSettings = {
-  agent: selectedAgent,
-  model: model || null,
-  reasoning: reasoning || null,
-};
-
-function generationSettingsMatch(meta) {
+function generationSettingsMatch(meta, generationSettings) {
   if (!meta || typeof meta !== 'object' || typeof meta.agent !== 'string') {
     return false;
   }
@@ -750,7 +763,13 @@ try {
   );
   const snapshot = cleanSnapshot(rawSnapshot);
   const paths = snapshot.files.map((file) => file.path);
-  const previousSummaries = readJson(summariesPath, {});
+  const previousState = readSummaryState(summariesPath);
+  const previousSummaries = previousState.value;
+  if (previousState.damaged) {
+    console.error(
+      `Saved notes at ${summariesPath} are damaged. Rebuilding them from the current review.`,
+    );
+  }
   if (paths.length === 0) {
     workingSnapshot = rawSnapshot;
     workingSummaries = {
@@ -769,6 +788,12 @@ try {
     publish(rawSnapshot, workingSummaries);
     console.log('No changed files to summarize.');
   } else {
+    await selectAgentForNotes();
+    const generationSettings = {
+      agent: selectedAgent,
+      model: model || null,
+      reasoning: reasoning || null,
+    };
     const startedAt = new Date().toISOString();
     const previousFiles =
       previousSummaries.files &&
@@ -788,7 +813,10 @@ try {
     const fileFingerprints = Object.fromEntries(
       paths.map((path) => [path, fileFingerprint(rawFiles.get(path))]),
     );
-    const settingsMatch = generationSettingsMatch(previousSummaries.meta);
+    const settingsMatch = generationSettingsMatch(
+      previousSummaries.meta,
+      generationSettings,
+    );
     const reusableFiles = {};
     const changedPaths = [];
     for (const path of paths) {
@@ -1013,7 +1041,9 @@ try {
       publish(workingSnapshot, workingSummaries);
     } catch {}
   }
-  if (!interrupted) {
+  if (interrupted) {
+    process.exitCode = 130;
+  } else {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }

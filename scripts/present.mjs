@@ -221,15 +221,19 @@ function snapshotState() {
     const snapshot = JSON.parse(readFileSync(outputPath, 'utf8'));
     if (snapshot.notes?.reviewFingerprint) {
       const fingerprint = snapshot.notes.reviewFingerprint;
+      const emptyReview =
+        Array.isArray(snapshot.files) && snapshot.files.length === 0;
       return {
         fingerprint,
         hasCurrentAgentNotes:
           snapshot.notes.complete &&
           snapshot.notes.fresh &&
           snapshot.notes.generatedFor === fingerprint &&
-          snapshot.notes.agent === selectedAgent &&
-          (snapshot.notes.model || null) === (cli.model || null) &&
-          (snapshot.notes.reasoning || null) === (cli.reasoning || null),
+          (emptyReview ||
+            (snapshot.notes.agent === selectedAgent &&
+              (snapshot.notes.model || null) === (cli.model || null) &&
+              (snapshot.notes.reasoning || null) ===
+                (cli.reasoning || null))),
       };
     }
     const reviewData = {
