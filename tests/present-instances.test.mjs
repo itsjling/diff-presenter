@@ -148,6 +148,78 @@ test('keeps simultaneous presenters on separate ports and data files', async () 
   }
 });
 
+test('does not serve an old snapshot while the first refresh runs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-startup-'));
+  const repo = await makeRepo(root, 'repo', 'file.txt');
+  const bin = join(root, 'bin');
+  const browser = join(bin, 'browser');
+  const gitWrapper = join(bin, 'git');
+  const gitDelayMarker = join(root, 'git-delay-marker');
+  const output = join(root, 'diff-data.json');
+  const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  let presenter;
+
+  try {
+    await mkdir(bin);
+    await writeFile(
+      output,
+      JSON.stringify({
+        version: 'stale',
+        repo: { name: 'prior-run' },
+        files: [],
+      }),
+    );
+    await writeFile(browser, '#!/bin/sh\nexit 0\n');
+    await writeFile(
+      gitWrapper,
+      '#!/bin/sh\n' +
+        'if [ ! -f "$GIT_DELAY_MARKER" ]; then\n' +
+        '  : > "$GIT_DELAY_MARKER"\n' +
+        '  sleep 1\n' +
+        'fi\n' +
+        'exec "$REAL_GIT" "$@"\n',
+    );
+    await chmod(browser, 0o755);
+    await chmod(gitWrapper, 0o755);
+
+    presenter = spawn(
+      process.execPath,
+      [
+        script,
+        '--repo',
+        repo,
+        '--worktree',
+        '--no-agent',
+        '--output',
+        output,
+        '--port',
+        '0',
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          BROWSER: browser,
+          GIT_DELAY_MARKER: gitDelayMarker,
+          PATH: `${bin}:${process.env.PATH}`,
+          REAL_GIT: realGit,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+
+    const url = await waitForUrl(presenter);
+    const response = await fetch(new URL('diff-data.json', url));
+    assert.equal(response.status, 200);
+    const snapshot = await response.json();
+    assert.equal(snapshot.repo.name, 'repo');
+    assert.deepEqual(snapshot.files.map((file) => file.path), ['file.txt']);
+  } finally {
+    if (presenter && presenter.exitCode === null) await stop(presenter);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('reuses a matching project tab when it reconnects', async () => {
   const root = await mkdtemp(join(tmpdir(), 'diffsplain-reuse-'));
   const browser = join(root, 'browser');

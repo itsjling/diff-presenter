@@ -119,26 +119,11 @@ const feed = spawn(
   [resolve(root, 'scripts/build-diff-data.mjs'), ...feedArgs],
   {
     cwd: callerDirectory,
-    stdio: agentEnabled
-      ? ['inherit', 'pipe', 'inherit']
-      : ['inherit', 'inherit', 'inherit'],
+    stdio: ['inherit', 'pipe', 'inherit'],
   },
 );
-const site = spawn(
-  process.execPath,
-  [
-    resolve(root, 'scripts/serve-built.mjs'),
-    '--output',
-    outputPath,
-    '--port',
-    String(port),
-    '--project',
-    projectKey,
-    ...(!cli.portWasPassed ? ['--increment-port'] : []),
-  ],
-  { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] },
-);
 let closing = false;
+let site;
 let agent;
 let agentTimer;
 let agentFingerprint;
@@ -173,26 +158,55 @@ function openBrowser(url) {
   opener.unref();
 }
 
-if (site.stdout) {
-  const siteLines = createInterface({ input: site.stdout });
-  siteLines.on('line', (line) => {
-    if (line === 'Diffsplain tab: connected') {
-      if (!browserOpened && browserOpenTimer) {
-        clearTimeout(browserOpenTimer);
-        browserOpenTimer = undefined;
-        browserOpened = true;
-        console.log('Reusing the open Diffsplain tab.');
+function startSite() {
+  if (closing || site) return;
+  const child = spawn(
+    process.execPath,
+    [
+      resolve(root, 'scripts/serve-built.mjs'),
+      '--output',
+      outputPath,
+      '--port',
+      String(port),
+      '--project',
+      projectKey,
+      ...(!cli.portWasPassed ? ['--increment-port'] : []),
+    ],
+    { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  site = child;
+
+  if (child.stdout) {
+    const siteLines = createInterface({ input: child.stdout });
+    siteLines.on('line', (line) => {
+      if (line === 'Diffsplain tab: connected') {
+        if (!browserOpened && browserOpenTimer) {
+          clearTimeout(browserOpenTimer);
+          browserOpenTimer = undefined;
+          browserOpened = true;
+          console.log('Reusing the open Diffsplain tab.');
+        }
+        return;
       }
-      return;
-    }
-    console.log(line);
-    const match = line.match(/^Diffsplain: (http:\/\/\S+)$/);
-    if (!browserOpened && !browserOpenTimer && match) {
-      browserOpenTimer = setTimeout(() => {
-        browserOpenTimer = undefined;
-        browserOpened = true;
-        openBrowser(match[1]);
-      }, 750);
+      console.log(line);
+      const match = line.match(/^Diffsplain: (http:\/\/\S+)$/);
+      if (!browserOpened && !browserOpenTimer && match) {
+        browserOpenTimer = setTimeout(() => {
+          browserOpenTimer = undefined;
+          browserOpened = true;
+          openBrowser(match[1]);
+        }, 750);
+      }
+    });
+  }
+
+  child.on('exit', (code, signal) => {
+    if (!closing) stop(code || (signal ? 1 : 0));
+  });
+  child.on('error', (error) => {
+    if (!closing) {
+      console.error(`Could not start the local page: ${error.message}`);
+      stop(1);
     }
   });
 }
@@ -311,13 +325,16 @@ function scheduleAgent(fingerprint) {
   agentTimer = setTimeout(() => runAgent(selectedFingerprint), delay);
 }
 
-if (agentEnabled && feed.stdout) {
+if (feed.stdout) {
   const feedLines = createInterface({ input: feed.stdout });
   feedLines.on('line', (line) => {
-    if (line.startsWith('Wrote ') || line === 'No diff-data changes') {
-      scheduleAgent();
+    const snapshotReady =
+      line.startsWith('Wrote ') || line === 'No diff-data changes';
+    if (snapshotReady) {
+      startSite();
+      if (agentEnabled) scheduleAgent();
     }
-    if (line !== 'No diff-data changes') console.log(line);
+    if (line !== 'No diff-data changes' || !agentEnabled) console.log(line);
   });
 }
 
@@ -327,7 +344,7 @@ function stop(code = 0) {
   clearTimeout(browserOpenTimer);
   clearTimeout(agentTimer);
   if (!feed.killed) feed.kill('SIGTERM');
-  if (!site.killed) site.kill('SIGTERM');
+  if (site && !site.killed) site.kill('SIGTERM');
   if (agent && !agent.killed) agent.kill('SIGTERM');
   process.exitCode = code;
 }
@@ -338,15 +355,6 @@ feed.on('exit', (code, signal) => {
 feed.on('error', (error) => {
   if (!closing) {
     console.error(`Could not start the diff watcher: ${error.message}`);
-    stop(1);
-  }
-});
-site.on('exit', (code, signal) => {
-  if (!closing) stop(code || (signal ? 1 : 0));
-});
-site.on('error', (error) => {
-  if (!closing) {
-    console.error(`Could not start the local page: ${error.message}`);
     stop(1);
   }
 });

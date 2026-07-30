@@ -359,6 +359,8 @@ export default function Home() {
       events = new EventSource(eventsUrl);
       events.addEventListener("ready", () => {
         stopPolling();
+        latestVersion.current = null;
+        setSnapshot(null);
         void refresh();
       });
       events.addEventListener("update", () => void refresh());
