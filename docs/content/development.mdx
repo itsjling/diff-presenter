@@ -7,15 +7,18 @@ sidebar:
 
 ## Run the app
 
-Install packages and start Vite:
+Install packages and start the self-contained demo:
 
 ```sh
-npm install
-npm run dev
+npm ci
+npm run demo
 ```
 
-Open `http://localhost:2299`. Without live review data, the page uses the
-checked-in todo-list demo from `public/demo-diff-data.json`.
+Open `http://localhost:2299`. The demo serves the checked-in todo-list data
+from `public/demo-diff-data.json`. It does not start a snapshot, coding agent,
+or remote Git request. Vite refreshes the page as you edit the app or fixture.
+
+`npm run dev` starts the same local Vite server.
 
 ## Run checks
 
