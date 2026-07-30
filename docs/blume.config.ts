@@ -24,7 +24,7 @@ export default defineConfig({
     repo: "diffsplain",
   },
   navigation: {
-    sidebar: ["/", "/cli", "/agent-notes", "/data", "/development"],
+    sidebar: ["/", "/cli", "/agent-notes", "/data", "/mobile", "/development"],
   },
   theme: {
     accent: "blue",
