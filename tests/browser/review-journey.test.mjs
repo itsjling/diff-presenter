@@ -1,30 +1,20 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import test, { after, before } from "node:test";
-import { fileURLToPath } from "node:url";
-import { stripVTControlCharacters } from "node:util";
-import { chromium } from "@playwright/test";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+import {
+  parsedViteOutput,
+  runInBrowser,
+  startViteServer,
+} from "./browser-harness.mjs";
+
 let fixtureDirectory;
 let output;
 let server;
-let serverLog = "";
-let serverOutput = "";
 let serverUrl;
-
-function parsedServerOutput(outputText) {
-  const text = stripVTControlCharacters(outputText);
-  return {
-    text,
-    url: text.match(/Local:\s+(http:\/\/[^\s]+)/)?.[1],
-  };
-}
 
 function snapshot(version, files) {
   return {
@@ -122,33 +112,10 @@ async function writeSnapshot(value) {
   await writeFile(output, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function startServer() {
-  return new Promise((resolveServer, rejectServer) => {
-    const vite = resolve(root, "node_modules/vite/bin/vite.js");
-    server = spawn(process.execPath, [vite, "--host", "127.0.0.1", "--port", "0"], {
-      cwd: root,
-      env: {
-        ...process.env,
-        DIFFSPLAIN_LIVE_OUTPUT: output,
-        FORCE_COLOR: "1",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const onOutput = (chunk) => {
-      serverOutput += chunk.toString();
-      const parsed = parsedServerOutput(serverOutput);
-      serverLog = parsed.text;
-      if (parsed.url) {
-        serverUrl = parsed.url;
-        resolveServer();
-      }
-    };
-    server.stdout.on("data", onOutput);
-    server.stderr.on("data", onOutput);
-    server.once("error", rejectServer);
-    server.once("exit", (code) => {
-      rejectServer(new Error(`Vite stopped before it was ready (${code}).\n${serverLog}`));
-    });
+function runReviewJourney(name, options, journey) {
+  return runInBrowser(name, options, journey, {
+    ignoredConsoleError: (message) => message.includes("status of 503"),
+    serverLog: () => server.log(),
   });
 }
 
@@ -163,50 +130,8 @@ test("parses Vite's URL when text and color codes cross output chunks", () => {
     outputText += chunk;
   }
 
-  assert.equal(parsedServerOutput(outputText).url, "http://127.0.0.1:4173/");
+  assert.equal(parsedViteOutput(outputText).url, "http://127.0.0.1:4173/");
 });
-
-async function stopServer() {
-  if (!server || server.exitCode !== null) return;
-  server.kill("SIGTERM");
-  await once(server, "exit");
-}
-
-async function runInBrowser(name, options, journey) {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext(options);
-  const page = await context.newPage();
-  const consoleErrors = [];
-  let traceSaved = false;
-  page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
-  });
-  page.on("pageerror", (error) => consoleErrors.push(error.message));
-  await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
-
-  try {
-    await journey(page);
-    assert.deepEqual(
-      consoleErrors.filter((message) => !message.includes("status of 503")),
-      [],
-    );
-  } catch (error) {
-    const evidence = await mkdtemp(join(tmpdir(), "diffsplain-browser-failure-"));
-    await chmod(evidence, 0o700);
-    await Promise.all([
-      page.screenshot({ path: join(evidence, "review.png"), fullPage: true }),
-      context.tracing.stop({ path: join(evidence, "trace.zip") }),
-      writeFile(join(evidence, "browser-errors.json"), JSON.stringify(consoleErrors, null, 2)),
-      writeFile(join(evidence, "server.log"), serverLog),
-    ]);
-    traceSaved = true;
-    throw new Error(`${name} failed: ${error.message}. Evidence: ${evidence}`, { cause: error });
-  } finally {
-    if (!traceSaved) await context.tracing.stop();
-    await context.close();
-    await browser.close();
-  }
-}
 
 async function selectFile(page, search) {
   await page.locator(".file-picker-trigger").click();
@@ -219,18 +144,24 @@ async function selectFile(page, search) {
 before(async () => {
   fixtureDirectory = await mkdtemp(join(tmpdir(), "diffsplain-browser-fixture-"));
   output = join(fixtureDirectory, "diff-data.json");
-  await startServer();
+  server = await startViteServer({
+    env: {
+      DIFFSPLAIN_LIVE_OUTPUT: output,
+      FORCE_COLOR: "1",
+    },
+  });
+  serverUrl = server.url;
 });
 
 after(async () => {
-  await stopServer();
+  await server?.stop();
   if (fixtureDirectory && existsSync(fixtureDirectory)) {
     await rm(fixtureDirectory, { recursive: true, force: true });
   }
 });
 
 test("shows error, empty, binary, truncated, and refreshed review states on desktop", async () => {
-  await runInBrowser("desktop review journey", { viewport: { width: 1280, height: 800 } }, async (page) => {
+  await runReviewJourney("desktop review journey", { viewport: { width: 1280, height: 800 } }, async (page) => {
     await page.goto(serverUrl);
     await page.getByText("Snapshot returned 503").waitFor();
 
@@ -255,7 +186,7 @@ test("shows error, empty, binary, truncated, and refreshed review states on desk
 });
 
 test("runs the full picker and refresh journey at the supported mobile viewport", async () => {
-  await runInBrowser(
+  await runReviewJourney(
     "mobile review journey",
     { hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } },
     async (page) => {
