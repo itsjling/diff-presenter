@@ -601,10 +601,7 @@ function runAgent(invocation, input) {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(invocation.command, invocation.args, {
       cwd: invocation.cwd || root,
-      env: {
-        ...process.env,
-        ...invocation.env,
-      },
+      env: invocation.env || process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     activeAgentProcesses.add(child);
