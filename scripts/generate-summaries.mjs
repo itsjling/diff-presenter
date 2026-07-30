@@ -91,7 +91,7 @@ Options:
   --model NAME        Model passed to the coding agent
   --reasoning LEVEL   Agent reasoning effort when supported
   --batch-size COUNT  Maximum files per agent pass (default: 12)
-  --jobs COUNT        Agent passes to run at once (default: 3; OpenCode: 1)
+  --jobs COUNT        Agent passes to run at once (default: 3)
   --force             Regenerate all notes instead of using cached notes`);
   process.exit(0);
 }
@@ -600,6 +600,10 @@ function runAgent(invocation, input) {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(invocation.command, invocation.args, {
       cwd: invocation.cwd || root,
+      env: {
+        ...process.env,
+        ...invocation.env,
+      },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     activeAgentProcesses.add(child);
@@ -889,12 +893,8 @@ try {
         );
       }
     };
-    const workerCount =
-      selectedAgent === 'opencode'
-        ? Math.min(1, batches.length)
-        : Math.min(jobs, batches.length);
     const workers = Array.from(
-      { length: workerCount },
+      { length: Math.min(jobs, batches.length) },
       async () => {
         while (nextBatch < batches.length) {
           const index = nextBatch;

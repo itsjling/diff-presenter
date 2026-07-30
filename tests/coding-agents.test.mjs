@@ -42,6 +42,7 @@ test('builds non-interactive commands for each coding agent', () => {
     schemaPath: '/tmp/schema.json',
     inputPath: '/tmp/input.json',
     workingDirectory: '/work',
+    env: {},
   };
 
   const codex = agentCommand({ ...common, agent: 'codex' });
@@ -80,8 +81,29 @@ test('builds non-interactive commands for each coding agent', () => {
     '--format',
     'json',
   ]);
-  assert.ok(opencode.args.includes('--file'));
+  assert.ok(!opencode.args.includes('--file'));
   assert.ok(opencode.args.includes('--variant'));
+  assert.deepEqual(
+    opencode.args.slice(
+      opencode.args.indexOf('--agent'),
+      opencode.args.indexOf('--agent') + 2,
+    ),
+    ['--agent', 'build'],
+  );
+  assert.deepEqual(
+    opencode.args.slice(
+      opencode.args.indexOf('--dir'),
+      opencode.args.indexOf('--dir') + 2,
+    ),
+    ['--dir', '/tmp'],
+  );
+  assert.equal(opencode.cwd, '/tmp');
+  assert.equal(opencode.input, 'stdin');
+  assert.deepEqual(opencode.env, {
+    OPENCODE_DB: ':memory:',
+    OPENCODE_CONFIG_CONTENT:
+      '{"permission":{"*":"deny"},"agent":{"build":{"permission":{"*":"deny"}}}}',
+  });
 });
 
 test('reads structured output from each coding agent', () => {
@@ -120,6 +142,14 @@ test('reads structured output from each coding agent', () => {
       })}\n`,
     ),
     response,
+  );
+  assert.throws(
+    () =>
+      parseAgentResponse(
+        'opencode',
+        `${JSON.stringify({ type: 'step_finish' })}\n`,
+      ),
+    /OpenCode did not return summary JSON/,
   );
 });
 

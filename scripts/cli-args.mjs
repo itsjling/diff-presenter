@@ -57,7 +57,7 @@ Options:
   --model NAME        Model for agent notes
   --reasoning LEVEL   Agent reasoning effort when supported
   --batch-size COUNT  Maximum files per agent pass (default: 12)
-  --jobs COUNT        Agent passes to run at once (default: 3; OpenCode: 1)
+  --jobs COUNT        Agent passes to run at once (default: 3)
   --force             Regenerate all agent notes
   --remote NAME|URL   Git remote (default: origin)
   --port NUMBER       Local page port (default: 2299)

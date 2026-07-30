@@ -319,13 +319,13 @@ if (agent === "claude") {
   }
 });
 
-test("runs OpenCode batches one at a time", async () => {
+test("runs parallel OpenCode batches with isolated databases", async () => {
   const repo = await makeRepo();
   const summaries = join(repo, "opencode-notes.json");
   const output = join(repo, "opencode-diff-data.json");
   const binDirectory = join(repo, "bin");
   const bin = join(binDirectory, "opencode");
-  const lock = join(repo, "opencode.lock");
+  const events = join(repo, "opencode-events.jsonl");
 
   try {
     await mkdir(binDirectory);
@@ -333,22 +333,31 @@ test("runs OpenCode batches one at a time", async () => {
       bin,
       `#!/usr/bin/env node
 import {
-  closeSync,
-  openSync,
+  appendFileSync,
   readFileSync,
-  rmSync,
 } from "node:fs";
-let descriptor;
-try {
-  descriptor = openSync(${JSON.stringify(lock)}, "wx");
-} catch {
+const args = process.argv.slice(2);
+if (process.env.OPENCODE_DB !== ":memory:") {
   process.stderr.write("database is locked\\n");
   process.exit(1);
 }
+if (args.includes("--file")) {
+  process.stderr.write("snapshot must come from standard input\\n");
+  process.exit(1);
+}
+const config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT);
+if (config.permission?.["*"] !== "deny" ||
+    config.agent?.build?.permission?.["*"] !== "deny") {
+  process.stderr.write("tools are still enabled\\n");
+  process.exit(1);
+}
+appendFileSync(
+  ${JSON.stringify(events)},
+  JSON.stringify({ type: "start", pid: process.pid }) + "\\n",
+);
 try {
-  const args = process.argv.slice(2);
-  const input = JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"));
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+  const input = JSON.parse(readFileSync(0, "utf8"));
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
   const response = input.files.length
     ? {
         files: input.files.map((file) => ({
@@ -374,8 +383,10 @@ try {
     part: { text: JSON.stringify(response) },
   }) + "\\n");
 } finally {
-  if (descriptor !== undefined) closeSync(descriptor);
-  rmSync(${JSON.stringify(lock)}, { force: true });
+  appendFileSync(
+    ${JSON.stringify(events)},
+    JSON.stringify({ type: "end", pid: process.pid }) + "\\n",
+  );
 }
 `,
     );
@@ -407,6 +418,13 @@ try {
 
     assert.equal(result.status, 0, result.stderr);
     assert.doesNotMatch(result.stderr, /database is locked/i);
+    let active = 0;
+    let peak = 0;
+    for (const event of await recordedCalls(events)) {
+      active += event.type === "start" ? 1 : -1;
+      peak = Math.max(peak, active);
+    }
+    assert.equal(peak, 2);
     const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
     assert.equal(writtenNotes.meta.status, "complete");
     assert.deepEqual(Object.keys(writtenNotes.files).sort(), [

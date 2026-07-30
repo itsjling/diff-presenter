@@ -119,7 +119,7 @@ export function parseAgentResponse(agent, stdout) {
   }
 
   if (agent === 'opencode') {
-    const parts = stdout
+    const events = stdout
       .split('\n')
       .filter(Boolean)
       .map((line) => {
@@ -128,10 +128,12 @@ export function parseAgentResponse(agent, stdout) {
         } catch {
           return undefined;
         }
-      })
+      });
+    const parts = events
       .filter((event) => event?.type === 'text' && event.part?.text)
       .map((event) => event.part.text);
     if (parts.length) return parseJsonText(parts.join(''), 'OpenCode');
+    throw new Error('OpenCode did not return summary JSON');
   }
 
   if (agent === 'cursor') {
@@ -156,6 +158,7 @@ export function agentCommand({
   schemaPath,
   inputPath,
   workingDirectory,
+  env = process.env,
 }) {
   if (agent === 'codex') {
     const args = [
@@ -232,20 +235,60 @@ export function agentCommand({
     };
   }
 
+  let config = {};
+  try {
+    const parsed = JSON.parse(env.OPENCODE_CONFIG_CONTENT || '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      config = parsed;
+    }
+  } catch {
+    // Replace invalid inline config with the safe settings for this run.
+  }
+  const configuredAgents =
+    config.agent &&
+    typeof config.agent === 'object' &&
+    !Array.isArray(config.agent)
+      ? config.agent
+      : {};
+  const configuredBuild =
+    configuredAgents.build &&
+    typeof configuredAgents.build === 'object' &&
+    !Array.isArray(configuredAgents.build)
+      ? configuredAgents.build
+      : {};
   const args = [
     'run',
     '--pure',
     '--format',
     'json',
     '--dir',
-    workingDirectory,
-    '--file',
-    inputPath,
+    dirname(inputPath),
+    '--agent',
+    'build',
   ];
   if (model) args.push('--model', model);
   if (reasoning) args.push('--variant', reasoning);
   args.push(
-    `${prompt}\n\nThe attached JSON file is the snapshot. Return JSON that matches this schema:\n${JSON.stringify(schema)}`,
+    `${prompt}\n\nThe snapshot JSON follows this prompt on standard input. Return JSON that matches this schema:\n${JSON.stringify(schema)}`,
   );
-  return { command: binary, args, input: 'none' };
+  return {
+    command: binary,
+    args,
+    input: 'stdin',
+    cwd: dirname(inputPath),
+    env: {
+      OPENCODE_DB: ':memory:',
+      OPENCODE_CONFIG_CONTENT: JSON.stringify({
+        ...config,
+        permission: { '*': 'deny' },
+        agent: {
+          ...configuredAgents,
+          build: {
+            ...configuredBuild,
+            permission: { '*': 'deny' },
+          },
+        },
+      }),
+    },
+  };
 }
