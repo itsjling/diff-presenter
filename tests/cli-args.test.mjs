@@ -132,10 +132,15 @@ test('accepts short help and version flags', () => {
 });
 
 test('accepts the doctor command without review options', () => {
-  assert.deepEqual(parseCliArgs(['doctor']), { doctor: true });
+  assert.deepEqual(parseCliArgs(['doctor']), {
+    doctor: { json: false, deep: false },
+  });
+  assert.deepEqual(parseCliArgs(['doctor', '--json', '--deep']), {
+    doctor: { json: true, deep: true },
+  });
   assert.throws(
     () => parseCliArgs(['doctor', '--no-agent']),
-    /doctor does not take arguments or options/i,
+    /doctor only accepts --json and --deep/i,
   );
 });
 
