@@ -624,7 +624,7 @@ kbd {
   --diffs-addition-color-override: var(--green);
   --diffs-bg: var(--paper);
   --diffs-bg-context-override: var(--paper);
-  --diffs-bg-hover-override: var(--ink);
+  --diffs-bg-hover-override: rgb(32 35 31 / 3.8%);
   --diffs-bg-separator-override: var(--blue-soft);
   --diffs-deletion-color-override: var(--red);
   --diffs-fg: var(--ink);

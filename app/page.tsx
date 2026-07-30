@@ -81,10 +81,6 @@ const DIFF_OPTIONS = {
   overflow: "scroll",
   theme: "pierre-light",
   themeType: "light",
-  onPostRender(node, _instance, phase) {
-    if (phase === "unmount") return;
-    node.closest<HTMLElement>(".diff-scroll")?.scrollTo({ top: 0, left: 0 });
-  },
 } satisfies FileDiffOptions<undefined>;
 
 function shortRef(ref: string) {
@@ -139,6 +135,7 @@ function statusLabel(status: FileStatus) {
 }
 
 function DiffLines({ patch }: { patch: string }) {
+  const shellRef = useRef<HTMLDivElement>(null);
   const renderablePatch = useMemo(
     () =>
       patch
@@ -148,8 +145,15 @@ function DiffLines({ patch }: { patch: string }) {
     [patch],
   );
 
+  useEffect(() => {
+    shellRef.current
+      ?.closest<HTMLElement>(".diff-scroll")
+      ?.scrollTo({ top: 0, left: 0 });
+  }, [renderablePatch]);
+
   return (
     <div
+      ref={shellRef}
       className="diff-renderer-shell"
       role="region"
       aria-label="Unified code diff"
