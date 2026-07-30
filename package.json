@@ -27,6 +27,7 @@
   },
   "files": [
     "dist",
+    "scripts/access-token.mjs",
     "scripts/build-diff-data.mjs",
     "scripts/cli-args.mjs",
     "scripts/coding-agents.mjs",
@@ -56,10 +57,13 @@
     "build": "vite build && node scripts/clean-built-live-data.mjs",
     "start": "node scripts/serve-built.mjs",
     "prepack": "npm run build",
-    "test": "npm run build && node --test tests/*.test.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs && npm run test:browser",
+    "test:browser": "node --test tests/browser/*.test.mjs",
+    "test:browser:install": "playwright install chromium",
     "lint": "tsc --noEmit && eslint ."
   },
   "devDependencies": {
+    "@playwright/test": "1.62.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

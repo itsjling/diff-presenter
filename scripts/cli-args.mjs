@@ -315,6 +315,7 @@ export function parseCliArgs(
   if (!/^\d+$/.test(portValue) || Number(portValue) > 65_535) {
     fail('--port must be a number from 0 to 65535');
   }
+  const host = (options.get('--host') || 'localhost').replace(/^\[|\]$/g, '');
 
   return {
     help: false,
@@ -326,7 +327,7 @@ export function parseCliArgs(
     agentArgs,
     port: Number(portValue),
     portWasPassed: options.has('--port'),
-    host: options.get('--host') || 'localhost',
+    host,
     browserEnabled: !options.has('--no-browser'),
     forceSummaryRegeneration: options.has('--force'),
   };

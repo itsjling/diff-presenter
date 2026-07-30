@@ -24,6 +24,17 @@ test("builds the static Diffsplain entry page", async () => {
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
+test("documents browser setup before the full checks", async () => {
+  const readme = await readFile(
+    new URL("../README.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    readme,
+    /npm run test:browser:install\nnpm run lint\nnpm test/,
+  );
+});
+
 test("ships the ten-file todo-list demo", async () => {
   const [{ todoDemoFiles }, payloadText] = await Promise.all([
     import("../site/todo-demo.js"),

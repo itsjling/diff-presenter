@@ -68,9 +68,10 @@ npm run diffsplain -- doctor
 npm run doctor
 ```
 
-Run the checks:
+Install Chromium once, then run the checks:
 
 ```sh
+npm run test:browser:install
 npm run lint
 npm test
 ```
