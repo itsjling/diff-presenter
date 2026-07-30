@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { parsePatchFiles } from "@pierre/diffs";
 
 test("builds the static Diffsplain entry page", async () => {
   const html = await readFile(
@@ -282,6 +283,57 @@ test("builds live data for tracked and untracked workspace files", async () => {
     assert.match(stale.files[0].summary.why, /--agent/);
     assert.equal(stale.notes.fresh, false);
     assert.equal(stale.notes.complete, false);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("builds valid shortened patches for the diff renderer", async () => {
+  const repo = await mkdtemp(join(tmpdir(), "diffsplain-long-diff-"));
+  const output = join(repo, "snapshot.json");
+  const git = (...args) =>
+    execFileSync("git", ["-C", repo, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+  try {
+    git("init", "-q");
+    git("config", "user.email", "diffsplain@example.test");
+    git("config", "user.name", "Diffsplain");
+    git("config", "commit.gpgsign", "false");
+    await writeFile(
+      join(repo, "long.txt"),
+      Array.from({ length: 240 }, (_, index) => `before ${index}\n`).join(""),
+    );
+    git("add", "long.txt");
+    git("commit", "-qm", "base");
+    await writeFile(
+      join(repo, "long.txt"),
+      Array.from({ length: 240 }, (_, index) => `after ${index}\n`).join(""),
+    );
+
+    execFileSync(
+      process.execPath,
+      [
+        new URL("../scripts/build-diff-data.mjs", import.meta.url).pathname,
+        "--repo",
+        repo,
+        "--output",
+        output,
+      ],
+      { stdio: "pipe" },
+    );
+
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    const [file] = snapshot.files;
+    const parsed = parsePatchFiles(file.snippet, "shortened-patch", true);
+
+    assert.equal(file.isTruncated, true);
+    assert.ok(file.snippet.split("\n").length <= 180);
+    assert.ok(file.snippet.length < file.patch.length);
+    assert.equal(parsed.length, 1);
+    assert.equal(parsed[0].files.length, 1);
   } finally {
     await rm(repo, { recursive: true, force: true });
   }

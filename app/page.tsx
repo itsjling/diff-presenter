@@ -5,6 +5,8 @@ import {
   useRef,
   useState,
 } from "react";
+import type { FileDiffOptions } from "@pierre/diffs";
+import { PatchDiff, Virtualizer } from "@pierre/diffs/react";
 
 type FileStatus = "added" | "modified" | "deleted" | "renamed" | "binary";
 
@@ -69,90 +71,21 @@ type DiffSnapshot = {
   };
 };
 
-type DiffRow = {
-  kind: "add" | "delete" | "context" | "hunk" | "meta" | "omitted";
-  oldLine?: number;
-  newLine?: number;
-  marker: string;
-  text: string;
-};
-
 const FALLBACK_POLL_MS = 1_500;
-
-function parseDiff(patch: string): DiffRow[] {
-  let oldLine: number | undefined;
-  let newLine: number | undefined;
-
-  return patch.split("\n").map((line) => {
-    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/);
-    if (hunk) {
-      oldLine = Number(hunk[1]);
-      newLine = Number(hunk[2]);
-      return {
-        kind: "hunk",
-        marker: "··",
-        text: `@@ ${hunk[1]} → ${hunk[2]} @@${hunk[3]}`,
-      };
-    }
-
-    if (
-      line.startsWith("diff --git ") ||
-      line.startsWith("index ") ||
-      line.startsWith("--- ") ||
-      line.startsWith("+++ ") ||
-      line.startsWith("new file mode ") ||
-      line.startsWith("deleted file mode ") ||
-      line.startsWith("similarity index ") ||
-      line.startsWith("rename from ") ||
-      line.startsWith("rename to ") ||
-      line.startsWith("Binary files ") ||
-      line === "\\ No newline at end of file"
-    ) {
-      return { kind: "meta", marker: "·", text: line };
-    }
-
-    if (
-      line.startsWith("…") ||
-      line.startsWith("...") ||
-      /lines? (hidden|omitted)/i.test(line)
-    ) {
-      return { kind: "omitted", marker: "··", text: line };
-    }
-
-    if (line.startsWith("+")) {
-      const row = {
-        kind: "add" as const,
-        newLine,
-        marker: "+",
-        text: line.slice(1),
-      };
-      if (newLine !== undefined) newLine += 1;
-      return row;
-    }
-
-    if (line.startsWith("-")) {
-      const row = {
-        kind: "delete" as const,
-        oldLine,
-        marker: "−",
-        text: line.slice(1),
-      };
-      if (oldLine !== undefined) oldLine += 1;
-      return row;
-    }
-
-    const row = {
-      kind: "context" as const,
-      oldLine,
-      newLine,
-      marker: " ",
-      text: line.startsWith(" ") ? line.slice(1) : line,
-    };
-    if (oldLine !== undefined) oldLine += 1;
-    if (newLine !== undefined) newLine += 1;
-    return row;
-  });
-}
+const DIFF_OPTIONS = {
+  diffIndicators: "classic",
+  diffStyle: "unified",
+  disableFileHeader: true,
+  hunkSeparators: "metadata",
+  lineDiffType: "word-alt",
+  overflow: "scroll",
+  theme: "pierre-light",
+  themeType: "light",
+  onPostRender(node, _instance, phase) {
+    if (phase === "unmount") return;
+    node.closest<HTMLElement>(".diff-scroll")?.scrollTo({ top: 0, left: 0 });
+  },
+} satisfies FileDiffOptions<undefined>;
 
 function shortRef(ref: string) {
   return ref.length > 16 ? ref.slice(0, 8) : ref;
@@ -206,28 +139,26 @@ function statusLabel(status: FileStatus) {
 }
 
 function DiffLines({ patch }: { patch: string }) {
-  const rows = useMemo(() => parseDiff(patch), [patch]);
+  const renderablePatch = useMemo(
+    () =>
+      patch
+        .split("\n")
+        .filter((line) => !/^(?:\.\.\.|…) diff truncated;/.test(line))
+        .join("\n"),
+    [patch],
+  );
 
   return (
-    <div className="diff-lines" role="table" aria-label="Unified code diff">
-      {rows.map((row, index) => (
-        <div
-          className={`diff-row diff-row--${row.kind}`}
-          role="row"
-          key={`${index}-${row.kind}-${row.oldLine ?? ""}-${row.newLine ?? ""}`}
-        >
-          <span className="line-number" role="cell">
-            {row.oldLine ?? ""}
-          </span>
-          <span className="line-number" role="cell">
-            {row.newLine ?? ""}
-          </span>
-          <span className="line-marker" aria-hidden="true">
-            {row.marker}
-          </span>
-          <code role="cell">{row.text || " "}</code>
-        </div>
-      ))}
+    <div
+      className="diff-renderer-shell"
+      role="region"
+      aria-label="Unified code diff"
+    >
+      <PatchDiff
+        patch={renderablePatch}
+        options={DIFF_OPTIONS}
+        className="diff-renderer"
+      />
     </div>
   );
 }
@@ -645,8 +576,8 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="diff-scroll">
-              {currentFile.isBinary ? (
+            {currentFile.isBinary ? (
+              <div className="diff-scroll">
                 <div className="binary-card">
                   <span className="binary-icon" aria-hidden="true">
                     01
@@ -658,10 +589,18 @@ export default function Home() {
                     its role.
                   </p>
                 </div>
-              ) : (
-                <DiffLines patch={shownPatch} />
-              )}
-            </div>
+              </div>
+            ) : (
+              <Virtualizer
+                className="diff-scroll"
+                contentClassName="diff-scroll-content"
+              >
+                <DiffLines
+                  key={showFull ? "full" : "excerpt"}
+                  patch={shownPatch}
+                />
+              </Virtualizer>
+            )}
 
             <footer className="diff-footer">
               <span>

@@ -255,31 +255,45 @@ function parseNumstat(raw) {
 function compactSnippet(patch, limit = 180) {
   const lines = patch.split('\n');
   if (lines.length <= limit) return patch;
-  const header = lines
-    .filter(
-      (line) =>
-        !line.startsWith('@@') &&
-        !line.startsWith('+') &&
-        !line.startsWith('-') &&
-        !line.startsWith(' '),
-    )
-    .slice(0, 8);
-  const hunks = [];
-  let open = false;
-  for (const line of lines) {
-    if (line.startsWith('@@')) {
-      if (hunks.length >= 72) break;
-      open = true;
-      hunks.push(line);
-      continue;
+  const firstHunk = lines.findIndex((line) => line.startsWith('@@'));
+  if (firstHunk < 0) return patch;
+
+  const output = lines.slice(0, firstHunk);
+  let cursor = firstHunk;
+  while (cursor < lines.length && output.length < limit) {
+    const nextHunk = lines.findIndex(
+      (line, index) => index > cursor && line.startsWith('@@'),
+    );
+    const end = nextHunk < 0 ? lines.length : nextHunk;
+    const hunk = lines.slice(cursor, end);
+    const remaining = limit - output.length;
+
+    if (hunk.length <= remaining) {
+      output.push(...hunk);
+    } else {
+      const match = hunk[0].match(
+        /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/,
+      );
+      if (!match || remaining < 2) break;
+
+      const body = hunk.slice(1, remaining);
+      let oldCount = 0;
+      let newCount = 0;
+      for (const line of body) {
+        if (line === '\\ No newline at end of file') continue;
+        if (!line.startsWith('+')) oldCount += 1;
+        if (!line.startsWith('-')) newCount += 1;
+      }
+      output.push(
+        `@@ -${match[1]},${oldCount} +${match[2]},${newCount} @@${match[3]}`,
+        ...body,
+      );
     }
-    if (open && hunks.length < 72) hunks.push(line);
+
+    if (nextHunk < 0 || output.length >= limit) break;
+    cursor = nextHunk;
   }
-  return [
-    ...header,
-    ...hunks,
-    '... diff truncated; see patch for full content ...',
-  ].join('\n');
+  return output.join('\n');
 }
 
 function normalizeBranch(value, remoteName) {
