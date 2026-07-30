@@ -19,14 +19,15 @@ Choose an agent or control how it runs:
 
 ```sh
 npx diffsplain \
-  --agent claude \
+  --agent codex \
   --model MODEL_NAME \
   --reasoning low \
   --batch-size 2
 ```
 
 The default batch size is 12 files. Smaller batches add the first notes to
-the open page sooner.
+the open page sooner. All supported agents accept `--model`; only Codex and
+OpenCode accept `--reasoning`.
 
 ## Run one note pass
 

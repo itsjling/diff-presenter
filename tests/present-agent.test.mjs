@@ -192,8 +192,12 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         stdio: "pipe",
       },
     );
-    await new Promise((resolve) => setTimeout(resolve, 3_500));
-    const restartLog = await readFile(events, "utf8");
+    const restartLog = await waitFor(async () => {
+      const value = await readFile(events, "utf8");
+      return (value.match(/codex-after-feed/g) || []).length === 4
+        ? value
+        : undefined;
+    });
     assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 4);
 
     const restartResult = await stop(presenter);

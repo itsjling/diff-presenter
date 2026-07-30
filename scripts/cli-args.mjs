@@ -5,37 +5,60 @@ import {
   codingAgents,
 } from './coding-agents.mjs';
 
-const valueOptions = new Set([
-  '--repo',
-  '--branch',
-  '--pr',
-  '--base',
-  '--head',
-  '--remote',
-  '--summaries',
-  '--output',
-  '--cache-dir',
-  '--codex-bin',
-  '--model',
-  '--reasoning',
-  '--batch-size',
-  '--jobs',
-  '--port',
-]);
-const flagOptions = new Set([
-  '--help',
-  '--version',
-  '--agent',
-  '--no-agent',
-  '--force',
-  '--worktree',
-]);
-const pathOptions = new Set([
-  '--summaries',
-  '--output',
-  '--cache-dir',
-  '--codex-bin',
-]);
+function defineCliOptions(records) {
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(records).map(([name, record]) => [
+        name,
+        Object.freeze(record),
+      ]),
+    ),
+  );
+}
+
+export const cliOptions = defineCliOptions({
+  '--repo': { kind: 'value' },
+  '--branch': { kind: 'value' },
+  '--pr': { kind: 'value' },
+  '--base': { kind: 'value' },
+  '--head': { kind: 'value' },
+  '--remote': { kind: 'value' },
+  '--summaries': { kind: 'value', path: true },
+  '--output': { kind: 'value', path: true },
+  '--cache-dir': { kind: 'value', path: true },
+  '--codex-bin': { kind: 'value', path: true },
+  '--model': { kind: 'value' },
+  '--reasoning': { kind: 'value' },
+  '--batch-size': { kind: 'value', default: 12, min: 1, max: 50 },
+  '--jobs': { kind: 'value', default: 3, min: 1, max: 8 },
+  '--port': { kind: 'value', default: 2299, min: 0, max: 65_535 },
+  '--help': { kind: 'flag' },
+  '--version': { kind: 'flag' },
+  '--agent': { kind: 'agent' },
+  '--no-agent': { kind: 'no-agent' },
+  '--force': { kind: 'flag' },
+  '--worktree': { kind: 'flag' },
+});
+
+const valueOptions = new Set(
+  Object.entries(cliOptions)
+    .filter(([, record]) => record.kind === 'value')
+    .map(([name]) => name),
+);
+const flagOptions = new Set(
+  Object.entries(cliOptions)
+    .filter(([, record]) => record.kind === 'flag')
+    .map(([name]) => name),
+);
+const pathOptions = new Set(
+  Object.entries(cliOptions)
+    .filter(([, record]) => record.path)
+    .map(([name]) => name),
+);
+
+const batchSizeOption = cliOptions['--batch-size'];
+const jobsOption = cliOptions['--jobs'];
+const portOption = cliOptions['--port'];
 
 export const helpText = `Usage: diffsplain [REPO] [options]
 
@@ -59,11 +82,15 @@ Options:
   --no-agent          Do not write agent notes
   --model NAME        Model for agent notes
   --reasoning LEVEL   Agent reasoning effort when supported
-  --batch-size COUNT  Maximum files per agent pass (default: 12)
-  --jobs COUNT        Agent passes to run at once (default: 3)
+  --batch-size COUNT  Maximum files per agent pass (default: ${batchSizeOption.default})
+  --jobs COUNT        Agent passes to run at once (default: ${jobsOption.default})
   --force             Regenerate all agent notes
   --remote NAME|URL   Git remote (default: origin)
-  --port NUMBER       Local page port (default: 2299)
+  --port NUMBER       Local page port (default: ${portOption.default})
+  --summaries FILE    Saved agent-note file
+  --output FILE       Live snapshot file
+  --cache-dir PATH    Bare Git cache folder
+  --codex-bin PATH    Codex executable
   -h, --help          Show this help
   -v, --version       Show the installed version
 
@@ -275,8 +302,6 @@ export function parseCliArgs(
     '--codex-bin',
     '--model',
     '--reasoning',
-    '--batch-size',
-    '--jobs',
   ]) {
     const value = options.get(name);
     if (value) {
@@ -285,6 +310,12 @@ export function parseCliArgs(
         pathOptions.has(name) ? resolve(callerDirectory, value) : value,
       );
     }
+  }
+  for (const name of ['--batch-size', '--jobs']) {
+    agentArgs.push(
+      name,
+      options.get(name) || String(cliOptions[name].default),
+    );
   }
 
   const reasoning = options.get('--reasoning');
@@ -302,21 +333,39 @@ export function parseCliArgs(
   const batchSize = options.get('--batch-size');
   if (
     batchSize &&
-    (!/^[1-9]\d*$/.test(batchSize) || Number(batchSize) > 50)
+    (
+      !/^[1-9]\d*$/.test(batchSize) ||
+      Number(batchSize) < batchSizeOption.min ||
+      Number(batchSize) > batchSizeOption.max
+    )
   ) {
-    fail('--batch-size must be a number from 1 to 50');
+    fail(
+      `--batch-size must be a number from ${batchSizeOption.min} to ${batchSizeOption.max}`,
+    );
   }
   const jobs = options.get('--jobs');
   if (
     jobs &&
-    (!/^[1-9]\d*$/.test(jobs) || Number(jobs) > 8)
+    (
+      !/^[1-9]\d*$/.test(jobs) ||
+      Number(jobs) < jobsOption.min ||
+      Number(jobs) > jobsOption.max
+    )
   ) {
-    fail('--jobs must be a number from 1 to 8');
+    fail(
+      `--jobs must be a number from ${jobsOption.min} to ${jobsOption.max}`,
+    );
   }
 
-  const portValue = options.get('--port') || '2299';
-  if (!/^\d+$/.test(portValue) || Number(portValue) > 65_535) {
-    fail('--port must be a number from 0 to 65535');
+  const portValue = options.get('--port') || String(portOption.default);
+  if (
+    !/^\d+$/.test(portValue) ||
+    Number(portValue) < portOption.min ||
+    Number(portValue) > portOption.max
+  ) {
+    fail(
+      `--port must be a number from ${portOption.min} to ${portOption.max}`,
+    );
   }
 
   return {

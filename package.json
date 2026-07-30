@@ -43,7 +43,7 @@
     "dev": "vite --port 2299",
     "docs:dev": "cd docs && blume dev",
     "docs:build": "cd docs && blume build",
-    "docs:check": "cd docs && blume check && blume validate",
+    "docs:check": "node --test tests/cli-docs.test.mjs && cd docs && blume check && blume validate",
     "docs:preview": "cd docs && blume preview",
     "diffsplain": "node scripts/present.mjs",
     "doctor": "node scripts/present.mjs doctor",

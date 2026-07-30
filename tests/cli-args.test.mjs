@@ -18,7 +18,15 @@ test('leaves agent selection open when no agent is passed', () => {
   assert.equal(parsed.port, 2299);
   assert.equal(parsed.portWasPassed, false);
   assert.deepEqual(parsed.feedArgs, ['--repo', cwd, '--checkout']);
-  assert.deepEqual(parsed.agentArgs, ['--repo', cwd, '--checkout']);
+  assert.deepEqual(parsed.agentArgs, [
+    '--repo',
+    cwd,
+    '--checkout',
+    '--batch-size',
+    '12',
+    '--jobs',
+    '3',
+  ]);
 });
 
 test('accepts a GitHub owner/name repo and a branch', () => {
@@ -178,7 +186,7 @@ test('forces note regeneration only in the agent process', () => {
 
   assert.equal(parsed.forceSummaryRegeneration, true);
   assert.doesNotMatch(parsed.feedArgs.join(' '), /--force/);
-  assert.equal(parsed.agentArgs.at(-1), '--force');
+  assert.ok(parsed.agentArgs.includes('--force'));
 });
 
 test('rejects invalid reasoning and batch settings', () => {
