@@ -50,8 +50,10 @@ node scripts/build-diff-data.mjs \
 ```
 
 `npx diffsplain --worktree` starts the watcher and local page together.
-The page checks the live JSON every 1.5 seconds and keeps the selected file
-when the snapshot changes.
+The page listens for live events and polls the JSON every 1.5 seconds when the
+event stream drops. Each refresh ignores older requests that finish late. A
+bad or missing refresh leaves the last valid snapshot and selected file on
+screen while the page reconnects.
 
 In watch mode, remote pull requests and branches update every 30 seconds.
 

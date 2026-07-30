@@ -24,6 +24,17 @@ test("builds the static Diffsplain entry page", async () => {
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
+test("documents browser setup before the full checks", async () => {
+  const readme = await readFile(
+    new URL("../README.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    readme,
+    /npm run test:browser:install\nnpm run lint\nnpm test/,
+  );
+});
+
 test("ships the ten-file todo-list demo", async () => {
   const [{ todoDemoFiles }, payloadText] = await Promise.all([
     import("../site/todo-demo.js"),
@@ -133,15 +144,20 @@ test("adds PostHog analytics to the public site and docs", async () => {
 });
 
 test("uses the bundled demo when no live snapshot exists", async () => {
-  const [page, viteConfig] = await Promise.all([
+  const [page, liveSnapshot, viteConfig] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/use-live-snapshot.ts", import.meta.url), "utf8"),
     readFile(new URL("../vite.config.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /liveResponse\.status === 404/);
-  assert.match(page, /new URL\("demo-diff-data\.json", document\.baseURI\)/);
-  assert.match(page, /Bundled demo is unavailable/);
-  assert.match(page, /if \(demoUnavailable\) return/);
+  assert.match(liveSnapshot, /liveResponse\.status === 404/);
+  assert.match(
+    liveSnapshot,
+    /new URL\("demo-diff-data\.json", document\.baseURI\)/,
+  );
+  assert.match(liveSnapshot, /Bundled demo is unavailable/);
+  assert.match(liveSnapshot, /if \(demoUnavailable\) return/);
+  assert.match(page, /Check public\/demo-diff-data\.json/);
   assert.match(viteConfig, /request\.url\?\.split\("\?", 1\)\[0\] !== "\/diff-data\.json"/);
   assert.match(viteConfig, /"content-type": "application\/json; charset=utf-8"/);
   assert.match(viteConfig, /"x-diffsplain-demo": "true"/);
