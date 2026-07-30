@@ -54,6 +54,8 @@
     "snapshot": "node scripts/build-diff-data.mjs",
     "watch:diff": "node scripts/build-diff-data.mjs --watch",
     "build": "vite build && node scripts/clean-built-live-data.mjs",
+    "benchmark:gate": "node benchmarks/performance-gate.mjs",
+    "benchmark:canary": "node benchmarks/real-codex-reasoning.mjs",
     "start": "node scripts/serve-built.mjs",
     "prepack": "npm run build",
     "test": "npm run build && node --test tests/*.test.mjs",

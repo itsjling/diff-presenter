@@ -26,6 +26,42 @@ npm test
 
 `npm test` builds the app and runs the Node test suite.
 
+## Measure the pipeline
+
+Run the deterministic speed and note-quality gate locally:
+
+```sh
+npm run benchmark:gate
+```
+
+It measures build, summary, presentation transport, and restart separately.
+The presentation metric stops when the local transport is ready; it is not a
+browser rendering measure. The gate runs one warm-up and five measured samples
+for both the working and held-out fixtures. It compares each median with the
+limit in `benchmarks/performance-baseline.json` and records all samples plus
+their minimum, median, p95, and maximum.
+
+The same gate scores fixed useful, incomplete, false, duplicate, and empty note
+cases from `benchmarks/quality-fixtures.json`. Full and summary runs also score
+the notes that the fixed fake provider produced for the working and held-out
+pipelines. A failure names the fixture, speed measure, limit, or rubric item
+that missed its target.
+
+To run one speed measure, pass its name:
+
+```sh
+npm run benchmark:gate -- --case summary
+```
+
+The `Live provider canary` workflow runs one paid-provider sample each week and
+on manual request. It has a ten-minute job limit, needs the
+`OPENAI_API_KEY` repository secret, and does not run on pull requests. Run the
+same bounded canary from an authenticated checkout with:
+
+```sh
+npm run benchmark:canary -- --runs 1 --reasoning minimal
+```
+
 ## Publish a release
 
 Commit all release changes, then pass a version and any extra `npm version`
