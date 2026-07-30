@@ -80,6 +80,15 @@ const cacheRoot = cacheOption
 const remoteMode = Boolean(prOption || branchOption);
 const watching = has('--watch');
 const ignoreSummaryWatch = has('--ignore-summary-watch');
+const interval = (name, fallback) => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+const watchInterval = interval('DIFFSPLAIN_WATCH_INTERVAL_MS', 2_000);
+const remoteRefreshInterval = interval(
+  'DIFFSPLAIN_REMOTE_REFRESH_INTERVAL_MS',
+  30_000,
+);
 
 if (prOption && branchOption) fail('--pr and --branch cannot be used together');
 if (prOption && (baseOption || headOption)) fail('--pr cannot be used with --base or --head');
@@ -311,12 +320,24 @@ function normalizeBranch(value, remoteName) {
 }
 
 function resolveRemote() {
-  const configured = tryRepo(['remote', 'get-url', remoteOption]);
-  if (configured) return { name: remoteOption, url: configured };
+  const configured = tryRepo([
+    'config',
+    '--get-all',
+    `remote.${remoteOption}.url`,
+  ])
+    .split('\n')
+    .find(Boolean);
+  if (configured) {
+    return {
+      name: remoteOption,
+      url: configured,
+      fetchUrl: tryRepo(['remote', 'get-url', remoteOption]) || configured,
+    };
+  }
   if (remoteOption === 'origin') {
     throw new Error(`Git remote "origin" was not found in ${repo}`);
   }
-  return { name: remoteOption, url: remoteOption };
+  return { name: remoteOption, url: remoteOption, fetchUrl: remoteOption };
 }
 
 function bareCache(remoteUrl) {
@@ -506,7 +527,7 @@ function resolveBranchTarget() {
   const remote = resolveRemote();
   const branch = normalizeBranch(branchOption, remote.name);
   const baseBranch = normalizeBranch(
-    baseOption || remoteDefaultBranch(remote.url),
+    baseOption || remoteDefaultBranch(remote.fetchUrl),
     remote.name,
   );
   const cache = bareCache(remote.url);
@@ -516,7 +537,7 @@ function resolveBranchTarget() {
     .slice(0, 16);
   const baseRef = `refs/diffsplain/branch/${key}/base`;
   const headRef = `refs/diffsplain/branch/${key}/head`;
-  fetchInto(cache, remote.url, [
+  fetchInto(cache, remote.fetchUrl, [
     `+refs/heads/${baseBranch}:${baseRef}`,
     `+refs/heads/${branch}:${headRef}`,
   ]);
@@ -562,7 +583,7 @@ function resolvePullRequestTarget() {
     .slice(0, 16);
   const baseRef = `refs/diffsplain/pr/${key}/base`;
   const headRef = `refs/diffsplain/pr/${key}/head`;
-  fetchInto(cache, remote.url, [
+  fetchInto(cache, remote.fetchUrl, [
     `+refs/heads/${pr.baseRefName}:${baseRef}`,
     `+refs/pull/${pr.number}/head:${headRef}`,
   ]);
@@ -1026,9 +1047,29 @@ function fingerprint() {
       summariesTime,
     ].join('|');
   }
+  const content = createHash('sha256');
+  content.update(
+    tryRepo(['diff', '--no-ext-diff', '--binary', 'HEAD', '--']),
+  );
+  const untracked = tryRepo([
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '-z',
+  ])
+    .split('\0')
+    .filter((path) => path && !excludedPaths.has(path))
+    .sort();
+  for (const path of untracked) {
+    content.update('\0');
+    content.update(path);
+    content.update('\0');
+    content.update(readFileSync(resolve(repo, path)));
+  }
   return [
     tryRepo(['rev-parse', 'HEAD']),
     tryRepo(['status', '--porcelain=v1', '--untracked-files=all']),
+    content.digest('hex'),
     summariesTime,
   ].join('|');
 }
@@ -1040,7 +1081,7 @@ const refresh = () => {
     return true;
   } catch (error) {
     console.error(error.message);
-    if (!watching) process.exitCode = 1;
+    process.exitCode = 1;
     return false;
   }
 };
@@ -1049,16 +1090,16 @@ const started = refresh();
 if (watching && started) {
   let last = fingerprint();
   let remoteWait = 0;
-  setInterval(() => {
+  const watcher = setInterval(() => {
     const next = fingerprint();
-    remoteWait += 2_000;
-    const remoteDue = remoteMode && remoteWait >= 30_000;
+    remoteWait += watchInterval;
+    const remoteDue = remoteMode && remoteWait >= remoteRefreshInterval;
     if (next !== last || remoteDue) {
       last = next;
       remoteWait = 0;
-      refresh();
+      if (!refresh()) clearInterval(watcher);
     }
-  }, 2_000);
+  }, watchInterval);
 } else if (watching) {
   process.exitCode = 1;
 }

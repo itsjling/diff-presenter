@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -71,6 +71,103 @@ function checkoutState(repo) {
   };
 }
 
+function waitFor(read, timeout = 8_000) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeout;
+    const poll = async () => {
+      try {
+        const value = await read();
+        if (value) return resolve(value);
+      } catch {}
+      if (Date.now() >= deadline) {
+        reject(new Error("Timed out waiting for watched diff data"));
+        return;
+      }
+      setTimeout(poll, 25);
+    };
+    poll();
+  });
+}
+
+function stop(child) {
+  return new Promise((resolve, reject) => {
+    child.once("exit", resolve);
+    child.once("error", reject);
+    child.kill("SIGTERM");
+  });
+}
+
+function addPublicRemote(fixture) {
+  const url = "https://github.com/example/project.git";
+  git(fixture.repo, "remote", "add", "upstream", url);
+  git(fixture.repo, "config", `url.file://${fixture.remote}.insteadOf`, url);
+  return url;
+}
+
+function namedBranchArgs(cache, output) {
+  return [
+    "--remote",
+    "upstream",
+    "--branch",
+    "upstream/feature",
+    "--base",
+    "upstream/main",
+    "--cache-dir",
+    cache,
+    "--output",
+    output,
+  ];
+}
+
+async function publishFeatureUpdate(fixture, path, content) {
+  const publisher = join(fixture.root, `publisher-${path.replaceAll("/", "-")}`);
+  execFileSync("git", ["clone", "-q", fixture.remote, publisher]);
+  git(publisher, "config", "user.email", "diffsplain@example.test");
+  git(publisher, "config", "user.name", "Diffsplain");
+  git(publisher, "config", "commit.gpgsign", "false");
+  git(publisher, "switch", "-q", "feature");
+  await writeFile(join(publisher, path), content);
+  git(publisher, "add", path);
+  git(publisher, "commit", "-qm", "refresh feature");
+  const head = git(publisher, "rev-parse", "HEAD");
+  git(publisher, "push", "-q", "origin", "feature");
+  return head;
+}
+
+function startWatcher(repo, args) {
+  const child = spawn(
+    process.execPath,
+    [script, "--repo", repo, ...args],
+    {
+      env: {
+        ...process.env,
+        DIFFSPLAIN_WATCH_INTERVAL_MS: "25",
+        DIFFSPLAIN_REMOTE_REFRESH_INTERVAL_MS: "100",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const chunks = [];
+  child.stdout.on("data", (chunk) => chunks.push(chunk));
+  child.stderr.on("data", (chunk) => chunks.push(chunk));
+  return { child, logs: () => chunks.join("") };
+}
+
+async function waitForSnapshot(output, watched, accept) {
+  try {
+    return await waitFor(async () => {
+      const payload = JSON.parse(await readFile(output, "utf8"));
+      return accept(payload) ? payload : undefined;
+    });
+  } catch (error) {
+    throw new Error(`${error.message}: ${watched.logs()}`);
+  }
+}
+
+async function stopIfRunning(watched) {
+  if (watched?.child.exitCode === null) await stop(watched.child);
+}
+
 test("builds a remote branch range without changing the checkout", async () => {
   const fixture = await makeRemoteRepo();
   const output = join(fixture.root, "branch.json");
@@ -94,6 +191,53 @@ test("builds a remote branch range without changing the checkout", async () => {
     assert.equal(payload.repo.branch, "feature");
     assert.equal(payload.repo.remote, "origin");
     assert.equal(payload.repo.baseBranch, "main");
+    assert.deepEqual(checkoutState(fixture.repo), before);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("uses a named remote for remote-only refs and keeps source links current", async () => {
+  const fixture = await makeRemoteRepo();
+  const output = join(fixture.root, "upstream.json");
+  const cache = join(fixture.root, "cache");
+
+  try {
+    addPublicRemote(fixture);
+    git(
+      fixture.repo,
+      "remote",
+      "set-url",
+      "--add",
+      "upstream",
+      "https://github.com/wrong/project.git",
+    );
+    git(fixture.repo, "update-ref", "-d", "refs/remotes/origin/feature");
+    const before = checkoutState(fixture.repo);
+
+    run(fixture.repo, namedBranchArgs(cache, output));
+    const first = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(first.repo.remote, "upstream");
+    assert.equal(first.repo.target.base.ref, "main");
+    assert.equal(first.repo.target.head.ref, "feature");
+    assert.equal(
+      first.files[0].sourceUrl,
+      `https://github.com/example/project/blob/${fixture.featureOid}/feature.txt`,
+    );
+    assert.deepEqual(checkoutState(fixture.repo), before);
+
+    const refreshedHead = await publishFeatureUpdate(
+      fixture,
+      "feature.txt",
+      "refreshed feature work\n",
+    );
+    run(fixture.repo, namedBranchArgs(cache, output));
+    const refreshed = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(refreshed.repo.head, refreshedHead);
+    assert.equal(
+      refreshed.files[0].sourceUrl,
+      `https://github.com/example/project/blob/${refreshedHead}/feature.txt`,
+    );
     assert.deepEqual(checkoutState(fixture.repo), before);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -242,6 +386,156 @@ test("builds a pull request range through gh without changing the checkout", asy
     assert.equal(payload.change.url, "https://github.com/example/project/pull/7");
     assert.deepEqual(checkoutState(fixture.repo), before);
   } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("stops remote and pull-request lookups without replacing complete data", async () => {
+  const fixture = await makeRemoteRepo();
+  const output = join(fixture.root, "complete.json");
+  const cache = join(fixture.root, "cache");
+  const original = '{"complete":true}\n';
+  const bin = join(fixture.root, "bin");
+  const gh = join(bin, "gh");
+
+  try {
+    await writeFile(output, original);
+    const missingBranch = spawnSync(
+      process.execPath,
+      [
+        script,
+        "--repo",
+        fixture.repo,
+        "--branch",
+        "missing",
+        "--cache-dir",
+        cache,
+        "--output",
+        output,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(missingBranch.status, 0);
+    assert.match(missingBranch.stderr, /Could not fetch the remote target/i);
+    assert.equal(await readFile(output, "utf8"), original);
+
+    await mkdir(bin);
+    await writeFile(gh, "#!/bin/sh\necho unavailable >&2\nexit 1\n");
+    await chmod(gh, 0o755);
+    const missingPullRequest = spawnSync(
+      process.execPath,
+      [
+        script,
+        "--repo",
+        fixture.repo,
+        "--pr",
+        "7",
+        "--cache-dir",
+        cache,
+        "--output",
+        output,
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      },
+    );
+    assert.notEqual(missingPullRequest.status, 0);
+    assert.match(
+      missingPullRequest.stderr,
+      /Could not read pull request 7 with gh.*unavailable/i,
+    );
+    assert.equal(await readFile(output, "utf8"), original);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("watches local changes without changing the selected target", async () => {
+  const fixture = await makeRemoteRepo();
+  const localOutput = join(fixture.root, "local-watch.json");
+  let watched;
+
+  try {
+    watched = startWatcher(
+      fixture.repo,
+      [
+        "--checkout",
+        "--watch",
+        "--output",
+        localOutput,
+      ],
+    );
+    await waitForSnapshot(
+      localOutput,
+      watched,
+      (payload) => payload.repo.target.kind === "checkout",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await writeFile(join(fixture.repo, "watched.txt"), "local update\n");
+    const local = await waitForSnapshot(
+      localOutput,
+      watched,
+      (payload) => payload.files.some((file) => file.path === "watched.txt"),
+    );
+    assert.equal(local.repo.target.kind, "checkout");
+
+    await writeFile(join(fixture.repo, "watched.txt"), "local update again\n");
+    const refreshed = await waitForSnapshot(
+      localOutput,
+      watched,
+      (payload) =>
+        payload.files
+          .find((file) => file.path === "watched.txt")
+          ?.patch.includes("local update again"),
+    );
+    assert.equal(refreshed.repo.target.kind, "checkout");
+  } finally {
+    await stopIfRunning(watched);
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("periodically refreshes remote targets without changing the checkout", async () => {
+  const fixture = await makeRemoteRepo();
+  const remoteOutput = join(fixture.root, "remote-watch.json");
+  const cache = join(fixture.root, "cache");
+  let watched;
+
+  try {
+    const before = checkoutState(fixture.repo);
+    watched = startWatcher(
+      fixture.repo,
+      [
+        "--branch",
+        "feature",
+        "--cache-dir",
+        cache,
+        "--watch",
+        "--output",
+        remoteOutput,
+      ],
+    );
+    const initial = await waitForSnapshot(
+      remoteOutput,
+      watched,
+      (payload) => Boolean(payload.repo.head),
+    );
+    const refreshedHead = await publishFeatureUpdate(
+      fixture,
+      "watched-remote.txt",
+      "remote update\n",
+    );
+    const refreshed = await waitForSnapshot(
+      remoteOutput,
+      watched,
+      (payload) => payload.repo.head === refreshedHead,
+    );
+    assert.notEqual(initial.repo.head, refreshed.repo.head);
+    assert.equal(refreshed.repo.target.kind, "branch");
+    assert.deepEqual(checkoutState(fixture.repo), before);
+  } finally {
+    await stopIfRunning(watched);
     await rm(fixture.root, { recursive: true, force: true });
   }
 });
