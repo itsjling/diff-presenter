@@ -319,6 +319,105 @@ if (agent === "claude") {
   }
 });
 
+test("runs OpenCode batches one at a time", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "opencode-notes.json");
+  const output = join(repo, "opencode-diff-data.json");
+  const binDirectory = join(repo, "bin");
+  const bin = join(binDirectory, "opencode");
+  const lock = join(repo, "opencode.lock");
+
+  try {
+    await mkdir(binDirectory);
+    await writeFile(
+      bin,
+      `#!/usr/bin/env node
+import {
+  closeSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+let descriptor;
+try {
+  descriptor = openSync(${JSON.stringify(lock)}, "wx");
+} catch {
+  process.stderr.write("database is locked\\n");
+  process.exit(1);
+}
+try {
+  const args = process.argv.slice(2);
+  const input = JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"));
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+  const response = input.files.length
+    ? {
+        files: input.files.map((file) => ({
+          path: file.path,
+          title: "Note for " + file.path,
+          what: "Explains " + file.path + ".",
+          why: "This file changed.",
+          details: [],
+          risks: [],
+        })),
+      }
+    : {
+        change: {
+          title: "Update two files",
+          summary: "Updates one file and adds another.",
+          why: "Covers the OpenCode integration.",
+          highlights: [],
+          risks: [],
+        },
+      };
+  process.stdout.write(JSON.stringify({
+    type: "text",
+    part: { text: JSON.stringify(response) },
+  }) + "\\n");
+} finally {
+  if (descriptor !== undefined) closeSync(descriptor);
+  rmSync(${JSON.stringify(lock)}, { force: true });
+}
+`,
+    );
+    await chmod(bin, 0o755);
+
+    const result = run(
+      repo,
+      [
+        "--range",
+        "HEAD~1..HEAD",
+        "--agent",
+        "opencode",
+        "--batch-size",
+        "1",
+        "--jobs",
+        "3",
+        "--summaries",
+        summaries,
+        "--output",
+        output,
+      ],
+      {
+        env: {
+          ...process.env,
+          PATH: `${binDirectory}:${process.env.PATH}`,
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /database is locked/i);
+    const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(writtenNotes.meta.status, "complete");
+    assert.deepEqual(Object.keys(writtenNotes.files).sort(), [
+      "added.txt",
+      "changed.txt",
+    ]);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
 test("keeps notes fresh when the rebuilt output is a changed tracked file", async () => {
   const repo = await makeRepo();
   const summaries = join(repo, "notes.json");

@@ -51,6 +51,7 @@ test('serves the built review page with live diff data', async () => {
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     const url = await waitForUrl(child);
+    assert.equal(new URL(url).hostname, 'localhost');
 
     const [page, data, missing] = await Promise.all([
       fetch(url),
@@ -63,6 +64,56 @@ test('serves the built review page with live diff data', async () => {
     assert.equal(data.headers.get('cache-control'), 'no-store');
     assert.equal(missing.status, 404);
   } finally {
+    if (child && child.exitCode === null) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('reports a matching project tab connection', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'diffsplain-tab-'));
+  const output = join(directory, 'diff-data.json');
+  let child;
+  let reader;
+
+  try {
+    await writeFile(output, '{}');
+    child = spawn(
+      process.execPath,
+      [
+        script,
+        '--output',
+        output,
+        '--port',
+        '0',
+        '--project',
+        'project-key',
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const url = new URL(await waitForUrl(child));
+    assert.equal(url.hostname, 'localhost');
+    assert.equal(url.hash, '#project=project-key');
+
+    const connected = new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('Server did not report the tab connection')),
+        2_000,
+      );
+      child.stdout.on('data', (chunk) => {
+        if (chunk.toString().includes('Diffsplain tab: connected')) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    const eventsUrl = new URL('events', url);
+    eventsUrl.searchParams.set('project', 'project-key');
+    const response = await fetch(eventsUrl);
+    reader = response.body.getReader();
+    await reader.read();
+    await connected;
+  } finally {
+    await reader?.cancel();
     if (child && child.exitCode === null) await stop(child);
     await rm(directory, { recursive: true, force: true });
   }
@@ -118,7 +169,7 @@ test('increments the requested port when automatic selection is enabled', async 
     await writeFile(output, '{}');
     await new Promise((resolve, reject) => {
       blocker.once('error', reject);
-      blocker.listen(0, '127.0.0.1', resolve);
+      blocker.listen(0, 'localhost', resolve);
     });
     const address = blocker.address();
     assert.ok(address && typeof address === 'object');

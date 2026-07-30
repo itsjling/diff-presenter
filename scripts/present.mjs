@@ -85,6 +85,16 @@ const outputPath = resolve(
   callerDirectory,
   feedArgs[feedArgs.indexOf('--output') + 1],
 );
+const repoIndex = feedArgs.indexOf('--repo');
+const remoteIndex = feedArgs.indexOf('--remote');
+const projectKey = createHash('sha256')
+  .update(
+    remoteIndex === -1
+      ? feedArgs[repoIndex + 1]
+      : `${feedArgs[repoIndex + 1]}\0${feedArgs[remoteIndex + 1]}`,
+  )
+  .digest('hex')
+  .slice(0, 12);
 if (agentEnabled) {
   feedArgs.push('--ignore-summary-watch');
   agentArgs.push('--snapshot', outputPath);
@@ -122,6 +132,8 @@ const site = spawn(
     outputPath,
     '--port',
     String(port),
+    '--project',
+    projectKey,
     ...(!cli.portWasPassed ? ['--increment-port'] : []),
   ],
   { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] },
@@ -132,6 +144,7 @@ let agentTimer;
 let agentFingerprint;
 let queuedFingerprint;
 let browserOpened = false;
+let browserOpenTimer;
 
 function openBrowser(url) {
   let command;
@@ -163,11 +176,23 @@ function openBrowser(url) {
 if (site.stdout) {
   const siteLines = createInterface({ input: site.stdout });
   siteLines.on('line', (line) => {
+    if (line === 'Diffsplain tab: connected') {
+      if (!browserOpened && browserOpenTimer) {
+        clearTimeout(browserOpenTimer);
+        browserOpenTimer = undefined;
+        browserOpened = true;
+        console.log('Reusing the open Diffsplain tab.');
+      }
+      return;
+    }
     console.log(line);
     const match = line.match(/^Diffsplain: (http:\/\/\S+)$/);
-    if (!browserOpened && match) {
-      browserOpened = true;
-      openBrowser(match[1]);
+    if (!browserOpened && !browserOpenTimer && match) {
+      browserOpenTimer = setTimeout(() => {
+        browserOpenTimer = undefined;
+        browserOpened = true;
+        openBrowser(match[1]);
+      }, 750);
     }
   });
 }
@@ -299,6 +324,7 @@ if (agentEnabled && feed.stdout) {
 function stop(code = 0) {
   if (closing) return;
   closing = true;
+  clearTimeout(browserOpenTimer);
   clearTimeout(agentTimer);
   if (!feed.killed) feed.kill('SIGTERM');
   if (!site.killed) site.kill('SIGTERM');

@@ -22,6 +22,7 @@ function option(name, fallback) {
 }
 
 const output = resolve(option('--output', resolve(root, '.cache/diff-data.json')));
+const project = option('--project', '');
 const portValue = option('--port', '2299');
 if (!/^\d+$/.test(portValue) || Number(portValue) > 65_535) {
   throw new Error('--port must be a number from 0 to 65535');
@@ -86,7 +87,7 @@ async function fetchAsset(request) {
 }
 
 function nodeRequest(request) {
-  const host = request.headers.host || '127.0.0.1';
+  const host = request.headers.host || 'localhost';
   const init = {
     method: request.method,
     headers: request.headers,
@@ -116,8 +117,12 @@ const server = createServer(async (request, response) => {
         'cache-control': 'no-store',
         connection: 'keep-alive',
       });
-      response.write('event: ready\ndata: {}\n\n');
+      response.write('retry: 250\nevent: ready\ndata: {}\n\n');
       eventClients.add(response);
+      const requestProject = new URL(webRequest.url).searchParams.get('project');
+      if (project && requestProject === project) {
+        console.log('Diffsplain tab: connected');
+      }
       request.once('close', () => eventClients.delete(response));
       return;
     }
@@ -145,13 +150,18 @@ watchFile(output, { interval: 100 }, (current, previous) => {
 let selectedPort = Number(portValue);
 
 function listen() {
-  server.listen(selectedPort, '127.0.0.1', () => {
-    const address = server.address();
-    const readyPort =
-      address && typeof address === 'object' ? address.port : selectedPort;
-    console.log(`Diffsplain: http://127.0.0.1:${readyPort}`);
-  });
+  server.listen(selectedPort, 'localhost');
 }
+
+server.on('listening', () => {
+  const address = server.address();
+  const readyPort =
+    address && typeof address === 'object' ? address.port : selectedPort;
+  const projectHash = project
+    ? `#project=${encodeURIComponent(project)}`
+    : '';
+  console.log(`Diffsplain: http://localhost:${readyPort}${projectHash}`);
+});
 
 server.on('error', (error) => {
   if (

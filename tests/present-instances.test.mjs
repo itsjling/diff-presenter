@@ -123,11 +123,11 @@ test('keeps simultaneous presenters on separate ports and data files', async () 
 
     const [firstData, secondData] = await Promise.all([
       waitFor(async () => {
-        const response = await fetch(`${firstUrl}/diff-data.json`);
+        const response = await fetch(new URL('diff-data.json', firstUrl));
         return response.ok ? response.json() : undefined;
       }),
       waitFor(async () => {
-        const response = await fetch(`${secondUrl}/diff-data.json`);
+        const response = await fetch(new URL('diff-data.json', secondUrl));
         return response.ok ? response.json() : undefined;
       }),
     ]);
@@ -142,6 +142,95 @@ test('keeps simultaneous presenters on separate ports and data files', async () 
     });
     assert.deepEqual(new Set(opened), new Set([firstUrl, secondUrl]));
   } finally {
+    if (first && first.exitCode === null) await stop(first);
+    if (second && second.exitCode === null) await stop(second);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('reuses a matching project tab when it reconnects', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-reuse-'));
+  const browser = join(root, 'browser');
+  const browserLog = join(root, 'browser.log');
+  let first;
+  let second;
+  let reader;
+
+  try {
+    const repo = await makeRepo(root, 'repo', 'file.txt');
+    await writeFile(
+      browser,
+      '#!/bin/sh\nprintf \'%s\\n\' "$1" >> "$BROWSER_LOG"\n',
+    );
+    await chmod(browser, 0o755);
+    const environment = {
+      ...process.env,
+      BROWSER: browser,
+      BROWSER_LOG: browserLog,
+    };
+
+    first = spawn(
+      process.execPath,
+      [
+        script,
+        '--repo',
+        repo,
+        '--worktree',
+        '--no-agent',
+        '--port',
+        '0',
+      ],
+      { cwd: root, env: environment, stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const firstUrl = new URL(await waitForUrl(first));
+    await waitFor(async () => {
+      const urls = (await readFile(browserLog, 'utf8')).trim().split('\n');
+      return urls.length === 1 ? urls : undefined;
+    });
+    await stop(first);
+
+    second = spawn(
+      process.execPath,
+      [
+        script,
+        '--repo',
+        repo,
+        '--worktree',
+        '--no-agent',
+        '--port',
+        firstUrl.port,
+      ],
+      { cwd: root, env: environment, stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const secondUrl = new URL(await waitForUrl(second));
+    assert.equal(secondUrl.hash, firstUrl.hash);
+
+    const reused = new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('Presenter did not reuse the open tab')),
+        2_000,
+      );
+      second.stdout.on('data', (chunk) => {
+        if (chunk.toString().includes('Reusing the open Diffsplain tab.')) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    const eventsUrl = new URL('events', secondUrl);
+    eventsUrl.searchParams.set(
+      'project',
+      new URLSearchParams(secondUrl.hash.slice(1)).get('project'),
+    );
+    const response = await fetch(eventsUrl);
+    reader = response.body.getReader();
+    await reader.read();
+    await reused;
+
+    const opened = (await readFile(browserLog, 'utf8')).trim().split('\n');
+    assert.equal(opened.length, 1);
+  } finally {
+    await reader?.cancel();
     if (first && first.exitCode === null) await stop(first);
     if (second && second.exitCode === null) await stop(second);
     await rm(root, { recursive: true, force: true });

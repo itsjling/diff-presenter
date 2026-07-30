@@ -25,8 +25,9 @@ npx diffsplain \
   --batch-size 2
 ```
 
-The default batch size is 12 files. Smaller batches add the first notes to
-the open page sooner.
+The default batch size is 12 files, and three passes run at once. OpenCode runs
+one pass at a time because its CLI uses one shared database. Smaller batches add
+the first notes to the open page sooner.
 
 ## Run one note pass
 

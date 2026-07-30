@@ -344,14 +344,25 @@ export default function Home() {
         poll = window.setInterval(() => void refresh(), FALLBACK_POLL_MS);
       }
     };
+    const stopPolling = () => {
+      if (poll !== undefined) {
+        window.clearInterval(poll);
+        poll = undefined;
+      }
+    };
     if ("EventSource" in window) {
-      events = new EventSource(new URL("events", document.baseURI));
-      events.addEventListener("update", () => void refresh());
-      events.addEventListener("error", () => {
-        events?.close();
-        events = undefined;
-        startPolling();
+      const eventsUrl = new URL("events", document.baseURI);
+      const project = new URLSearchParams(window.location.hash.slice(1)).get(
+        "project",
+      );
+      if (project) eventsUrl.searchParams.set("project", project);
+      events = new EventSource(eventsUrl);
+      events.addEventListener("ready", () => {
+        stopPolling();
+        void refresh();
       });
+      events.addEventListener("update", () => void refresh());
+      events.addEventListener("error", startPolling);
     } else {
       startPolling();
     }
