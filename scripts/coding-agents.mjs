@@ -219,7 +219,7 @@ export function agentCommand({
   }
 
   if (agent === 'cursor') {
-    const args = ['--print', '--output-format', 'json'];
+    const args = ['--print', '--trust', '--output-format', 'json'];
     if (model) args.push('--model', model);
     args.push(
       `${prompt}\n\nRead the snapshot from @${basename(inputPath)}. Return only JSON that matches this schema:\n${JSON.stringify(schema)}`,

@@ -61,11 +61,14 @@ test('builds non-interactive commands for each coding agent', () => {
   assert.match(copilot.args.at(-1), /@\/tmp\/input\.json/);
 
   const cursor = agentCommand({ ...common, agent: 'cursor' });
-  assert.deepEqual(cursor.args.slice(0, 3), [
+  assert.deepEqual(cursor.args.slice(0, 4), [
     '--print',
+    '--trust',
     '--output-format',
     'json',
   ]);
+  assert.ok(!cursor.args.includes('--force'));
+  assert.ok(!cursor.args.includes('--yolo'));
   assert.ok(cursor.args.includes('--model'));
   assert.match(cursor.args.at(-1), /@input\.json/);
   assert.equal(cursor.cwd, '/tmp');
