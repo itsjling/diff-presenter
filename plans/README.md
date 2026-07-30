@@ -18,16 +18,37 @@ scope against that snapshot.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 | --- | --- | --- | --- | --- | --- |
-| [001](001-make-agent-and-cache-behavior-truthful.md) | Make agent flags and note cache behavior truthful | P1 | M | — | TODO |
-| [002](002-state-data-and-storage-boundaries.md) | State the data and storage boundaries | P1 | M | 001 | TODO |
-| [003](003-make-doctor-honest-and-add-troubleshooting.md) | Make doctor honest and add troubleshooting | P1 | M | 001 | TODO |
-| [004](004-define-every-review-target.md) | Define every review target exactly | P2 | M | 001 | TODO |
-| [005](005-fix-doc-routes-and-source-boundaries.md) | Fix doc routes and separate user commands from source commands | P2 | M | 002, 003, 004 | TODO |
-| [006](006-document-the-first-run-lifecycle.md) | Document the full first-run lifecycle | P2 | S | 003, 004, 005 | TODO |
-| [007](007-build-one-complete-cli-reference.md) | Build one complete CLI reference with drift checks | P2 | M | 001-006 | TODO |
+| [001](001-make-agent-and-cache-behavior-truthful.md) | Make agent flags and note cache behavior truthful | P1 | M | — | DONE |
+| [002](002-state-data-and-storage-boundaries.md) | State the data and storage boundaries | P1 | M | 001 | DONE |
+| [003](003-make-doctor-honest-and-add-troubleshooting.md) | Make doctor honest and add troubleshooting | P1 | M | 001 | DONE |
+| [004](004-define-every-review-target.md) | Define every review target exactly | P2 | M | 001 | DONE |
+| [005](005-fix-doc-routes-and-source-boundaries.md) | Fix doc routes and separate user commands from source commands | P2 | M | 002, 003, 004 | DONE |
+| [006](006-document-the-first-run-lifecycle.md) | Document the full first-run lifecycle | P2 | S | 003, 004, 005 | DONE |
+| [007](007-build-one-complete-cli-reference.md) | Build one complete CLI reference with drift checks | P2 | M | 001-006 | DONE |
 
 Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with a one-line
 reason) | `REJECTED` (with a one-line reason)
+
+## Reconciliation
+
+Verified on 2026-07-30 against `codex/007-cli-reference-contract` at
+`9a2dd36`. The final branch contains each accepted plan commit in order.
+
+| Plan | Accepted commit |
+| --- | --- |
+| 001 | `b836720` |
+| 002 | `36f185c` |
+| 003 | `80e41df` |
+| 004 | `eed1fc0` |
+| 005 | `c9a541d` |
+| 006 | `8fb9c40` |
+| 007 | `9a2dd36` |
+
+The final checks passed: `npm run lint`, `npm test` (88 tests),
+`npm run docs:check`, `npm run fallow:audit`, and
+`npm pack --dry-run --json`. The package contains
+`scripts/cli-options.mjs` and omits the development-only docs checker. This run
+did not merge or push any branch.
 
 ## Dependency notes
 

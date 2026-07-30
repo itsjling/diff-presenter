@@ -7,7 +7,7 @@
 > `plans/README.md`, unless a reviewer told you that they maintain the index.
 >
 > **Drift check (run first)**:
-> `git diff --stat 1234de6..HEAD -- scripts/summary-path.mjs scripts/generate-summaries.mjs scripts/build-diff-data.mjs scripts/present.mjs scripts/serve-built.mjs app/page.tsx docs/content/data.mdx docs/content/agent-notes.mdx tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs tests/serve-built.test.mjs plans/README.md`
+> `git diff --stat 1234de6..HEAD -- scripts/summary-path.mjs scripts/generate-summaries.mjs scripts/build-diff-data.mjs scripts/present.mjs scripts/serve-built.mjs app/page.tsx docs/content/data.mdx docs/content/agent-notes.mdx tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs tests/present-instances.test.mjs tests/rendered-html.test.mjs tests/serve-built.test.mjs plans/README.md`
 > Plan 001 is expected to change several listed files. Compare its final code
 > with this plan's required behavior, not only with the excerpts below. Ignore
 > status-only edits to `plans/README.md`. Stop on any other unexplained drift.
@@ -22,6 +22,10 @@
 - **Depends on**: `plans/001-make-agent-and-cache-behavior-truthful.md`
 - **Category**: docs
 - **Planned at**: commit `1234de6`, 2026-07-29
+- **Refined after execution STOP**: The first run showed that
+  `tests/present-instances.test.mjs` and `tests/rendered-html.test.mjs` seed the
+  old repo-local note path. They are direct cache-path fixtures and now belong
+  in scope.
 
 ## Why this matters
 
@@ -88,7 +92,7 @@ run leave the target repo untouched and gives users one exact data contract.
 | Purpose | Command | Expected on success |
 | --- | --- | --- |
 | Install | `npm ci` | exit 0 |
-| Path and note tests | `node --test tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs` | all tests pass |
+| Path and note tests | `node --test tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs tests/present-instances.test.mjs tests/rendered-html.test.mjs` | all tests pass after `npm run build` |
 | Server tests | `node --test tests/serve-built.test.mjs` | all tests pass |
 | Docs | `npm run docs:check` | exit 0 |
 | Static audit | `npm run fallow:audit` | exit 0, no new findings |
@@ -114,6 +118,8 @@ run leave the target repo untouched and gives users one exact data contract.
 - `tests/summary-path.test.mjs`
 - `tests/generate-summaries.test.mjs`
 - `tests/present-agent.test.mjs`
+- `tests/present-instances.test.mjs` (only the cached-note fixture)
+- `tests/rendered-html.test.mjs` (only the note-file fixture)
 - `plans/README.md` (status row only)
 
 **Read for verification, but do not modify**:
@@ -184,6 +190,15 @@ old default path. Pass an explicit fixture-local `--summaries` path in tests
 that need to inspect the file; this keeps tests isolated from the repo-level
 `.cache/`.
 
+Update the two direct cache fixtures that the first execution exposed:
+
+- In `tests/rendered-html.test.mjs`, put the supplied note file outside the
+  target repo and pass it with `--summaries` to each data-builder call.
+- In `tests/present-instances.test.mjs`, seed the new hashed implicit worktree
+  path for the `--no-agent` cache regression, then remove that cache file in
+  cleanup. Do not add `--summaries` to the public `--no-agent` command because
+  Plan 001 rejects that conflict.
+
 Add one integration assertion that a default worktree note run:
 
 - writes no `.diffsplain/` directory in the target repo; and
@@ -191,7 +206,7 @@ Add one integration assertion that a default worktree note run:
   the test's pre-existing worktree changes.
 
 **Verify**:
-`node --test tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs`
+`npm run build && node --test tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs tests/present-instances.test.mjs tests/rendered-html.test.mjs`
 must pass.
 
 ### Step 3: Make the data page the main contract
@@ -303,12 +318,14 @@ may add only the in-scope files and the plan-index status edit.
 - Keep explicit-path resolution covered.
 - Update live presenter/note fixtures to pass an explicit note path when they
   inspect note JSON.
+- Update the rendered HTML fixture to pass its note file explicitly and the
+  `--no-agent` presenter fixture to seed the new implicit cache path.
 - Add one integration case that proves the default note run does not add a file
   to the target repo.
 - Use `tests/summary-path.test.mjs:19-47` for path style and
   `tests/present-agent.test.mjs:47-196` for process cleanup.
 - Final focused verification:
-  `node --test tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs tests/serve-built.test.mjs`
+  `npm run build && node --test tests/summary-path.test.mjs tests/generate-summaries.test.mjs tests/present-agent.test.mjs tests/present-instances.test.mjs tests/rendered-html.test.mjs tests/serve-built.test.mjs`
   must pass.
 
 ## Done criteria

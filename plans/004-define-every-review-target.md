@@ -11,6 +11,9 @@
 > Plan 001 may change these docs and parser tests. Compare its final state with
 > the facts below. Ignore status-only edits to `plans/README.md`. Stop on any
 > other unexplained mismatch.
+> Plan 003 later changed only the doctor and troubleshooting text in
+> `README.md`, `docs/content/index.mdx`, and `docs/content/cli.mdx`. Preserve
+> those accepted sections while adding the target contract.
 > Also run `git status --short` and record all pre-existing worktree changes.
 > Preserve them throughout this plan.
 

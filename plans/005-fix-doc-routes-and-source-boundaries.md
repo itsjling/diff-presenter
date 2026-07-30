@@ -11,6 +11,11 @@
 > Plans 001-004 are expected to change several docs. Read their final text
 > before moving sections. Ignore status-only edits to `plans/README.md`. Stop
 > on any other unexplained mismatch.
+> Plan 002 already removed the source commands from `/data`. Plan 003 added
+> troubleshooting links, and Plan 004 added the target matrix plus a README
+> link to `docs/content/cli.mdx#review-targets`. Preserve the settled content,
+> do not restore the removed commands, and replace that new source link with
+> the published CLI route.
 > Also run `git status --short` and record all pre-existing worktree changes.
 > Preserve them throughout this plan.
 
@@ -57,6 +62,9 @@ routes and puts contributor commands in one Development page.
   (`site/index.html:40-49`).
 - `README.md:84` sends “More guides” to the relative `docs/` source directory.
   A user who follows it on GitHub sees files, not the built docs.
+- Plan 004 also added a README target-matrix link to
+  `docs/content/cli.mdx#review-targets`. It must point to the published
+  `/cli/#review-targets` route.
 - Product pages contain source-checkout commands:
   - `docs/content/cli.mdx:94-107`: `npm run diffsplain` and `npm run doctor`;
   - `docs/content/agent-notes.mdx:31-45`: `npm run summarize`;
@@ -129,8 +137,8 @@ with `new URL(..., import.meta.url)` as other tests do.
 
 Add tests that assert:
 
-1. `README.md` contains the published docs root and does not end with a
-   source-directory “more guides” link.
+1. `README.md` contains the published docs root and published CLI matrix route,
+   with no product-help link into `docs/` or `docs/content/`.
 2. `site/index.html` contains:
    - a header docs link to the published docs root or its same-site relative
      form;
@@ -178,12 +186,14 @@ https://itsjling.github.io/diffsplain/docs/
 ```
 
 Keep this link within the existing Local development section or as its final
-line; do not add marketing sections.
+line; do not add marketing sections. Also replace Plan 004's relative
+`docs/content/cli.mdx#review-targets` link with the published CLI target-matrix
+route.
 
 **Verify**:
 
 ```sh
-! rg -n "#run-it|\\]\\(docs/\\)" README.md site/index.html
+! rg -n "#run-it|\\]\\(docs/|\\]\\(docs/content/" README.md site/index.html
 rg -n "docs/|docs/cli" README.md site/index.html
 node --test tests/docs-content.test.mjs tests/rendered-html.test.mjs
 ```
