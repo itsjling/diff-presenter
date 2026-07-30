@@ -18,6 +18,7 @@ const valueOptions = new Set([
   '--batch-size',
   '--jobs',
   '--port',
+  '--host',
 ]);
 const flagOptions = new Set([
   '--help',
@@ -26,6 +27,7 @@ const flagOptions = new Set([
   '--no-agent',
   '--force',
   '--worktree',
+  '--no-browser',
 ]);
 const pathOptions = new Set([
   '--summaries',
@@ -61,6 +63,8 @@ Options:
   --force             Regenerate all agent notes
   --remote NAME|URL   Git remote (default: origin)
   --port NUMBER       Local page port (default: 2299)
+  --host ADDRESS      Page bind address (default: localhost)
+  --no-browser        Do not open the page in a browser
   -h, --help          Show this help
   -v, --version       Show the installed version
 
@@ -322,6 +326,8 @@ export function parseCliArgs(
     agentArgs,
     port: Number(portValue),
     portWasPassed: options.has('--port'),
+    host: options.get('--host') || 'localhost',
+    browserEnabled: !options.has('--no-browser'),
     forceSummaryRegeneration: options.has('--force'),
   };
 }
