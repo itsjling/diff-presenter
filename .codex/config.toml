@@ -1,0 +1,4 @@
+# Keep this project layer free of integrations and credentials. Codex loads it
+# only after the checkout is trusted. Developer integrations live in the
+# user-level template beside this file; product summary agents enforce their
+# no-tool profile in scripts/coding-agents.mjs.

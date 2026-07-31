@@ -77,7 +77,11 @@ function buildAssets(runtime) {
   }
   if (result.status === 0) return;
   const status = Number.isInteger(result.status) ? Number(result.status) : 1;
-  throw new Error(`Could not build the local page: npm run build exited with ${status}.`);
+  const error = new Error(
+    `Could not build the local page: npm run build exited with ${status}.`,
+  );
+  error.exitCode = status;
+  throw error;
 }
 
 export function ensureBuiltAssets(options) {

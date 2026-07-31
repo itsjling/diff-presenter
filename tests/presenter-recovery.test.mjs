@@ -116,10 +116,21 @@ test('leaves a failed agent job recoverable without retrying it in a loop', asyn
     await writeFile(
       codex,
       `#!/usr/bin/env node
-import { appendFileSync } from 'node:fs';
-appendFileSync(${JSON.stringify(calls)}, 'called\\n');
-process.stderr.write('planned agent failure\\n');
-process.exit(1);
+import { appendFileSync, readFileSync } from 'node:fs';
+const input = JSON.parse(readFileSync(0, 'utf8'));
+const paths = input.files.map((file) => file.path);
+appendFileSync(${JSON.stringify(calls)}, JSON.stringify(paths) + '\\n');
+if (paths.length) {
+  process.stderr.write('planned agent failure\\n');
+  process.exit(1);
+}
+process.stdout.write(JSON.stringify({ change: {
+  title: 'Change note',
+  summary: 'Keeps the failed file job recoverable.',
+  why: 'Tests the presenter retry policy.',
+  highlights: [],
+  risks: [],
+} }));
 `,
     );
     await chmod(codex, 0o755);
@@ -132,7 +143,11 @@ process.exit(1);
     assert.equal(failed.meta.status, 'failed');
     assert.equal(presenter.exitCode, null);
     await new Promise((resolve) => setTimeout(resolve, 500));
-    assert.equal((await readFile(calls, 'utf8')).trim().split('\n').length, 1);
+    const attempted = recordedCalls(await readFile(calls, 'utf8'));
+    assert.equal(
+      attempted.filter((paths) => paths.includes('changed.txt')).length,
+      1,
+    );
   } finally {
     await stopIfRunning(presenter);
     await rm(root, { recursive: true, force: true });
@@ -146,6 +161,7 @@ test('keeps completed notes and resumes only queued work after cancellation', as
   const output = join(root, 'diff-data.json');
   const codex = join(root, 'resumable-codex.mjs');
   const calls = join(root, 'calls.jsonl');
+  const resume = join(root, 'resume');
   let first;
   let second;
 
@@ -153,11 +169,11 @@ test('keeps completed notes and resumes only queued work after cancellation', as
     await writeFile(
       codex,
       `#!/usr/bin/env node
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 const input = JSON.parse(readFileSync(0, 'utf8'));
 const paths = input.files.map((file) => file.path);
 appendFileSync(${JSON.stringify(calls)}, JSON.stringify(paths) + '\\n');
-if (paths.includes('second.txt') && !process.env.DIFFSPLAIN_RESUME) {
+if (paths.includes('second.txt') && !existsSync(${JSON.stringify(resume)})) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10_000);
 }
 const response = paths.length
@@ -196,9 +212,8 @@ process.stdout.write(JSON.stringify(response));
     assert.deepEqual(Object.keys(partial.files), ['first.txt']);
     assert.equal(partial.meta.status, 'generating');
 
-    second = present(repo, summaries, output, codex, {
-      DIFFSPLAIN_RESUME: '1',
-    });
+    await writeFile(resume, '');
+    second = present(repo, summaries, output, codex);
     const complete = await waitFor(async () => {
       const notes = JSON.parse(await readFile(summaries, 'utf8'));
       return notes.meta?.status === 'complete' ? notes : undefined;
