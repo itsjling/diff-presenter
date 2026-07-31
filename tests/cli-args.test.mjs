@@ -20,7 +20,15 @@ test('leaves agent selection open when no agent is passed', () => {
   assert.equal(parsed.host, 'localhost');
   assert.equal(parsed.browserEnabled, true);
   assert.deepEqual(parsed.feedArgs, ['--repo', cwd, '--checkout']);
-  assert.deepEqual(parsed.agentArgs, ['--repo', cwd, '--checkout']);
+  assert.deepEqual(parsed.agentArgs, [
+    '--repo',
+    cwd,
+    '--checkout',
+    '--batch-size',
+    '12',
+    '--jobs',
+    '3',
+  ]);
 });
 
 test('accepts headless browser and explicit bind options', () => {
@@ -141,11 +149,15 @@ test('keeps split and equals-style values consistent', () => {
     '--cache-dir',
     resolve(cwd, 'state/git'),
   ]);
-  assert.deepEqual(split.agentArgs.slice(-4), [
+  assert.deepEqual(split.agentArgs.slice(-8), [
     '--codex-bin',
     resolve(cwd, 'bin/codex'),
     '--model',
     'review-model',
+    '--batch-size',
+    '12',
+    '--jobs',
+    '3',
   ]);
 });
 
@@ -250,6 +262,7 @@ test('rejects a missing value for every value option', () => {
     '--batch-size',
     '--jobs',
     '--port',
+    '--host',
     '--agent',
   ]) {
     assert.throws(
@@ -277,6 +290,8 @@ test('rejects duplicate options and aliases', () => {
     ['--no-agent', '--no-agent'],
     ['--worktree', '--worktree'],
     ['--force', '--force'],
+    ['--no-browser', '--no-browser'],
+    ['--host', 'localhost', '--host', '0.0.0.0'],
     ['-h', '--help'],
     ['-v', '--version'],
   ]) {
@@ -350,7 +365,7 @@ test('forces note regeneration only in the agent process', () => {
 
   assert.equal(parsed.forceSummaryRegeneration, true);
   assert.doesNotMatch(parsed.feedArgs.join(' '), /--force/);
-  assert.equal(parsed.agentArgs.at(-1), '--force');
+  assert.ok(parsed.agentArgs.includes('--force'));
 });
 
 test('rejects invalid reasoning and batch settings', () => {
