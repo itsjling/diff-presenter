@@ -50,6 +50,38 @@ The `Automation trust review` check reads the pull request through the GitHub
 API without checking out branch code. It passes after a maintainer adds the
 `automation-reviewed` label.
 
+## Codex tool profiles
+
+Diffsplain keeps developer integrations separate from product summary agents.
+The checked-in `.codex/config.toml` has no secrets or enabled integrations.
+After you trust the checkout, copy the developer template to your Codex home:
+
+```sh
+cp .codex/developer.config.toml.example "$CODEX_HOME/developer.config.toml"
+```
+
+Use `codex --profile developer` for optional OpenAI developer docs MCP access
+and the GitHub plugin. Docs tools can run without a prompt; GitHub tools ask
+first.
+
+Do not use a named profile alone as a no-tool boundary. Profiles merge MCP
+servers and plugins from the base user config. For a manual no-tool Codex run,
+replace those maps at runtime and skip user config:
+
+```sh
+codex exec --ephemeral --ignore-user-config --ignore-rules \
+  --sandbox read-only \
+  --config 'mcp_servers={}' \
+  --config 'plugins={}' \
+  --config 'web_search="disabled"'
+```
+
+`diffsplain` enforces the summary boundary for product notes even when a
+developer profile is active. It runs agents in the temporary snapshot folder,
+with a read-only sandbox, no user config or rules, no MCP or plugins, no web
+search, and a small runtime-only environment. Authentication remains available
+to the client itself, but the agent receives no credential variables.
+
 ## Publish a release
 
 Commit all release changes, then pass a version and any extra `npm version`

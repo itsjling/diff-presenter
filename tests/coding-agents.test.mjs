@@ -6,6 +6,7 @@ import {
   codingAgentBinary,
   parseAgentResponse,
   selectCodingAgent,
+  summaryAgentEnvironment,
 } from '../scripts/coding-agents.mjs';
 
 test('selects the first available agent in fallback order', async () => {
@@ -81,17 +82,27 @@ test('builds non-interactive commands for each coding agent', () => {
   assert.deepEqual(codex.args.slice(0, 2), ['exec', '--ephemeral']);
   assert.ok(codex.args.includes('--output-schema'));
   assert.ok(codex.args.includes('--skip-git-repo-check'));
+  assert.ok(codex.args.includes('--ignore-user-config'));
+  assert.ok(codex.args.includes('--ignore-rules'));
+  assert.ok(!codex.args.includes('agents.enabled=false'));
+  assert.ok(codex.args.includes('mcp_servers={}'));
+  assert.ok(codex.args.includes('plugins={}'));
+  assert.ok(codex.args.includes('sandbox_workspace_write.network_access=false'));
+  assert.ok(codex.args.includes('web_search="disabled"'));
+  assert.equal(codex.cwd, '/tmp');
   assert.equal(codex.input, 'stdin');
 
   const claude = agentCommand({ ...common, agent: 'claude' });
   assert.ok(claude.args.includes('--json-schema'));
   assert.ok(claude.args.includes('--no-session-persistence'));
+  assert.equal(claude.cwd, '/tmp');
   assert.equal(claude.input, 'stdin');
 
   const copilot = agentCommand({ ...common, agent: 'copilot' });
   assert.ok(copilot.args.includes('--silent'));
   assert.ok(copilot.args.includes('--no-ask-user'));
   assert.match(copilot.args.at(-1), /@\/tmp\/input\.json/);
+  assert.equal(copilot.cwd, '/tmp');
 
   assert.throws(
     () => agentCommand({ ...common, agent: 'cursor' }),
@@ -123,11 +134,35 @@ test('builds non-interactive commands for each coding agent', () => {
   );
   assert.equal(opencode.cwd, '/tmp');
   assert.equal(opencode.input, 'stdin');
-  assert.deepEqual(opencode.env, {
-    OPENCODE_DB: ':memory:',
-    OPENCODE_CONFIG_CONTENT:
-      '{"permission":{"*":"deny"},"agent":{"build":{"permission":{"*":"deny"}}}}',
-  });
+  assert.equal(opencode.env.OPENCODE_DB, ':memory:');
+  assert.equal(
+    opencode.env.OPENCODE_CONFIG_CONTENT,
+    '{"permission":{"*":"deny"},"agent":{"build":{"permission":{"*":"deny"}}}}',
+  );
+});
+
+test('passes only runtime variables to product summary agents', () => {
+  assert.deepEqual(
+    summaryAgentEnvironment({
+      API_TOKEN: 'do-not-pass',
+      HOME: '/home/reviewer',
+      HTTPS_PROXY: 'http://proxy.example.test:8080',
+      NODE_EXTRA_CA_CERTS: '/etc/company-ca.pem',
+      NO_PROXY: 'localhost,127.0.0.1',
+      PATH: '/usr/bin',
+      SSL_CERT_FILE: '/etc/ssl/cert.pem',
+      TMPDIR: '/tmp',
+    }),
+    {
+      HOME: '/home/reviewer',
+      HTTPS_PROXY: 'http://proxy.example.test:8080',
+      NODE_EXTRA_CA_CERTS: '/etc/company-ca.pem',
+      NO_PROXY: 'localhost,127.0.0.1',
+      PATH: '/usr/bin',
+      SSL_CERT_FILE: '/etc/ssl/cert.pem',
+      TMPDIR: '/tmp',
+    },
+  );
 });
 
 test('reads structured output from each coding agent', () => {
