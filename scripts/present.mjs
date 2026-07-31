@@ -99,12 +99,17 @@ if (cli.version) {
   process.exit(0);
 }
 if (cli.doctor) {
-  const report = await doctorReport();
-  console.log(report.text);
+  if (cli.doctor.deep) {
+    console.error(
+      'Warning: deep checks run local provider commands. They do not send a provider prompt.',
+    );
+  }
+  const report = await doctorReport({ deep: cli.doctor.deep });
+  console.log(cli.doctor.json ? JSON.stringify(report.json, null, 2) : report.text);
   process.exit(report.ready ? 0 : 1);
 }
 
-const { agentEnabled, port } = cli;
+const { agentEnabled, browserEnabled, host, port } = cli;
 const feedArgs = [...cli.feedArgs];
 const agentArgs = [...cli.agentArgs];
 let selectedAgent;
@@ -228,6 +233,8 @@ function startSite() {
       outputPath,
       '--port',
       String(port),
+      '--host',
+      host,
       '--project',
       projectKey,
       ...(!cli.portWasPassed ? ['--increment-port'] : []),
@@ -250,7 +257,7 @@ function startSite() {
       }
       console.log(line);
       const match = line.match(/^Diffsplain: (http:\/\/\S+)$/);
-      if (!browserOpened && !browserOpenTimer && match) {
+      if (browserEnabled && !browserOpened && !browserOpenTimer && match) {
         browserOpenTimer = setTimeout(() => {
           browserOpenTimer = undefined;
           browserOpened = true;
@@ -276,15 +283,19 @@ function snapshotState() {
     const snapshot = JSON.parse(readFileSync(outputPath, 'utf8'));
     if (snapshot.notes?.reviewFingerprint) {
       const fingerprint = snapshot.notes.reviewFingerprint;
+      const emptyReview =
+        Array.isArray(snapshot.files) && snapshot.files.length === 0;
       return {
         fingerprint,
         hasCurrentAgentNotes:
           snapshot.notes.complete &&
           snapshot.notes.fresh &&
           snapshot.notes.generatedFor === fingerprint &&
-          snapshot.notes.agent === selectedAgent &&
-          (snapshot.notes.model || null) === (cli.model || null) &&
-          (snapshot.notes.reasoning || null) === (cli.reasoning || null),
+          (emptyReview ||
+            (snapshot.notes.agent === selectedAgent &&
+              (snapshot.notes.model || null) === (cli.model || null) &&
+              (snapshot.notes.reasoning || null) ===
+                (cli.reasoning || null))),
       };
     }
     const reviewData = {

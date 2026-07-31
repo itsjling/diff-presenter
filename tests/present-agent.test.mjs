@@ -94,12 +94,12 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
     await writeFile(
       join(bin, "codex"),
       "#!/bin/sh\n" +
-        "if [ -f \"$PRESENTER_OUTPUT\" ]; then\n" +
-        "  printf 'codex-after-feed\\n' >> \"$PRESENTER_EVENTS\"\n" +
+        `if [ -f ${JSON.stringify(output)} ]; then\n` +
+        `  printf 'codex-after-feed\\n' >> ${JSON.stringify(events)}\n` +
         "else\n" +
-        "  printf 'codex-before-feed\\n' >> \"$PRESENTER_EVENTS\"\n" +
+        `  printf 'codex-before-feed\\n' >> ${JSON.stringify(events)}\n` +
         "fi\n" +
-        "cat \"$PRESENTER_RESPONSE\"\n",
+        `cat ${JSON.stringify(response)}\n`,
     );
     await writeFile(
       join(bin, "npm"),
@@ -192,8 +192,12 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         stdio: "pipe",
       },
     );
-    await new Promise((resolve) => setTimeout(resolve, 3_500));
-    const restartLog = await readFile(events, "utf8");
+    const restartLog = await waitFor(async () => {
+      const value = await readFile(events, "utf8");
+      return (value.match(/codex-after-feed/g) || []).length === 4
+        ? value
+        : undefined;
+    });
     assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 4);
 
     const restartResult = await stop(presenter);
