@@ -10,8 +10,9 @@ sidebar:
 Install packages and start Vite:
 
 ```sh
-npm install
-npm run dev
+corepack enable
+corepack npm run setup
+corepack npm run dev
 ```
 
 Open `http://localhost:2299`. Without live review data, the page uses the
@@ -20,11 +21,156 @@ checked-in todo-list demo from `public/demo-diff-data.json`.
 ## Run checks
 
 ```sh
-npm run lint
-npm test
+corepack npm run check
 ```
 
-`npm test` builds the app and runs the Node test suite.
+`corepack npm run check` is the product gate. It runs React and TypeScript
+lint, builds the app, runs the Node unit and integration tests, checks and
+builds the docs, then installs the packed package in a temporary folder and
+runs its CLI. Each stage names its failure before the command stops.
+
+Pull requests run this same gate from `package-lock.json` on Node 22.13.0 and
+the current Node 24 line. The changed-code Fallow audit and the site deployment
+remain separate checks; neither replaces the product gate.
+
+`npm run setup` uses `npm ci`, so it installs only what `package-lock.json`
+pins. It is safe to run again and needs no ignored or generated files. Node
+22.13.0 and npm 10.9.2 are pinned in `.nvmrc` and `package.json`; the
+`corepack npm` commands use the pinned npm version.
+
+For a shorter local loop, `corepack npm run lint` checks types and lint rules,
+and `corepack npm test` builds the app and runs the Node test suite.
+
+For the supported browser, screen, and device checks, see [Mobile
+support](/mobile).
+
+## Use a clean checkout
+
+Each checkout owns its dependencies and live data. Use the same commands in
+the main checkout, a linked worktree, and a Codex-managed worktree:
+
+```sh
+corepack enable
+corepack npm run setup
+corepack npm run check
+```
+
+Do not copy `node_modules`, `.cache/`, or a generated diff snapshot into a
+worktree. `npm run setup` creates the dependency tree from the lock file. The
+app falls back to checked-in demo data until you create live data locally.
+
+### Linked Git worktree
+
+Create and verify a linked worktree from the main checkout:
+
+```sh
+git worktree add -b feature/my-change ../diffsplain-my-change HEAD
+cd ../diffsplain-my-change
+corepack enable
+corepack npm run setup
+corepack npm run check
+```
+
+Before removal, inspect and commit, move, or discard its changes. Then remove
+the worktree from the main checkout:
+
+```sh
+git -C /path/to/diffsplain status --short
+git -C /path/to/diffsplain worktree remove ../diffsplain-my-change
+```
+
+Use `git worktree remove --force` only after you have dealt with changes.
+
+### Codex-managed worktree
+
+Choose **Worktree** when starting a Codex task, then run the same setup and
+check commands above. Codex worktrees start from tracked files. This project
+does not need `.worktreeinclude`, because setup does not depend on ignored
+files. Use Codex handoff when you need the same branch in the main checkout.
+
+### Codex cloud
+
+Set the Codex cloud setup and maintenance scripts to:
+
+```sh
+corepack enable
+corepack npm run setup
+```
+
+Then run this from the cloud task:
+
+```sh
+corepack npm run cloud:check
+```
+
+`cloud:check` runs the clean-checkout gate and the provider/browser tests.
+Those tests use fake coding providers and a fake browser command. Real Codex,
+Claude, Copilot, Cursor, OpenCode, GitHub, or browser login is optional and is
+needed only for a live integration task. Keep credentials in Codex environment
+settings, not checked-in rules or scripts.
+
+To test the linked-worktree path itself, run:
+
+```sh
+corepack npm run setup:smoke
+```
+
+It creates a temporary linked worktree, checks that no dependencies or live
+snapshot were copied, runs setup, then removes the worktree. Commit or stash
+changes to package install files first, so the test checks the same files.
+
+## Trust repo automation
+
+The checked-in Codex hook manifest runs no commands. This keeps a branch from
+using that manifest to approve its own code. Review `.codex/`, `.agents/`,
+`AGENTS.md`, and `skills-lock.json` at the commit you plan to use. After that
+review, you may run the vendored UI check yourself:
+
+```sh
+node .agents/skills/impeccable/scripts/hook.mjs
+```
+
+Do not put this command back in the repo-owned hook manifest. Use a user-owned
+hook outside the checkout if you want it to run on each edit.
+
+`skills-lock.json` records the source, version, path, and content hash for
+vendored skills. Pull requests that change a hook manifest, vendored automation,
+agent instructions, or this lock file request the automation owner's review.
+The `Automation trust review` check reads the pull request through the GitHub
+API without checking out branch code. It passes after a maintainer adds the
+`automation-reviewed` label.
+
+## Codex tool profiles
+
+Diffsplain keeps developer integrations separate from product summary agents.
+The checked-in `.codex/config.toml` has no secrets or enabled integrations.
+After you trust the checkout, copy the developer template to your Codex home:
+
+```sh
+cp .codex/developer.config.toml.example "$CODEX_HOME/developer.config.toml"
+```
+
+Use `codex --profile developer` for optional OpenAI developer docs MCP access
+and the GitHub plugin. Docs tools can run without a prompt; GitHub tools ask
+first.
+
+Do not use a named profile alone as a no-tool boundary. Profiles merge MCP
+servers and plugins from the base user config. For a manual no-tool Codex run,
+replace those maps at runtime and skip user config:
+
+```sh
+codex exec --ephemeral --ignore-user-config --ignore-rules \
+  --sandbox read-only \
+  --config 'mcp_servers={}' \
+  --config 'plugins={}' \
+  --config 'web_search="disabled"'
+```
+
+`diffsplain` enforces the summary boundary for product notes even when a
+developer profile is active. It runs agents in the temporary snapshot folder,
+with a read-only sandbox, no user config or rules, no MCP or plugins, no web
+search, and a small runtime-only environment. Authentication remains available
+to the client itself, but the agent receives no credential variables.
 
 ## Measure the pipeline
 
@@ -64,23 +210,32 @@ npm run benchmark:canary -- --runs 1 --reasoning minimal
 
 ## Publish a release
 
-Commit all release changes, then pass a version and any extra `npm version`
-options to the release script:
+Publish from the protected **npm-publish** GitHub environment. It runs the
+product gate before versioning, verifies the exact tarball in a temporary
+consumer, then uses npm trusted publishing and provenance. Start the
+**Publish verified package** workflow on `main` with a version argument such
+as `patch`, `minor`, or `1.0.0`.
+
+Configure npmjs.com for trusted publishing from `itsjling/diffsplain`,
+workflow file `release.yml`, and environment `npm-publish`. In GitHub, require
+approval for that environment and protect `main` and release tags. Do not add
+an npm token to this repo or to the workflow.
+
+The workflow output names the tested commit, version, and registry result. If
+publication succeeds but pushing fails, inspect the release commit and tag,
+then push them without publishing again. If a check fails, fix it and restart
+the workflow before versioning.
 
 ```sh
-npm run release -- patch
-npm run release -- minor
-npm run release -- 1.0.0
-npm run release -- prerelease --preid beta
+corepack npm run package:verify
 ```
 
-The script creates the npm version commit and tag, then publishes the public
-package. It stops when either command fails. It does not run the project
-checks. After a successful publish, push the commit and tag:
-
-```sh
-git push origin main --follow-tags
-```
+This local command checks the built tarball without publishing it. The
+production audit has no findings. The full audit has 12 high and 5 low findings
+below the Blume docs tool.
+`npm audit fix --package-lock-only --dry-run` makes no change. We accept this
+limited risk while docs builds use only committed docs and do not handle user
+content.
 
 ## Refresh the demo
 
@@ -94,7 +249,7 @@ node scripts/write-todo-demo.mjs
 To build a live snapshot from another repo:
 
 ```sh
-npm run snapshot -- --repo /path/to/repo
+corepack npm run snapshot -- --repo /path/to/repo
 ```
 
 The writer stores live data in the ignored `.cache/diff-data.json`. The local
@@ -105,14 +260,14 @@ server exposes it at `/diff-data.json`.
 The docs use [Blume](https://useblume.dev/) and live under `docs/`.
 
 ```sh
-npm run docs:dev
+corepack npm run docs:dev
 ```
 
 Build or preview the static output:
 
 ```sh
-npm run docs:build
-npm run docs:preview
+corepack npm run docs:build
+corepack npm run docs:preview
 ```
 
 Blume writes its output to `docs/dist/`. The Pages workflow publishes it under

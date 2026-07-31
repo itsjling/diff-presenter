@@ -182,6 +182,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
       `${"other before\n".repeat(10)}renamed after\n`,
     );
     await writeFile(join(repo, "new.txt"), "new line\n");
+    await writeFile(join(repo, "undefined.lock"), "review this file\n");
     await writeFile(
       summariesPath,
       JSON.stringify({
@@ -228,7 +229,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
     const first = JSON.parse(await readFile(output, "utf8"));
     assert.deepEqual(
       first.files.map((file) => file.path),
-      ["new.txt", "renamed file.txt", "tracked.txt"],
+      ["new.txt", "renamed file.txt", "tracked.txt", "undefined.lock"],
     );
     assert.equal(first.files[0].status, "added");
     assert.match(first.files[0].patch, /new line/);

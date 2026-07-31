@@ -19,14 +19,28 @@ Choose an agent or control how it runs:
 
 ```sh
 npx diffsplain \
-  --agent claude \
+  --agent codex \
   --model MODEL_NAME \
   --reasoning low \
   --batch-size 2
 ```
 
 The default batch size is 12 files. Smaller batches add the first notes to
-the open page sooner.
+the open page sooner. All supported agents accept `--model`; only Codex and
+OpenCode accept `--reasoning`.
+
+## File limits and failed notes
+
+Diffsplain sends a file’s full patch when it is at most 180,000 bytes. For a
+larger patch, it sends the short patch excerpt shown in the page. If that
+excerpt still makes the file input larger than 2,000,000 bytes, Diffsplain
+rejects the file without starting an agent for it.
+
+A bad file note or a failed agent pass does not remove valid notes from other
+files. Diffsplain publishes each complete note, marks the run as failed, exits
+with an error, and lists each failed path and reason in `meta.failedFiles`.
+It ignores notes for paths outside the requested batch and reports those paths
+as failures.
 
 ## Run one note pass
 
@@ -62,6 +76,28 @@ Without `XDG_CACHE_HOME`, macOS uses
 and range targets each get a distinct keyed file. Pass `--summaries FILE` to
 use another path.
 
+## Cache control
+
+Saved notes use a short-lived lease while an agent writes them. A reader can
+still open the last complete notes. If a writer stops, its lease expires and a
+later run can take over. A writer that loses its lease cannot publish or remove
+the newer writer's lease.
+
+See cache location, total size, oldest entry, and active targets:
+
+```sh
+npx diffsplain cache status
+```
+
+Prune inactive notes by age in days or by total size in bytes. `clear --yes`
+removes inactive notes only; it keeps notes under an active lease.
+
+```sh
+npx diffsplain cache prune --age 30
+npx diffsplain cache prune --size 104857600
+npx diffsplain cache clear --yes
+```
+
 The file has one change note and notes keyed by file path:
 
 ```json
@@ -86,3 +122,28 @@ The file has one change note and notes keyed by file path:
 ```
 
 Missing notes get a plain fallback, so new files still appear at once.
+
+## Failed run support records
+
+Support records are off by default. If review setup or agent notes fail, print
+one JSON record:
+
+```sh
+npx diffsplain --support-record
+```
+
+Or write it to a file:
+
+```sh
+npx diffsplain --support-record-file ./diffsplain-support.json
+```
+
+The file contains a new run ID, the agent and its CLI version, Diffsplain and
+Node.js versions, stage timings, byte counts, and the failed exit state. The
+stage totals cover cache access, snapshot work, agent calls, note publication,
+and local page startup. The export uses private file permissions.
+
+The fixed record does not copy repo paths, file paths, prompts, patches, raw
+agent output, error text, credentials, or environment values. It records byte
+counts instead of data. A successful run writes no record. The print form goes
+to standard error, so the diff snapshot output stays unchanged.
