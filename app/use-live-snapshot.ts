@@ -9,6 +9,7 @@ type SnapshotShape = {
 };
 
 type LiveTarget = {
+  access: string | null;
   key: string;
   project: string | null;
 };
@@ -24,11 +25,12 @@ type SnapshotResult<T> = {
 class DemoUnavailableError extends Error {}
 
 function currentTarget(): LiveTarget {
-  const project = new URLSearchParams(window.location.hash.slice(1)).get(
-    "project",
-  );
+  const session = new URLSearchParams(window.location.hash.slice(1));
+  const access = session.get("access");
+  const project = session.get("project");
   return {
-    key: `${document.baseURI}|${project ?? ""}`,
+    access,
+    key: `${document.baseURI}|${project ?? ""}|${access ?? ""}`,
     project,
   };
 }
@@ -88,12 +90,15 @@ async function demoSnapshot<T extends SnapshotShape>(
   }
 }
 
+// fallow-ignore-next-line complexity -- browser tests cover each live and demo result.
 async function fetchSnapshot<T extends SnapshotShape>(
   signal: AbortSignal,
   source: SnapshotSource | null,
+  target: LiveTarget,
 ): Promise<SnapshotResult<T>> {
   const liveUrl = new URL("diff-data.json", document.baseURI);
   liveUrl.searchParams.set("t", String(Date.now()));
+  if (target.access) liveUrl.searchParams.set("access", target.access);
   const liveResponse = await fetch(liveUrl, {
     cache: "no-store",
     signal,
@@ -152,6 +157,7 @@ export function useLiveSnapshot<T extends SnapshotShape>() {
     return () => window.removeEventListener("hashchange", handleTargetChange);
   }, []);
 
+  // fallow-ignore-next-line complexity -- one effect owns and cleans up all refresh work.
   useEffect(() => {
     if (demoUnavailable) return;
 
@@ -251,6 +257,7 @@ export function useLiveSnapshot<T extends SnapshotShape>() {
         const result = await fetchSnapshot<T>(
           controller.signal,
           source.current,
+          target,
         );
         finishRequest(result, controller, request);
       } catch (error) {
@@ -265,6 +272,9 @@ export function useLiveSnapshot<T extends SnapshotShape>() {
       const eventsUrl = new URL("events", document.baseURI);
       if (target.project) {
         eventsUrl.searchParams.set("project", target.project);
+      }
+      if (target.access) {
+        eventsUrl.searchParams.set("access", target.access);
       }
       events = new EventSource(eventsUrl);
       events.addEventListener("ready", () => {
@@ -285,6 +295,18 @@ export function useLiveSnapshot<T extends SnapshotShape>() {
           setStreamError(null);
         }
         requestRefresh();
+      });
+      events.addEventListener("access", (event) => {
+        if (!active) return;
+        const nextAccess = (event as MessageEvent<string>).data;
+        if (!/^[A-Za-z0-9_-]{32,}$/.test(nextAccess)) return;
+        const session = new URLSearchParams(window.location.hash.slice(1));
+        session.set("access", nextAccess);
+        window.history.replaceState(null, "", `#${session}`);
+        const nextTarget = currentTarget();
+        setTarget((current) =>
+          current.key === nextTarget.key ? current : nextTarget,
+        );
       });
       events.addEventListener("error", () => {
         if (!active) return;

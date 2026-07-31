@@ -569,6 +569,31 @@ test("recovers from event faults without resetting the selected file", async () 
         await page.locator(".current-path").textContent(),
         "src/long-list.ts",
       );
+
+      const access = "a".repeat(43);
+      await page.evaluate(
+        (nextAccess) => window.controlledEvents.emit("access", nextAccess),
+        access,
+      );
+      await page.waitForFunction(
+        (nextAccess) =>
+          window.controlledEvents.state().at(-1)?.url.includes(nextAccess),
+        access,
+      );
+      const accessEventSources = await page.evaluate(() =>
+        window.controlledEvents.state(),
+      );
+      assert.equal(accessEventSources.at(-2).closed, true);
+      assert.match(accessEventSources.at(-1).url, /project=next-target/);
+      assert.match(accessEventSources.at(-1).url, new RegExp(`access=${access}`));
+      assert.equal(
+        new URLSearchParams(new URL(page.url()).hash.slice(1)).get("access"),
+        access,
+      );
+      assert.equal(
+        await page.locator(".current-path").textContent(),
+        "src/long-list.ts",
+      );
     },
   );
 });

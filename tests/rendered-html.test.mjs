@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   access,
-  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -31,7 +30,7 @@ test("documents browser setup before the full checks", async () => {
   );
   assert.match(
     readme,
-    /npm run test:browser:install\nnpm run lint\nnpm test/,
+    /corepack npm run test:browser:install\ncorepack npm run check\ncorepack npm run test:browser/,
   );
 });
 
@@ -181,6 +180,7 @@ test("shows a content skeleton while the agent writes a file summary", async () 
 test("builds live data for tracked and untracked workspace files", async () => {
   const repo = await mkdtemp(join(tmpdir(), "diffsplain-test-"));
   const output = join(repo, "snapshot.json");
+  const summariesPath = `${repo}-summaries.json`;
   const git = (...args) =>
     execFileSync("git", ["-C", repo, ...args], {
       encoding: "utf8",
@@ -207,9 +207,9 @@ test("builds live data for tracked and untracked workspace files", async () => {
       `${"other before\n".repeat(10)}renamed after\n`,
     );
     await writeFile(join(repo, "new.txt"), "new line\n");
-    await mkdir(join(repo, ".diffsplain"));
+    await writeFile(join(repo, "undefined.lock"), "review this file\n");
     await writeFile(
-      join(repo, ".diffsplain/summaries.json"),
+      summariesPath,
       JSON.stringify({
         change: {
           title: "Test change",
@@ -243,6 +243,8 @@ test("builds live data for tracked and untracked workspace files", async () => {
         new URL("../scripts/build-diff-data.mjs", import.meta.url).pathname,
         "--repo",
         repo,
+        "--summaries",
+        summariesPath,
         "--output",
         output,
       ],
@@ -252,7 +254,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
     const first = JSON.parse(await readFile(output, "utf8"));
     assert.deepEqual(
       first.files.map((file) => file.path),
-      ["new.txt", "renamed file.txt", "tracked.txt"],
+      ["new.txt", "renamed file.txt", "tracked.txt", "undefined.lock"],
     );
     assert.equal(first.files[0].status, "added");
     assert.match(first.files[0].patch, /new line/);
@@ -263,11 +265,11 @@ test("builds live data for tracked and untracked workspace files", async () => {
 
     const oldVersion = first.version;
     const summaries = JSON.parse(
-      await readFile(join(repo, ".diffsplain/summaries.json"), "utf8"),
+      await readFile(summariesPath, "utf8"),
     );
     summaries.files["new.txt"].title = "Revised note";
     await writeFile(
-      join(repo, ".diffsplain/summaries.json"),
+      summariesPath,
       JSON.stringify(summaries),
     );
     execFileSync(
@@ -276,6 +278,8 @@ test("builds live data for tracked and untracked workspace files", async () => {
         new URL("../scripts/build-diff-data.mjs", import.meta.url).pathname,
         "--repo",
         repo,
+        "--summaries",
+        summariesPath,
         "--output",
         output,
       ],
@@ -288,7 +292,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
 
     summaries.meta = { reviewFingerprint: "0".repeat(64) };
     await writeFile(
-      join(repo, ".diffsplain/summaries.json"),
+      summariesPath,
       JSON.stringify(summaries),
     );
     execFileSync(
@@ -297,6 +301,8 @@ test("builds live data for tracked and untracked workspace files", async () => {
         new URL("../scripts/build-diff-data.mjs", import.meta.url).pathname,
         "--repo",
         repo,
+        "--summaries",
+        summariesPath,
         "--output",
         output,
       ],
@@ -309,6 +315,7 @@ test("builds live data for tracked and untracked workspace files", async () => {
     assert.equal(stale.notes.fresh, false);
     assert.equal(stale.notes.complete, false);
   } finally {
+    await rm(summariesPath, { force: true });
     await rm(repo, { recursive: true, force: true });
   }
 });
