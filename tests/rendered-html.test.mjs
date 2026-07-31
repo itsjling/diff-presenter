@@ -142,11 +142,20 @@ test("adds PostHog analytics to the public site and docs", async () => {
   assert.match(docsConfig, /analytics:\s*\{\s*posthog:/);
 });
 
-test("falls back to the bundled demo when no live snapshot exists", async () => {
-  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+test("uses the bundled demo when no live snapshot exists", async () => {
+  const [page, viteConfig] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../vite.config.ts", import.meta.url), "utf8"),
+  ]);
 
   assert.match(page, /liveResponse\.status === 404/);
   assert.match(page, /new URL\("demo-diff-data\.json", document\.baseURI\)/);
+  assert.match(page, /Bundled demo is unavailable/);
+  assert.match(page, /if \(demoUnavailable\) return/);
+  assert.match(viteConfig, /request\.url\?\.split\("\?", 1\)\[0\] !== "\/diff-data\.json"/);
+  assert.match(viteConfig, /"content-type": "application\/json; charset=utf-8"/);
+  assert.match(viteConfig, /"x-diffsplain-demo": "true"/);
+  assert.match(viteConfig, /JSON\.parse\(fixture\)/);
 });
 
 test("shows a content skeleton while the agent writes a file summary", async () => {

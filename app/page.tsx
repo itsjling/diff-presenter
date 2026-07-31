@@ -227,6 +227,7 @@ function EmptyState({
 export default function Home() {
   const [snapshot, setSnapshot] = useState<DiffSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [demoUnavailable, setDemoUnavailable] = useState(false);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -244,6 +245,9 @@ export default function Home() {
   const [access, setAccess] = useState(() => session.get("access"));
 
   const refresh = useCallback(async () => {
+    if (demoUnavailable) return;
+
+    let usingBundledDemo = false;
     try {
       const liveUrl = new URL("diff-data.json", document.baseURI);
       liveUrl.searchParams.set("t", String(Date.now()));
@@ -251,10 +255,14 @@ export default function Home() {
       const liveResponse = await fetch(liveUrl, {
         cache: "no-store",
       });
-      const response =
-        liveResponse.status === 404
+      usingBundledDemo =
+        liveResponse.status === 404 ||
+        liveResponse.headers.get("x-diffsplain-demo") === "true";
+      const response = usingBundledDemo
+        ? liveResponse.status === 404
           ? await fetch(new URL("demo-diff-data.json", document.baseURI))
-          : liveResponse;
+          : liveResponse
+        : liveResponse;
       if (!response.ok) throw new Error(`Snapshot returned ${response.status}`);
       const next = (await response.json()) as DiffSnapshot;
       if (!Array.isArray(next.files)) throw new Error("Snapshot has no files");
@@ -271,11 +279,16 @@ export default function Home() {
       }
       setLoadError(null);
     } catch (error) {
-      setLoadError(
-        error instanceof Error ? error.message : "Could not read the snapshot",
-      );
+      const message =
+        error instanceof Error ? error.message : "Could not read the snapshot";
+      if (usingBundledDemo) {
+        setDemoUnavailable(true);
+        setLoadError(`Bundled demo is unavailable: ${message}`);
+        return;
+      }
+      setLoadError(message);
     }
-  }, [access]);
+  }, [access, demoUnavailable]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
@@ -396,7 +409,8 @@ export default function Home() {
         <LoadingState />
         {loadError ? (
           <div className="connection-error" role="status">
-            {loadError}. Retrying…
+            {loadError}
+            {demoUnavailable ? ". Check public/demo-diff-data.json." : ". Retrying…"}
           </div>
         ) : null}
       </>

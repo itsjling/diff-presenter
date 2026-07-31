@@ -47,6 +47,7 @@
   "scripts": {
     "cloud:check": "npm run check && npm run test:cloud",
     "check": "node scripts/check.mjs",
+    "demo": "vite --port 2299",
     "dev": "vite --port 2299",
     "docs:dev": "cd docs && blume dev",
     "docs:build": "cd docs && blume build",
