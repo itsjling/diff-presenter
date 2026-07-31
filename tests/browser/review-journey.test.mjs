@@ -150,6 +150,202 @@ async function selectFile(page, search) {
   await page.getByRole("button", { name: new RegExp(search, "i") }).click();
 }
 
+async function dispatchTouchGesture(locator, start, end) {
+  await locator.evaluate(
+    (element, points) => {
+      const touch = (point) =>
+        new Touch({
+          identifier: 1,
+          target: element,
+          clientX: point.x,
+          clientY: point.y,
+          pageX: point.x,
+          pageY: point.y,
+          screenX: point.x,
+          screenY: point.y,
+          radiusX: 2,
+          radiusY: 2,
+          rotationAngle: 0,
+          force: 0.5,
+        });
+      const startTouch = touch(points.start);
+      element.dispatchEvent(
+        new TouchEvent("touchstart", {
+          bubbles: true,
+          cancelable: true,
+          changedTouches: [startTouch],
+          targetTouches: [startTouch],
+          touches: [startTouch],
+        }),
+      );
+      const endTouch = touch(points.end);
+      element.dispatchEvent(
+        new TouchEvent("touchend", {
+          bubbles: true,
+          cancelable: true,
+          changedTouches: [endTouch],
+          targetTouches: [],
+          touches: [],
+        }),
+      );
+    },
+    { start, end },
+  );
+}
+
+async function selectedFilePath(page) {
+  return page.locator(".current-path").textContent();
+}
+
+async function hasFocus(locator) {
+  return locator.evaluate((element) => document.activeElement === element);
+}
+
+async function checkKeyboardFileNavigation(page) {
+  const next = page.getByRole("button", { name: "Next file" });
+  await next.focus();
+  await next.press("Enter");
+  await page.getByRole("heading", { name: "Live review interaction" }).waitFor();
+  assert.equal(await hasFocus(next), true);
+
+  await next.press("ArrowLeft");
+  await page.getByRole("heading", { name: "Explain saved todos" }).waitFor();
+  assert.equal(await hasFocus(next), true);
+}
+
+function pickerControls(page) {
+  return {
+    close: page.getByRole("button", { name: "Close file picker" }),
+    dialog: page.getByRole("dialog", { name: "Choose a changed file" }),
+    search: page.getByRole("textbox", { name: "Filter changed files" }),
+    trigger: page.locator(".file-picker-trigger"),
+  };
+}
+
+async function assertTouchTarget(locator) {
+  const box = await locator.boundingBox();
+  assert.ok(box);
+  assert.ok(box.width >= 44);
+  assert.ok(box.height >= 44);
+}
+
+async function checkPickerSemantics(page, controls) {
+  const { close, dialog, trigger } = controls;
+  assert.match(
+    String(await trigger.getAttribute("aria-label")),
+    /Choose file\. Current file 1 of 3/,
+  );
+  await trigger.focus();
+  await trigger.press("Enter");
+  await dialog.waitFor();
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("aria-label") === "Filter changed files",
+  );
+  assert.equal(await dialog.getAttribute("aria-modal"), "true");
+  assert.equal(
+    await page.locator(".picker-row[aria-current='true']").count(),
+    1,
+  );
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector(".picker-search"))
+        .backgroundColor !== "rgba(0, 0, 0, 0)",
+  );
+  await page.waitForFunction(
+    () =>
+      getComputedStyle(document.querySelector(".picker-dialog")).transform ===
+      "none",
+  );
+  await assertTouchTarget(close);
+  await assertTouchTarget(page.locator(".picker-row").first());
+}
+
+async function checkPickerFocusLoop(page, controls) {
+  const { close, dialog, search, trigger } = controls;
+  await close.focus();
+  await close.press("Shift+Tab");
+  const lastRow = page.locator(".picker-row").last();
+  assert.equal(await hasFocus(lastRow), true);
+  await lastRow.press("Tab");
+  assert.equal(await hasFocus(close), true);
+
+  await search.focus();
+  await search.press("Escape");
+  await dialog.waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () => document.activeElement?.classList.contains("file-picker-trigger"),
+  );
+  assert.equal(await hasFocus(trigger), true);
+}
+
+async function chooseLongFile(page, controls) {
+  await controls.trigger.press("Enter");
+  await page
+    .getByRole("button", { name: /src\/long-list\.ts/i })
+    .click();
+  await page.getByRole("heading", { name: "Live review interaction" }).waitFor();
+  await page.waitForFunction(
+    () => document.activeElement?.classList.contains("file-picker-trigger"),
+  );
+}
+
+async function assertGestureIgnored(page, locator, start, end) {
+  const path = await selectedFilePath(page);
+  await dispatchTouchGesture(locator, start, end);
+  assert.equal(await selectedFilePath(page), path);
+}
+
+async function selectSummaryHeading(page) {
+  await page
+    .getByRole("heading", { name: "Live review interaction" })
+    .evaluate((element) => {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
+}
+
+async function checkProtectedTouchGestures(page, controls) {
+  await assertGestureIgnored(
+    page,
+    page.locator(".diff-scroll"),
+    { x: 280, y: 300 },
+    { x: 140, y: 305 },
+  );
+  await assertGestureIgnored(
+    page,
+    page.getByRole("button", { name: "Read full diff" }),
+    { x: 280, y: 120 },
+    { x: 140, y: 125 },
+  );
+
+  await selectSummaryHeading(page);
+  await assertGestureIgnored(
+    page,
+    page.locator(".summary-scroll"),
+    { x: 280, y: 600 },
+    { x: 140, y: 605 },
+  );
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await assertGestureIgnored(
+    page,
+    page.locator(".summary-scroll"),
+    { x: 180, y: 500 },
+    { x: 260, y: 650 },
+  );
+
+  await controls.trigger.press("Enter");
+  await assertGestureIgnored(
+    page,
+    controls.dialog,
+    { x: 280, y: 300 },
+    { x: 140, y: 305 },
+  );
+  await controls.search.press("Escape");
+}
+
 before(async () => {
   fixtureDirectory = await mkdtemp(join(tmpdir(), "diffsplain-browser-fixture-"));
   output = join(fixtureDirectory, "diff-data.json");
@@ -543,6 +739,59 @@ test("runs the full picker and refresh journey at the supported mobile viewport"
 
       await writeSnapshot(fixture("mobile-two"));
       await page.getByRole("heading", { name: "Live review mobile-two" }).waitFor();
+    },
+  );
+});
+
+test("keeps the supported narrow layouts within the viewport", async () => {
+  for (const width of [320, 390]) {
+    await runInBrowser(
+      `${width}-pixel review layout`,
+      {
+        hasTouch: true,
+        isMobile: true,
+        viewport: { width, height: width === 320 ? 740 : 844 },
+      },
+      async (page) => {
+        await writeSnapshot(fixture(`narrow-${width}`));
+        await page.goto(serverUrl);
+        await page.getByRole("heading", { name: "Explain saved todos" }).waitFor();
+
+        const widths = await page.evaluate(() => ({
+          body: document.body.scrollWidth,
+          root: document.documentElement.scrollWidth,
+          viewport: document.documentElement.clientWidth,
+        }));
+        assert.ok(
+          widths.root <= widths.viewport && widths.body <= widths.viewport,
+          `page width ${JSON.stringify(widths)}`,
+        );
+      },
+    );
+  }
+});
+
+test("keeps narrow-screen touch and keyboard navigation usable", async () => {
+  await runInBrowser(
+    "narrow-screen interactions",
+    { hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } },
+    async (page) => {
+      await writeSnapshot(fixture("interaction"));
+      await page.goto(serverUrl);
+      await page.getByRole("heading", { name: "Explain saved todos" }).waitFor();
+
+      await checkKeyboardFileNavigation(page);
+      const controls = pickerControls(page);
+      await checkPickerSemantics(page, controls);
+      await checkPickerFocusLoop(page, controls);
+      await chooseLongFile(page, controls);
+      await checkProtectedTouchGestures(page, controls);
+      await dispatchTouchGesture(
+        page.locator(".summary-scroll"),
+        { x: 280, y: 600 },
+        { x: 140, y: 605 },
+      );
+      await page.getByRole("heading", { name: "Binary note interaction" }).waitFor();
     },
   );
 });
