@@ -24,6 +24,7 @@ function option(name, fallback) {
 const output = resolve(option('--output', resolve(root, '.cache/diff-data.json')));
 const project = option('--project', '');
 const portValue = option('--port', '2299');
+const host = option('--host', 'localhost');
 if (!/^\d+$/.test(portValue) || Number(portValue) > 65_535) {
   throw new Error('--port must be a number from 0 to 65535');
 }
@@ -86,6 +87,15 @@ async function fetchAsset(request) {
   return fileResponse(file);
 }
 
+function jsonResponse(value) {
+  return new Response(JSON.stringify(value), {
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': 'application/json; charset=utf-8',
+    },
+  });
+}
+
 function nodeRequest(request) {
   const host = request.headers.host || 'localhost';
   const init = {
@@ -111,7 +121,12 @@ async function send(nodeResponse, response) {
 const server = createServer(async (request, response) => {
   try {
     const webRequest = nodeRequest(request);
-    if (new URL(webRequest.url).pathname === '/events') {
+    const url = new URL(webRequest.url);
+    if (url.pathname === '/health') {
+      await send(response, jsonResponse(readyState));
+      return;
+    }
+    if (url.pathname === '/events') {
       response.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-store',
@@ -119,7 +134,7 @@ const server = createServer(async (request, response) => {
       });
       response.write('retry: 250\nevent: ready\ndata: {}\n\n');
       eventClients.add(response);
-      const requestProject = new URL(webRequest.url).searchParams.get('project');
+      const requestProject = url.searchParams.get('project');
       if (project && requestProject === project) {
         console.log('Diffsplain tab: connected');
       }
@@ -148,19 +163,53 @@ watchFile(output, { interval: 100 }, (current, previous) => {
 });
 
 let selectedPort = Number(portValue);
+let readyState;
+let closing = false;
+
+function urlFor(address, port) {
+  const formattedAddress = address.includes(':') ? `[${address}]` : address;
+  return `http://${formattedAddress}:${port}`;
+}
+
+function isLoopback(address) {
+  return (
+    address === 'localhost' ||
+    address === '::1' ||
+    address === '::ffff:127.0.0.1' ||
+    /^127(?:\.\d{1,3}){3}$/.test(address)
+  );
+}
 
 function listen() {
-  server.listen(selectedPort, 'localhost');
+  server.listen(selectedPort, host);
 }
 
 server.on('listening', () => {
+  if (closing) {
+    server.close();
+    return;
+  }
   const address = server.address();
+  const readyAddress =
+    address && typeof address === 'object' ? address.address : host;
   const readyPort =
     address && typeof address === 'object' ? address.port : selectedPort;
+  const url = urlFor(host, readyPort);
   const projectHash = project
     ? `#project=${encodeURIComponent(project)}`
     : '';
-  console.log(`Diffsplain: http://localhost:${readyPort}${projectHash}`);
+  readyState = {
+    status: 'ok',
+    address: readyAddress,
+    port: readyPort,
+  };
+  if (!isLoopback(readyAddress)) {
+    console.warn(
+      `Warning: Diffsplain is listening on ${readyAddress}. Anyone who can reach this address can view this review.`,
+    );
+  }
+  console.log(`Diffsplain: ${url}${projectHash}`);
+  console.log(JSON.stringify({ event: 'ready', ...readyState, url }));
 });
 
 server.on('error', (error) => {
@@ -175,22 +224,20 @@ server.on('error', (error) => {
     return;
   }
   console.error(`Could not start Diffsplain: ${error.message}`);
-  process.exitCode = 1;
+  close(1);
 });
 
 listen();
 
-let closing = false;
-function close() {
+function close(exitCode = 0) {
   if (closing) return;
   closing = true;
+  process.exitCode = exitCode;
   unwatchFile(output);
   for (const client of eventClients) client.end();
   eventClients.clear();
-  server.close(() => {
-    process.exitCode = 0;
-  });
+  if (server.listening) server.close();
 }
 
-process.on('SIGINT', close);
-process.on('SIGTERM', close);
+process.on('SIGINT', () => close());
+process.on('SIGTERM', () => close());

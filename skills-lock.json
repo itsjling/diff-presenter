@@ -1,6 +1,13 @@
 {
   "version": 1,
   "skills": {
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "version": "4.0.2",
+      "skillPath": "skill/SKILL.md",
+      "computedHash": "d61672b057c247542e8a4884d68794e5b0cc1198446d23aae0321180c23f1521"
+    },
     "setup-matt-pocock-skills": {
       "source": "mattpocock/skills",
       "sourceType": "github",

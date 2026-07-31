@@ -80,6 +80,15 @@ const cacheRoot = cacheOption
 const remoteMode = Boolean(prOption || branchOption);
 const watching = has('--watch');
 const ignoreSummaryWatch = has('--ignore-summary-watch');
+const interval = (name, fallback) => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+const watchInterval = interval('DIFFSPLAIN_WATCH_INTERVAL_MS', 2_000);
+const remoteRefreshInterval = interval(
+  'DIFFSPLAIN_REMOTE_REFRESH_INTERVAL_MS',
+  30_000,
+);
 
 if (prOption && branchOption) fail('--pr and --branch cannot be used together');
 if (prOption && (baseOption || headOption)) fail('--pr cannot be used with --base or --head');
@@ -311,12 +320,24 @@ function normalizeBranch(value, remoteName) {
 }
 
 function resolveRemote() {
-  const configured = tryRepo(['remote', 'get-url', remoteOption]);
-  if (configured) return { name: remoteOption, url: configured };
+  const configured = tryRepo([
+    'config',
+    '--get-all',
+    `remote.${remoteOption}.url`,
+  ])
+    .split('\n')
+    .find(Boolean);
+  if (configured) {
+    return {
+      name: remoteOption,
+      url: configured,
+      fetchUrl: tryRepo(['remote', 'get-url', remoteOption]) || configured,
+    };
+  }
   if (remoteOption === 'origin') {
     throw new Error(`Git remote "origin" was not found in ${repo}`);
   }
-  return { name: remoteOption, url: remoteOption };
+  return { name: remoteOption, url: remoteOption, fetchUrl: remoteOption };
 }
 
 function bareCache(remoteUrl) {
@@ -385,6 +406,34 @@ function remoteDefaultBranchInfo(remoteUrl) {
 
 function remoteDefaultBranch(remoteUrl) {
   return remoteDefaultBranchInfo(remoteUrl).name;
+}
+
+function remoteContainsCommits(remoteUrl, commits) {
+  let raw;
+  try {
+    raw = runRepo(['ls-remote', remoteUrl]);
+  } catch {
+    return false;
+  }
+  const tips = [
+    ...new Set(
+      raw
+        .split('\n')
+        .map((line) => line.trim().split(/\s+/, 1)[0])
+        .filter(Boolean),
+    ),
+  ];
+  return commits.every((commit) =>
+    tips.some((tip) => {
+      if (tip === commit) return true;
+      const result = spawnSync(
+        'git',
+        ['-C', repo, 'merge-base', '--is-ancestor', commit, tip],
+        { stdio: 'ignore' },
+      );
+      return result.status === 0;
+    }),
+  );
 }
 
 function localDefaultBranch(remote) {
@@ -506,7 +555,7 @@ function resolveBranchTarget() {
   const remote = resolveRemote();
   const branch = normalizeBranch(branchOption, remote.name);
   const baseBranch = normalizeBranch(
-    baseOption || remoteDefaultBranch(remote.url),
+    baseOption || remoteDefaultBranch(remote.fetchUrl),
     remote.name,
   );
   const cache = bareCache(remote.url);
@@ -516,7 +565,7 @@ function resolveBranchTarget() {
     .slice(0, 16);
   const baseRef = `refs/diffsplain/branch/${key}/base`;
   const headRef = `refs/diffsplain/branch/${key}/head`;
-  fetchInto(cache, remote.url, [
+  fetchInto(cache, remote.fetchUrl, [
     `+refs/heads/${baseBranch}:${baseRef}`,
     `+refs/heads/${branch}:${headRef}`,
   ]);
@@ -535,6 +584,7 @@ function resolveBranchTarget() {
     remote,
     sourceRepositoryUrl: repository?.webUrl,
     baseRepositoryUrl: repository?.webUrl,
+    comparisonCommitsOnRemote: true,
     target: {
       kind: 'branch',
       remote: remote.name,
@@ -562,7 +612,7 @@ function resolvePullRequestTarget() {
     .slice(0, 16);
   const baseRef = `refs/diffsplain/pr/${key}/base`;
   const headRef = `refs/diffsplain/pr/${key}/head`;
-  fetchInto(cache, remote.url, [
+  fetchInto(cache, remote.fetchUrl, [
     `+refs/heads/${pr.baseRefName}:${baseRef}`,
     `+refs/pull/${pr.number}/head:${headRef}`,
   ]);
@@ -600,6 +650,7 @@ function resolvePullRequestTarget() {
         pr.url.replace(/\/pull\/\d+(?:\/.*)?$/, ''),
     baseRepositoryUrl:
       repository?.webUrl || pr.url.replace(/\/pull\/\d+(?:\/.*)?$/, ''),
+    comparisonCommitsOnRemote: true,
     target: {
       kind: 'pull-request',
       remote: remote.name,
@@ -646,6 +697,9 @@ function resolveCheckoutTarget() {
   const repository = githubRepository(remoteUrl);
   const headLabel = branch || currentHead;
   const hasCommittedChanges = mergeBaseOid !== currentHead;
+  const hasUncommittedChanges = Boolean(
+    tryRepo(['status', '--porcelain=v1', '-z']),
+  );
   const isDefaultBranchCheckout = branch === defaultBranch.name;
 
   return {
@@ -659,6 +713,12 @@ function resolveCheckoutTarget() {
     remote,
     sourceRepositoryUrl: repository?.webUrl,
     baseRepositoryUrl: repository?.webUrl,
+    comparisonCommitsOnRemote:
+      !hasUncommittedChanges &&
+      Boolean(
+        remote?.url &&
+          remoteContainsCommits(remote.url, [mergeBaseOid, currentHead]),
+      ),
     target: {
       kind: 'checkout',
       ...(remote ? { remote: remote.name } : {}),
@@ -712,6 +772,12 @@ function resolveLocalTarget() {
     baseRepositoryUrl: worktree
       ? undefined
       : githubRepository(remoteUrl)?.webUrl,
+    comparisonCommitsOnRemote:
+      !worktree &&
+      Boolean(
+        remoteUrl &&
+          remoteContainsCommits(remoteUrl, [resolvedBase, resolvedHead]),
+      ),
     target: worktree
       ? { kind: 'worktree', base: { ref: 'HEAD', oid: currentHead || null } }
       : {
@@ -812,6 +878,13 @@ function githubFileUrl(repositoryUrl, ref, path) {
   return `${repositoryUrl}/blob/${encodeURIComponent(ref)}/${filePath}`;
 }
 
+function githubComparisonUrl(repositoryUrl, base, head) {
+  if (!repositoryUrl || !base || !head || head === 'WORKTREE') {
+    return undefined;
+  }
+  return `${repositoryUrl}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`;
+}
+
 function build() {
   const localWorkspace =
     tryRepo(['rev-parse', '--is-inside-work-tree']) === 'true';
@@ -887,6 +960,13 @@ function build() {
       file.status === 'deleted' ? target.base : target.head,
       file.path,
     );
+    const comparisonUrl = githubComparisonUrl(
+      target.comparisonCommitsOnRemote
+        ? target.sourceRepositoryUrl
+        : undefined,
+      target.base,
+      target.head,
+    );
     return {
       path: file.path,
       ...(file.oldPath ? { oldPath: file.oldPath } : {}),
@@ -899,6 +979,7 @@ function build() {
       patch: textPatch,
       snippet: binary ? '' : compactSnippet(textPatch),
       ...(sourceUrl ? { sourceUrl } : {}),
+      ...(comparisonUrl ? { comparisonUrl } : {}),
     };
   });
 
@@ -1026,9 +1107,29 @@ function fingerprint() {
       summariesTime,
     ].join('|');
   }
+  const content = createHash('sha256');
+  content.update(
+    tryRepo(['diff', '--no-ext-diff', '--binary', 'HEAD', '--']),
+  );
+  const untracked = tryRepo([
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '-z',
+  ])
+    .split('\0')
+    .filter((path) => path && !excludedPaths.has(path))
+    .sort();
+  for (const path of untracked) {
+    content.update('\0');
+    content.update(path);
+    content.update('\0');
+    content.update(readFileSync(resolve(repo, path)));
+  }
   return [
     tryRepo(['rev-parse', 'HEAD']),
     tryRepo(['status', '--porcelain=v1', '--untracked-files=all']),
+    content.digest('hex'),
     summariesTime,
   ].join('|');
 }
@@ -1040,7 +1141,7 @@ const refresh = () => {
     return true;
   } catch (error) {
     console.error(error.message);
-    if (!watching) process.exitCode = 1;
+    process.exitCode = 1;
     return false;
   }
 };
@@ -1049,16 +1150,16 @@ const started = refresh();
 if (watching && started) {
   let last = fingerprint();
   let remoteWait = 0;
-  setInterval(() => {
+  const watcher = setInterval(() => {
     const next = fingerprint();
-    remoteWait += 2_000;
-    const remoteDue = remoteMode && remoteWait >= 30_000;
+    remoteWait += watchInterval;
+    const remoteDue = remoteMode && remoteWait >= remoteRefreshInterval;
     if (next !== last || remoteDue) {
       last = next;
       remoteWait = 0;
-      refresh();
+      if (!refresh()) clearInterval(watcher);
     }
-  }, 2_000);
+  }, watchInterval);
 } else if (watching) {
   process.exitCode = 1;
 }
