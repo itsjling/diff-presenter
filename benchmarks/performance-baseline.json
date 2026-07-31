@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "warmupSamples": 1,
+  "measuredSamples": 5,
+  "speedMs": {
+    "working": {
+      "build": 15000,
+      "summary": 30000,
+      "present": 15000,
+      "restart": 30000
+    },
+    "heldout": {
+      "build": 15000,
+      "summary": 30000,
+      "present": 15000,
+      "restart": 30000
+    }
+  },
+  "quality": {
+    "minimumScore": 4
+  }
+}

@@ -1,0 +1,6 @@
+# Repo-owned agent automation needs explicit review before merge.
+/.codex/ @itsjling
+/.agents/ @itsjling
+/AGENTS.md @itsjling
+/skills-lock.json @itsjling
+/.github/workflows/automation-trust.yml @itsjling

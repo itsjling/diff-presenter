@@ -18,37 +18,41 @@ scope against that snapshot.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 | --- | --- | --- | --- | --- | --- |
-| [001](001-make-agent-and-cache-behavior-truthful.md) | Make agent flags and note cache behavior truthful | P1 | M | — | DONE |
-| [002](002-state-data-and-storage-boundaries.md) | State the data and storage boundaries | P1 | M | 001 | DONE |
-| [003](003-make-doctor-honest-and-add-troubleshooting.md) | Make doctor honest and add troubleshooting | P1 | M | 001 | DONE |
-| [004](004-define-every-review-target.md) | Define every review target exactly | P2 | M | 001 | DONE |
-| [005](005-fix-doc-routes-and-source-boundaries.md) | Fix doc routes and separate user commands from source commands | P2 | M | 002, 003, 004 | DONE |
-| [006](006-document-the-first-run-lifecycle.md) | Document the full first-run lifecycle | P2 | S | 003, 004, 005 | DONE |
-| [007](007-build-one-complete-cli-reference.md) | Build one complete CLI reference with drift checks | P2 | M | 001-006 | DONE |
+| [001](001-make-agent-and-cache-behavior-truthful.md) | Make agent flags and note cache behavior truthful | P1 | M | — | RECONCILED |
+| [002](002-state-data-and-storage-boundaries.md) | State the data and storage boundaries | P1 | M | 001 | RECONCILED |
+| [003](003-make-doctor-honest-and-add-troubleshooting.md) | Make doctor honest and add troubleshooting | P1 | M | 001 | RECONCILED |
+| [004](004-define-every-review-target.md) | Define every review target exactly | P2 | M | 001 | RECONCILED |
+| [005](005-fix-doc-routes-and-source-boundaries.md) | Fix doc routes and separate user commands from source commands | P2 | M | 002, 003, 004 | REJECTED |
+| [006](006-document-the-first-run-lifecycle.md) | Document the full first-run lifecycle | P2 | S | 003, 004, 005 | RECONCILED |
+| [007](007-build-one-complete-cli-reference.md) | Build one complete CLI reference with drift checks | P2 | M | 001-006 | REJECTED |
 
-Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with a one-line
-reason) | `REJECTED` (with a one-line reason)
+Status values: `TODO` | `IN PROGRESS` | `RECONCILED` (with current evidence) |
+`BLOCKED` (with a one-line reason) | `REJECTED` (with a one-line reason)
 
 ## Reconciliation
 
-Verified on 2026-07-30 against `codex/007-cli-reference-contract` at
-`9a2dd36`. The final branch contains each accepted plan commit in order.
+Verified on 2026-07-30. The former plan stack at `9a2dd36` is not an ancestor
+of the reconciled product work. Do not treat a plan status as proof that its
+old branch was merged. A reconciled row names the replacement PR; it becomes
+evidence on `main` only after that PR lands.
 
-| Plan | Accepted commit |
-| --- | --- |
-| 001 | `b836720` |
-| 002 | `36f185c` |
-| 003 | `80e41df` |
-| 004 | `eed1fc0` |
-| 005 | `c9a541d` |
-| 006 | `8fb9c40` |
-| 007 | `9a2dd36` |
+| Plan | Decision | Current evidence or reason |
+| --- | --- | --- |
+| 001 | Reconciled | PR #43 keeps note state outside the target, hides old notes in no-agent mode, and keys reuse to review settings. |
+| 002 | Reconciled | PRs #43 and #66 supply stable cache identity, target-preservation tests, and the data boundary guide without importing the old docs stack. |
+| 003 | Reconciled | PR #44 supplies the doctor capability report, JSON output, explicit deep check, and tests. |
+| 004 | Reconciled | PR #66 supplies the target table and runtime Git contract tests. |
+| 005 | Rejected | The old branch mixed navigation changes with source-only examples. PRs #66 and #69 keep public commands in product docs without changing site navigation. |
+| 006 | Reconciled | PR #69 supplies the first-run and shutdown guidance in the CLI guide. |
+| 007 | Rejected | The old branch introduced a second option-data system. PR #69 keeps the parser authoritative and checks the hand-written guide for drift. |
 
-The final checks passed: `npm run lint`, `npm test` (88 tests),
-`npm run docs:check`, `npm run fallow:audit`, and
-`npm pack --dry-run --json`. The package contains
-`scripts/cli-options.mjs` and omits the development-only docs checker. This run
-did not merge or push any branch.
+## Worktree audit
+
+On 2026-07-30, the seven `codex/00*-*` plan worktrees were checked for dirty
+files and commits not in `d3aa2d9`. Each was clean and each had unique commits
+on its retained branch. The checks therefore preserved those branches, but
+removed their obsolete worktrees. The removed worktrees used 5,651,140 KiB
+(about 5.39 GiB). Issue worktrees were not candidates for removal.
 
 ## Dependency notes
 
