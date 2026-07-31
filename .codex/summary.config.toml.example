@@ -1,0 +1,11 @@
+# Reference settings for Diffsplain's no-tool summary command.
+# Do not use this profile alone: Codex profiles merge user integrations.
+# The product command also ignores user config and replaces both integration
+# maps with empty runtime overrides.
+
+approval_policy = "never"
+sandbox_mode = "read-only"
+web_search = "disabled"
+
+[shell_environment_policy]
+inherit = "none"

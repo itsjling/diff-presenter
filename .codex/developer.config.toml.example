@@ -1,0 +1,23 @@
+# Copy to $CODEX_HOME/developer.config.toml, then use: codex --profile developer
+# This file names optional integrations only. It contains no credentials.
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false
+
+[mcp_servers.openaiDeveloperDocs]
+url = "https://developers.openai.com/mcp"
+enabled_tools = ["search_openai_docs", "fetch_openai_doc"]
+default_tools_approval_mode = "auto"
+required = false
+
+[plugins."github@openai-curated-remote"]
+enabled = true
+
+[apps.github]
+enabled = true
+default_tools_approval_mode = "prompt"
+destructive_enabled = false
+open_world_enabled = false

@@ -1,0 +1,136 @@
+{
+  "working": [
+    {
+      "name": "useful",
+      "expectedPass": true,
+      "requiredTerms": ["cache key", "branch"],
+      "unsupportedTerms": ["deletes the cache"],
+      "note": {
+        "title": "Scope cache keys by branch",
+        "what": "Adds the branch name to each cache key.",
+        "why": "Keeps notes from one branch out of another branch.",
+        "details": ["Existing cache entries remain readable."],
+        "risks": []
+      }
+    },
+    {
+      "name": "incomplete",
+      "expectedPass": false,
+      "requiredTerms": ["cache key"],
+      "unsupportedTerms": [],
+      "note": {
+        "title": "Scope cache keys",
+        "what": "",
+        "why": "Keeps each branch separate.",
+        "details": ["Updates each cache key."],
+        "risks": []
+      }
+    },
+    {
+      "name": "false",
+      "expectedPass": false,
+      "requiredTerms": ["cache key", "branch"],
+      "unsupportedTerms": ["deletes the cache"],
+      "note": {
+        "title": "Scope cache keys by branch",
+        "what": "Deletes the cache before adding the branch to each cache key.",
+        "why": "Keeps notes from one branch out of another branch.",
+        "details": [],
+        "risks": []
+      }
+    },
+    {
+      "name": "duplicate",
+      "expectedPass": false,
+      "requiredTerms": ["cache key"],
+      "unsupportedTerms": [],
+      "note": {
+        "title": "Updates the cache key.",
+        "what": "Updates the cache key.",
+        "why": "Updates the cache key.",
+        "details": [],
+        "risks": []
+      }
+    },
+    {
+      "name": "empty",
+      "expectedPass": false,
+      "requiredTerms": ["cache key"],
+      "unsupportedTerms": [],
+      "note": {
+        "title": "",
+        "what": "",
+        "why": "",
+        "details": [],
+        "risks": []
+      }
+    }
+  ],
+  "heldout": [
+    {
+      "name": "useful",
+      "expectedPass": true,
+      "requiredTerms": ["rename", "history"],
+      "unsupportedTerms": ["drops history"],
+      "note": {
+        "title": "Keep history across a rename",
+        "what": "Links the old path to the rename target.",
+        "why": "Keeps file history visible after the path changes.",
+        "details": ["The new path owns later notes."],
+        "risks": []
+      }
+    },
+    {
+      "name": "incomplete",
+      "expectedPass": false,
+      "requiredTerms": ["rename"],
+      "unsupportedTerms": [],
+      "note": {
+        "title": "Track the rename",
+        "what": "Links the rename target to its old path.",
+        "why": "",
+        "details": [],
+        "risks": []
+      }
+    },
+    {
+      "name": "false",
+      "expectedPass": false,
+      "requiredTerms": ["rename", "history"],
+      "unsupportedTerms": ["drops history"],
+      "note": {
+        "title": "Keep history across a rename",
+        "what": "Drops history when it links the rename target.",
+        "why": "Keeps file history visible after the path changes.",
+        "details": [],
+        "risks": []
+      }
+    },
+    {
+      "name": "duplicate",
+      "expectedPass": false,
+      "requiredTerms": ["rename"],
+      "unsupportedTerms": [],
+      "note": {
+        "title": "Tracks the rename.",
+        "what": "Tracks the rename.",
+        "why": "Tracks the rename.",
+        "details": [],
+        "risks": []
+      }
+    },
+    {
+      "name": "empty",
+      "expectedPass": false,
+      "requiredTerms": ["rename"],
+      "unsupportedTerms": [],
+      "note": {
+        "title": "",
+        "what": "",
+        "why": "",
+        "details": [],
+        "risks": []
+      }
+    }
+  ]
+}

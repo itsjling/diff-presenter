@@ -30,6 +30,7 @@ type DiffFile = {
   patch: string;
   snippet: string;
   sourceUrl?: string;
+  comparisonUrl?: string;
   summary: FileSummary;
   noteReady?: boolean;
 };
@@ -587,6 +588,16 @@ export default function Home() {
                     rel="noreferrer"
                   >
                     Open file ↗
+                  </a>
+                ) : null}
+                {currentFile.comparisonUrl ? (
+                  <a
+                    className="text-button"
+                    href={currentFile.comparisonUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open comparison ↗
                   </a>
                 ) : null}
               </div>
