@@ -211,7 +211,12 @@ function fileNavigationStep(event: KeyboardEvent) {
   const target = event.target;
   if (!(target instanceof HTMLElement) || hasSelectedText()) return 0;
   if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return 0;
-  if (target !== document.body && !target.closest(".nav-button")) return 0;
+  if (
+    target !== document.body &&
+    !target.closest(".nav-button, .file-picker-trigger")
+  ) {
+    return 0;
+  }
   if (event.key === "ArrowRight") return 1;
   if (event.key === "ArrowLeft") return -1;
   return 0;
@@ -342,6 +347,8 @@ export default function Home() {
   const [clock, setClock] = useState(0);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const pickerDialogRef = useRef<HTMLElement | null>(null);
+  const pickerListRef = useRef<HTMLDivElement | null>(null);
+  const activePickerRowRef = useRef<HTMLButtonElement | null>(null);
   const pickerReturnFocusRef = useRef<HTMLElement | null>(null);
   const pickerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -441,6 +448,16 @@ export default function Home() {
     if (!focusTarget) return;
 
     const frame = window.requestAnimationFrame(() => {
+      if (pickerOpen) {
+        const list = pickerListRef.current;
+        const activeRow = activePickerRowRef.current;
+        if (list && activeRow) {
+          list.scrollTop =
+            activeRow.offsetTop -
+            (list.clientHeight - activeRow.offsetHeight) / 2;
+        }
+      }
+
       const connectedTarget = focusTarget.isConnected
         ? focusTarget
         : pickerTriggerRef.current;
@@ -885,12 +902,17 @@ export default function Home() {
               <small aria-live="polite">{visibleFiles.length} files</small>
             </label>
 
-            <div className="picker-list" id="file-picker-list">
+            <div
+              ref={pickerListRef}
+              className="picker-list"
+              id="file-picker-list"
+            >
               {visibleFiles.map((file) => {
                 const index = files.findIndex((item) => item.path === file.path);
                 const active = file.path === currentFile.path;
                 return (
                   <button
+                    ref={active ? activePickerRowRef : undefined}
                     type="button"
                     className={`picker-row ${active ? "picker-row--active" : ""}`}
                     key={file.path}

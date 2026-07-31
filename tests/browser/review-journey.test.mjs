@@ -108,6 +108,18 @@ function fixture(version = "one") {
   return snapshot(version, files);
 }
 
+function longFileListFixture() {
+  return snapshot(
+    "long-file-list",
+    Array.from({ length: 30 }, (_, index) =>
+      textFile(
+        `src/file-${String(index + 1).padStart(2, "0")}.ts`,
+        `Explain file ${index + 1}`,
+      ),
+    ),
+  );
+}
+
 async function writeSnapshot(value) {
   await writeFile(output, `${JSON.stringify(value, null, 2)}\n`);
 }
@@ -276,11 +288,19 @@ async function checkPickerFocusLoop(page, controls) {
     () => document.activeElement?.classList.contains("file-picker-trigger"),
   );
   assert.equal(await hasFocus(trigger), true);
+
+  await trigger.press("ArrowRight");
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".current-path")?.textContent ===
+      "src/long-list.ts",
+  );
+  assert.equal(await hasFocus(trigger), true);
 }
 
 async function chooseLongFile(page, controls) {
   await controls.trigger.press("Enter");
-  await page
+  await controls.dialog
     .getByRole("button", { name: /src\/long-list\.ts/i })
     .click();
   await page.getByRole("heading", { name: "Live review interaction" }).waitFor();
@@ -792,6 +812,39 @@ test("keeps narrow-screen touch and keyboard navigation usable", async () => {
         { x: 140, y: 605 },
       );
       await page.getByRole("heading", { name: "Binary note interaction" }).waitFor();
+    },
+  );
+});
+
+test("centers the selected file when reopening the picker", async () => {
+  await runReviewJourney(
+    "center selected picker file",
+    { viewport: { width: 1280, height: 800 } },
+    async (page) => {
+      await writeSnapshot(longFileListFixture());
+      await page.goto(serverUrl);
+      await page.getByRole("heading", { name: "Explain file 1" }).waitFor();
+
+      const controls = pickerControls(page);
+      await controls.trigger.click();
+      const selectedRow = page.getByRole("button", {
+        name: /src\/file-16\.ts/i,
+      });
+      await selectedRow.click();
+      await page.getByRole("heading", { name: "Explain file 16" }).waitFor();
+
+      await controls.trigger.click();
+      await controls.dialog.waitFor();
+      await page.waitForFunction(() => {
+        const list = document.querySelector(".picker-list");
+        const active = document.querySelector(".picker-row--active");
+        if (!list || !active) return false;
+        const listBounds = list.getBoundingClientRect();
+        const activeBounds = active.getBoundingClientRect();
+        const listCenter = listBounds.top + listBounds.height / 2;
+        const activeCenter = activeBounds.top + activeBounds.height / 2;
+        return Math.abs(listCenter - activeCenter) <= 1;
+      });
     },
   );
 });

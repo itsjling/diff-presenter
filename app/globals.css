@@ -1027,6 +1027,7 @@ kbd {
   min-height: 0;
   overflow: auto;
   padding: 10px 13px 16px;
+  position: relative;
 }
 
 .picker-row {
