@@ -34,7 +34,11 @@ test('keeps the test lanes separate and composes the complete test gate', async 
   assert.match(scripts['test:integration'], /--test-concurrency=1/);
   assert.match(scripts['test:coverage'], /npm run build/);
   assert.match(scripts['test:coverage'], /--test-concurrency=1/);
-  assert.equal(scripts['test:browser'], 'node --test tests/browser/*.test.mjs');
+  assert.equal(
+    scripts['test:browser'],
+    'npm run build && node --test tests/browser/*.test.mjs',
+  );
+  assert.match(scripts['test:browser'], /npm run build/);
   assert.doesNotMatch(scripts['test:browser'], /playwright install/);
   assert.match(scripts['test:browser:install'], /playwright install chromium/);
 
