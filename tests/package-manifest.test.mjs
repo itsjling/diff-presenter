@@ -15,6 +15,7 @@ const requiredFiles = [
   'scripts/present.mjs',
   'scripts/serve-built.mjs',
   'scripts/summary-path.mjs',
+  'scripts/support-record.mjs',
 ];
 
 function manifest(files = requiredFiles.map((path) => ({ path, size: 1 }))) {

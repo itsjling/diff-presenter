@@ -152,6 +152,8 @@ npm run doctor
 | `--batch-size COUNT` | Set the most files per agent pass, from `1` to `50`. Large patches use smaller batches. |
 | `--jobs COUNT` | Set agent passes to run at once, from `1` to `8`. |
 | `--force` | Regenerate all agent notes instead of using cached notes. |
+| `--support-record` | Print a safe JSON record if the review fails. |
+| `--support-record-file FILE` | Write one safe JSON record if the review fails. |
 | `--remote NAME\|URL` | Choose the Git remote. The default is `origin`. |
 | `--summaries FILE` | Choose the saved agent-note file. |
 | `--output FILE` | Choose the live snapshot file. |
@@ -180,3 +182,7 @@ port. When you omit `--agent`, Diffsplain tries Codex, Claude, Copilot, then
 OpenCode. It stops with an error if none are installed. Cursor reviews stay
 disabled because Cursor Agent has no supported read-only, no-network, no-tool
 mode. `--agent cursor` reports that boundary failure without starting Cursor.
+
+The two support record options are opt-in and cannot be combined. They include
+the selected agent, so you cannot use them with `--no-agent`. See
+[Agent notes](/agent-notes#failed-run-support-records) for the data contract.

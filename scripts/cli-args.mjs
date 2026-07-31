@@ -28,6 +28,7 @@ export const cliOptions = defineCliOptions({
   '--output': { kind: 'value', path: true },
   '--cache-dir': { kind: 'value', path: true },
   '--codex-bin': { kind: 'value', path: true },
+  '--support-record-file': { kind: 'value', path: true },
   '--model': { kind: 'value' },
   '--reasoning': { kind: 'value' },
   '--batch-size': { kind: 'value', default: 12, min: 1, max: 50 },
@@ -41,6 +42,7 @@ export const cliOptions = defineCliOptions({
   '--force': { kind: 'flag' },
   '--worktree': { kind: 'flag' },
   '--no-browser': { kind: 'flag' },
+  '--support-record': { kind: 'flag' },
 });
 
 const valueOptions = new Set(
@@ -91,6 +93,9 @@ Options:
   --batch-size COUNT  Maximum files per agent pass (default: ${batchSizeOption.default})
   --jobs COUNT        Agent passes to run at once (default: ${jobsOption.default})
   --force             Regenerate all agent notes
+  --support-record    Print a safe record if agent notes fail
+  --support-record-file FILE
+                      Write a safe record if agent notes fail
   --remote NAME|URL   Git remote (default: origin)
   --port NUMBER       Local page port (default: ${portOption.default})
   --host ADDRESS      Page bind address (default: ${hostOption.default})
@@ -266,6 +271,19 @@ export function parseCliArgs(
   if (noAgent && options.has('--summaries')) {
     fail('--no-agent cannot be used with --summaries');
   }
+  if (
+    noAgent &&
+    (options.has('--support-record') ||
+      options.has('--support-record-file'))
+  ) {
+    fail('--no-agent cannot be used with a support record');
+  }
+  if (
+    options.has('--support-record') &&
+    options.has('--support-record-file')
+  ) {
+    fail('Pass either --support-record or --support-record-file, not both');
+  }
   if (!noAgent && agent && !codingAgents.includes(agent)) {
     fail(
       `Unsupported agent "${agent}". Choose ${enabledCodingAgents.join(', ')}.`,
@@ -340,6 +358,14 @@ export function parseCliArgs(
     }
   }
 
+  const feedArgs = [...commonArgs];
+  const supportRecordFile = options.get('--support-record-file');
+  if (supportRecordFile) {
+    feedArgs.push(
+      '--exclude-output',
+      resolve(callerDirectory, supportRecordFile),
+    );
+  }
   const agentArgs = [...commonArgs];
   if (options.has('--force')) agentArgs.push('--force');
   for (const name of [
@@ -362,6 +388,15 @@ export function parseCliArgs(
         options.get(name) || String(cliOptions[name].default),
       );
     }
+  }
+  if (supportRecordFile) {
+    agentArgs.push(
+      '--support-record-file',
+      resolve(callerDirectory, supportRecordFile),
+    );
+  }
+  if (options.has('--support-record')) {
+    agentArgs.push('--support-record');
   }
 
   const reasoning = options.get('--reasoning');
@@ -422,8 +457,12 @@ export function parseCliArgs(
     model: options.get('--model'),
     reasoning,
     codexBin: options.get('--codex-bin'),
-    feedArgs: commonArgs,
+    feedArgs,
     agentArgs,
+    supportRecord: options.has('--support-record'),
+    supportRecordFile: supportRecordFile
+      ? resolve(callerDirectory, supportRecordFile)
+      : undefined,
     port: Number(portValue),
     portWasPassed: options.has('--port'),
     host: options.get('--host') || hostOption.default,

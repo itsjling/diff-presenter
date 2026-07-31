@@ -373,6 +373,7 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
   const repo = await makeRepo();
   const summaries = join(repo, "notes.json");
   const output = join(repo, "diff-data.json");
+  const supportFile = join(repo, "support.json");
 
   try {
     const codex = await fakeCodex(
@@ -408,6 +409,8 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
       summaries,
       "--output",
       output,
+      "--support-record-file",
+      supportFile,
     ];
     const result = run(repo, commandArgs);
     assert.equal(result.status, 0, result.stderr);
@@ -460,6 +463,7 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
     assert.equal(snapshotResult.status, 0, snapshotResult.stderr);
     assert.equal((await stat(output)).mode & 0o777, 0o640);
     assert.equal((await stat(summaries)).mode & 0o077, 0);
+    await assert.rejects(stat(supportFile), { code: "ENOENT" });
   } finally {
     await rm(repo, { recursive: true, force: true });
   }
@@ -1211,7 +1215,182 @@ test("shows coding agent stderr when note generation fails", async () => {
 
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Not inside a trusted directory/);
+    assert.doesNotMatch(result.stderr, /Diffsplain support record/);
   } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("prints a support record when the requested agent is unavailable", async () => {
+  const repo = await makeRepo();
+
+  try {
+    const result = run(repo, [
+      "--agent",
+      "codex",
+      "--codex-bin",
+      join(repo, "missing-codex"),
+      "--support-record",
+    ]);
+
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /not available/i);
+    const marker = "Diffsplain support record:\n";
+    const markerIndex = result.stderr.lastIndexOf(marker);
+    assert.ok(markerIndex >= 0, result.stderr);
+    const record = JSON.parse(
+      result.stderr.slice(markerIndex + marker.length),
+    );
+    assert.deepEqual(record.provider, {
+      name: "codex",
+      version: null,
+    });
+    assert.deepEqual(record.exit, {
+      state: "failed",
+      code: 2,
+      stage: "unknown",
+    });
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("exports and prints redacted support records for a failed run", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+  const supportFile = join(repo, "support-record.json");
+  const codexBin = join(repo, "support-codex.mjs");
+  const pathSecret = "private-path-fragment.txt";
+  const sourceSecret = "SOURCE_FRAGMENT_MUST_NOT_ENTER_RECORD";
+  const tokenSecret = "provider-token-must-not-enter-record";
+  const outputSecret = "RAW_MODEL_OUTPUT_MUST_NOT_ENTER_RECORD";
+  const environmentSecret = "ENV_VALUE_MUST_NOT_ENTER_RECORD";
+
+  try {
+    await writeFile(join(repo, pathSecret), `${sourceSecret}\n`);
+    await writeFile(
+      join(repo, ".git", "info", "exclude"),
+      "support-codex.mjs\n",
+    );
+    await writeFile(
+      codexBin,
+      `#!/usr/bin/env node
+import { readFileSync } from "node:fs";
+const args = process.argv.slice(2);
+if (args.includes("--version")) {
+  process.stdout.write("codex-cli 9.8.7 ${tokenSecret}\\n");
+  process.exit(0);
+}
+const input = readFileSync(0, "utf8");
+if (input.includes("support-record.json")) {
+  process.stderr.write("SUPPORT_FILE_ENTERED_AGENT_INPUT\\n");
+}
+if (input.includes("diff-data.json")) {
+  process.stderr.write("GENERATED_OUTPUT_ENTERED_AGENT_INPUT\\n");
+}
+process.stdout.write(${JSON.stringify(outputSecret)});
+process.stderr.write(
+  ${JSON.stringify(`${tokenSecret}\n`)} +
+  String(process.env.SECRET_ENV) +
+  "\\n",
+);
+process.exit(1);
+`,
+    );
+    await chmod(codexBin, 0o755);
+
+    const args = [
+      "--codex-bin",
+      codexBin,
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ];
+    const exported = run(
+      repo,
+      [...args, "--support-record-file", supportFile],
+      {
+        env: {
+          ...process.env,
+          SECRET_ENV: environmentSecret,
+        },
+      },
+    );
+
+    assert.equal(exported.status, 1);
+    assert.match(exported.stderr, /Wrote support record/);
+    const record = JSON.parse(await readFile(supportFile, "utf8"));
+    assert.match(
+      record.runId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    assert.deepEqual(record.provider, {
+      name: "codex",
+      version: "9.8.7",
+    });
+    assert.equal(record.stages.snapshot.state, "ok");
+    assert.equal(record.stages.agent.state, "failed");
+    assert.ok(record.stages.agent.durationMs >= 0);
+    assert.ok(record.bytes.snapshot > 0);
+    assert.ok(record.bytes.agentInput > 0);
+    assert.ok(record.bytes.agentOutput > 0);
+    assert.deepEqual(record.exit, {
+      state: "failed",
+      code: 1,
+      stage: "agent",
+    });
+    assert.equal((await stat(supportFile)).mode & 0o777, 0o600);
+
+    const serialized = JSON.stringify(record);
+    for (const secret of [
+      repo,
+      pathSecret,
+      sourceSecret,
+      tokenSecret,
+      outputSecret,
+      environmentSecret,
+      "Write concise notes",
+    ]) {
+      assert.equal(serialized.includes(secret), false, secret);
+    }
+    assert.ok(Buffer.byteLength(serialized) < 4_096);
+
+    const exportedAgain = run(
+      repo,
+      [...args, "--support-record-file", supportFile],
+      {
+        env: {
+          ...process.env,
+          SECRET_ENV: environmentSecret,
+        },
+      },
+    );
+    assert.equal(exportedAgain.status, 1);
+    assert.doesNotMatch(
+      exportedAgain.stderr,
+      /(?:SUPPORT_FILE|GENERATED_OUTPUT)_ENTERED_AGENT_INPUT/,
+    );
+
+    await rm(supportFile, { force: true });
+    const printed = run(repo, [...args, "--support-record"], {
+      env: {
+        ...process.env,
+        SECRET_ENV: environmentSecret,
+      },
+    });
+    assert.equal(printed.status, 1);
+    const marker = "Diffsplain support record:\n";
+    const markerIndex = printed.stderr.lastIndexOf(marker);
+    assert.ok(markerIndex >= 0, printed.stderr);
+    const printedRecord = JSON.parse(
+      printed.stderr.slice(markerIndex + marker.length),
+    );
+    assert.equal(printedRecord.provider.version, "9.8.7");
+    assert.equal(printedRecord.exit.state, "failed");
+  } finally {
+    await rm(supportFile, { force: true });
     await rm(repo, { recursive: true, force: true });
   }
 });
