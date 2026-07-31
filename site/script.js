@@ -21,6 +21,7 @@ copyButton?.addEventListener("click", async () => {
     copyButton.textContent = "Copied";
     copyStatus.textContent = "Command copied";
   } catch {
+    copyButton.textContent = "Copy";
     copyStatus.textContent = "Copy failed. Select the command and copy it.";
   }
 
@@ -29,6 +30,7 @@ copyButton?.addEventListener("click", async () => {
   statusTimer = setTimeout(() => {
     copyStatus.classList.remove("is-visible");
     copyButton.textContent = "Copy";
+    copyStatus.textContent = "";
   }, 2200);
 });
 
@@ -358,6 +360,11 @@ if (demo) {
       !shouldHandleFileArrow({
         pickerIsOpen,
         targetAcceptsText,
+        targetHandlesArrow: Boolean(
+          event.target.closest(
+            ".demo-diff-scroll, .demo-summary-scroll",
+          ),
+        ),
         demoHasFocus: demo.contains(document.activeElement),
       })
     ) {
@@ -374,7 +381,11 @@ if (demo) {
   });
 
   elements.page.addEventListener("click", (event) => {
-    if (!event.target.closest("button, a, input")) {
+    if (
+      !event.target.closest(
+        "button, a, input, .demo-diff-scroll, .demo-summary-scroll",
+      )
+    ) {
       demo.focus({ preventScroll: true });
     }
   });
