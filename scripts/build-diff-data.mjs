@@ -119,9 +119,11 @@ const repoPath = (file) => {
   const path = relative(repo, file).replaceAll('\\', '/');
   return path && path !== '..' && !path.startsWith('../') ? path : undefined;
 };
+const summariesRepoPath = repoPath(summariesPath);
 const excludedPaths = new Set(
   [
-    repoPath(summariesPath),
+    summariesRepoPath,
+    summariesRepoPath ? `${summariesRepoPath}.lock` : undefined,
     repoPath(output),
     excludedOutput ? repoPath(resolve(excludedOutput)) : undefined,
   ].filter(Boolean),

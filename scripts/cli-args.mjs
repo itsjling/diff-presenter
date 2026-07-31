@@ -72,6 +72,7 @@ Show the current checkout against its default branch:
 Commands:
   doctor [--json] [--deep]
                       Check review, agent, and pull request capabilities
+  cache               Show or prune saved agent notes
 
 Targets:
   --branch NAME       Show a remote branch against its default branch
@@ -112,6 +113,7 @@ Examples:
   diffsplain
   diffsplain doctor
   diffsplain doctor --json
+  diffsplain cache status
   diffsplain --repo owner/project --pr 42
   diffsplain owner/project --branch feature/search
   diffsplain --agent claude`;

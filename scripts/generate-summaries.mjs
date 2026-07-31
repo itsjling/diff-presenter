@@ -4,10 +4,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -23,6 +21,12 @@ import {
   selectCodingAgent,
 } from './coding-agents.mjs';
 import { summaryPath } from './summary-path.mjs';
+import {
+  acquireLease,
+  publishLeaseFile,
+  refreshLease,
+  releaseLease,
+} from './cache.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callerDirectory = process.cwd();
@@ -200,6 +204,16 @@ const summariesPath = summaryPath({
   head: selectedHead,
   remote,
 });
+const ownershipPath = `${summariesPath}.lock`;
+let ownership;
+let ownershipHeartbeat;
+function acquireOwnership() {
+  ownership = acquireLease(ownershipPath);
+  ownershipHeartbeat = setInterval(() => {
+    try { refreshLease(ownership); } catch { clearInterval(ownershipHeartbeat); }
+  }, 30_000);
+  ownershipHeartbeat.unref();
+}
 if (selectedBase) targetArgs.push('--base', selectedBase);
 if (selectedHead) targetArgs.push('--head', selectedHead);
 const cacheDirectory = option('--cache-dir');
@@ -241,8 +255,9 @@ function pathInsideRepo(file) {
 }
 
 function cleanSnapshot(snapshot) {
+  const summaryFile = pathInsideRepo(summariesPath);
   const excluded = new Set(
-    [pathInsideRepo(summariesPath), pathInsideRepo(outputPath)].filter(Boolean),
+    [summaryFile, summaryFile && `${summaryFile}.lock`, pathInsideRepo(outputPath)].filter(Boolean),
   );
   const files = snapshot.files
     .filter((file) => !excluded.has(file.path))
@@ -614,11 +629,13 @@ function normalizeFileResponse(value, paths) {
   return { files, failedFiles: indexed.failedFiles, errors };
 }
 
-function writeJsonAtomic(file, value) {
-  mkdirSync(dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(temporary, file);
+function writeJsonAtomic(file, value, options) {
+  publishLeaseFile(
+    ownership,
+    file,
+    `${JSON.stringify(value, null, 2)}\n`,
+    options,
+  );
 }
 
 function metadataList(value) {
@@ -678,11 +695,16 @@ function publishSnapshot(snapshot, summaries) {
     throw new Error('The diff changed while agent notes were being written');
   }
 
-  const state = summaryFailureState(snapshot, summaries);
+  const lockPath = pathInsideRepo(summariesPath);
+  const publishedFiles = snapshot.files.filter(
+    (file) => file.path !== `${lockPath}.lock`,
+  );
+  const publishedSnapshot = { ...snapshot, files: publishedFiles };
+  const state = summaryFailureState(publishedSnapshot, summaries);
   const failureByPath = new Map(
     state.failedFiles.map((failure) => [failure.path, failure.reason]),
   );
-  const files = snapshot.files.map((file) =>
+  const files = publishedFiles.map((file) =>
     snapshotFileWithNote(file, summaries, failureByPath),
   );
   const content = {
@@ -716,11 +738,15 @@ function publishSnapshot(snapshot, summaries) {
     .update(JSON.stringify(content))
     .digest('hex')
     .slice(0, 12);
-  writeJsonAtomic(outputPath, {
-    version,
-    generatedAt: new Date().toISOString(),
-    ...content,
-  });
+  writeJsonAtomic(
+    outputPath,
+    {
+      version,
+      generatedAt: new Date().toISOString(),
+      ...content,
+    },
+    { privateFile: false },
+  );
 }
 
 function publish(snapshot, summaries) {
@@ -930,6 +956,7 @@ let workingSummaries;
 let workingSnapshot;
 
 try {
+  acquireOwnership();
   const rawSnapshotPath = resolve(temporaryDirectory, 'diff-data.json');
   if (!snapshotPath) runBuilder(rawSnapshotPath, true);
   const rawSnapshot = JSON.parse(
@@ -1284,5 +1311,7 @@ try {
       error instanceof Error && error.exitCode === 2 ? 2 : 1;
   }
 } finally {
+  if (ownershipHeartbeat) clearInterval(ownershipHeartbeat);
+  if (ownership) { try { releaseLease(ownership); } catch {} }
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

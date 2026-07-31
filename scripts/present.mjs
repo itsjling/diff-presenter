@@ -20,9 +20,64 @@ import {
   selectCodingAgent,
 } from './coding-agents.mjs';
 import { doctorReport } from './doctor.mjs';
+import { cacheStatus, clearCache, formatCacheStatus, pruneCache } from './cache.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callerDirectory = process.cwd();
+const cacheArgs = process.argv.slice(2);
+
+function cacheUsage() {
+  console.error(
+    'Use: diffsplain cache [status|prune --age DAYS|prune --size BYTES|clear --yes]',
+  );
+  return 2;
+}
+
+function printCacheChange(result) {
+  console.log(
+    `Removed ${result.removed.length} inactive cache entries; kept ${result.retainedActive.length} active.`,
+  );
+  return 0;
+}
+
+function statusCommand(args) {
+  if (args.length !== 1 && args.length !== 2) return cacheUsage();
+  console.log(formatCacheStatus(cacheStatus()));
+  return 0;
+}
+
+function clearCommand(args) {
+  if (args.length !== 3 || args[2] !== '--yes') return cacheUsage();
+  return printCacheChange(clearCache());
+}
+
+function pruneOptions(flag, rawValue) {
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value < 0) return undefined;
+  if (flag === '--age') return { maxAgeMs: value * 86_400_000 };
+  if (flag === '--size') return { maxBytes: value };
+  return undefined;
+}
+
+function pruneCommand(args) {
+  if (args.length !== 4) return cacheUsage();
+  const options = pruneOptions(args[2], args[3]);
+  return options ? printCacheChange(pruneCache(options)) : cacheUsage();
+}
+
+function runCacheCommand(args) {
+  const commands = {
+    status: statusCommand,
+    clear: clearCommand,
+    prune: pruneCommand,
+  };
+  const command = args[1] || 'status';
+  return commands[command]?.(args) ?? cacheUsage();
+}
+
+if (cacheArgs[0] === 'cache') {
+  process.exit(runCacheCommand(cacheArgs));
+}
 let cli;
 try {
   cli = parseCliArgs(process.argv.slice(2), { callerDirectory });
