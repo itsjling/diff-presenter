@@ -48,7 +48,7 @@ if (cli.doctor) {
   process.exit(report.ready ? 0 : 1);
 }
 
-const { agentEnabled, port } = cli;
+const { agentEnabled, browserEnabled, host, port } = cli;
 const feedArgs = [...cli.feedArgs];
 const agentArgs = [...cli.agentArgs];
 if (agentEnabled) {
@@ -168,6 +168,8 @@ function startSite() {
       outputPath,
       '--port',
       String(port),
+      '--host',
+      host,
       '--project',
       projectKey,
       ...(!cli.portWasPassed ? ['--increment-port'] : []),
@@ -190,7 +192,7 @@ function startSite() {
       }
       console.log(line);
       const match = line.match(/^Diffsplain: (http:\/\/\S+)$/);
-      if (!browserOpened && !browserOpenTimer && match) {
+      if (browserEnabled && !browserOpened && !browserOpenTimer && match) {
         browserOpenTimer = setTimeout(() => {
           browserOpenTimer = undefined;
           browserOpened = true;

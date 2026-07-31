@@ -17,8 +17,20 @@ test('leaves agent selection open when no agent is passed', () => {
   assert.equal(parsed.agent, undefined);
   assert.equal(parsed.port, 2299);
   assert.equal(parsed.portWasPassed, false);
+  assert.equal(parsed.host, 'localhost');
+  assert.equal(parsed.browserEnabled, true);
   assert.deepEqual(parsed.feedArgs, ['--repo', cwd, '--checkout']);
   assert.deepEqual(parsed.agentArgs, ['--repo', cwd, '--checkout']);
+});
+
+test('accepts headless browser and explicit bind options', () => {
+  const parsed = parseCliArgs(['--no-browser', '--host', '0.0.0.0'], {
+    callerDirectory: cwd,
+    pathExists: missing,
+  });
+
+  assert.equal(parsed.browserEnabled, false);
+  assert.equal(parsed.host, '0.0.0.0');
 });
 
 test('accepts a GitHub owner/name repo and a branch', () => {
