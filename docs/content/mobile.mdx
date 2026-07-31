@@ -1,0 +1,126 @@
+---
+title: Mobile support
+description: The supported browser, screen, input, and test contract for the Diffsplain review page.
+sidebar:
+  order: 5
+---
+
+## Decision
+
+Diffsplain supports a responsive web page. It is not an installable PWA and it
+does not have native iOS or Android apps.
+
+The review starts from a local Git checkout and the command serves a local,
+read-only page. A browser keeps that path simple: it needs no account, app
+store release, device-specific cache, or copy of repository data. The page
+already changes from two panes to one, preserves the code grid in horizontal
+scrolling, and provides touch controls.
+
+Do not add a web app manifest, service worker, install prompt, offline cache,
+or native wrapper unless a later product decision replaces this contract.
+
+## Supported browsers
+
+Support the current stable release and the release before it for these
+browsers:
+
+| Browser | Devices |
+| --- | --- |
+| Chrome | Desktop and Android phones or tablets. |
+| Edge | Desktop. |
+| Firefox | Desktop. |
+| Safari | iPhone and iPad. |
+
+The page needs JavaScript, `fetch`, `EventSource`, CSS Grid, and horizontal
+scrolling. It does not support Internet Explorer, embedded web views, or a
+browser that disables JavaScript. Test the browser versions used for a release
+and record any browser-specific limit in that release's notes.
+
+## Screens and input
+
+The smallest supported viewport is `320px` wide. Test each changed review flow
+at these CSS viewport sizes:
+
+| Width × height | Reference device or use |
+| --- | --- |
+| 320 × 568 | Small phone. |
+| 375 × 667 | iPhone SE-sized phone. |
+| 390 × 844 | Current iPhone-sized phone. |
+| 412 × 915 | Large Android phone. |
+| 768 × 1024 | Tablet portrait. |
+| 980 × 720 | Breakpoint boundary. |
+| 1280 × 800 | Small desktop or laptop. |
+| 1680 × 1050 | Largest reader layout. |
+
+At `980px` and below, the diff and notes stack. At `680px` and below, the
+reader reaches the screen edges, minor toolbar details hide, the picker opens
+from the bottom, and the code grid scrolls sideways. Above `1680px`, the
+reader stays at its maximum width. Do not make a review action depend on hover.
+
+This section sets the required behavior. It does not mean that every flow
+already passes. A horizontal code-scroll drag can now trigger file navigation;
+[issue #29](https://github.com/itsjling/diffsplain/issues/29) tracks that gap.
+Do not claim that touch review meets this contract until its browser checks
+pass.
+
+The supported inputs are mouse or trackpad, keyboard, and touch. A reviewer
+must be able to open and search the file picker, choose a file, move to the
+next or previous file, expand a shortened patch, scroll a long patch in both
+directions, and read the notes with each input. Keyboard review also includes
+left and right arrows, `Cmd+K` or `Ctrl+K`, Escape, Tab, Enter, and Space.
+Touch review includes the visible controls and a horizontal swipe of at least
+`70px` to change files; page scrolling and code scrolling must still work.
+
+## Required review flows
+
+Before merging a change that affects the review page, check these flows at the
+sizes above when the change can affect them:
+
+1. Build the current page, then start a no-agent review with
+   `npm run build && npm run diffsplain -- --worktree --no-agent`.
+2. Open the file picker, search for a path, choose a file, and move back and
+   forth with the available input methods.
+3. Open a shortened patch, reveal its full patch, and scroll code sideways at
+   a phone width.
+4. Review a file with agent notes, including reasons, details, and a risk when
+   the fixture has one.
+5. Change a tracked file during a worktree review and confirm that the page
+   refreshes without losing the selected file when it still exists.
+6. At `980px` and `680px`, check the layout on both sides of the boundary.
+
+Use the checked-in demo when a local review fixture is not needed. Test a pull
+request review separately when a change affects target loading or remote data.
+
+## Local, simulator, device, and cloud checks
+
+For a quick local check, run:
+
+```sh
+npm run dev
+```
+
+Open `http://localhost:2299` and use the browser's device emulation at the
+listed sizes. This is the normal check for a page-only change.
+
+For a simulator or physical device check during development, expose the Vite
+server only on a trusted local network:
+
+```sh
+npm run dev -- --host 0.0.0.0
+```
+
+Use `http://localhost:2299` in an iOS Simulator. On Android Emulator, use
+`http://10.0.2.2:2299`. On a physical device on the same trusted network, use
+`http://<computer-lan-address>:2299`; stop the server when the check ends.
+Do not expose a real review through a public tunnel: its diff data may contain
+private source code.
+
+The packaged `npx diffsplain` server binds to `localhost`. It is for the
+computer that starts the review, not for direct phone review. That boundary
+keeps the local review local.
+
+For cloud browser checks, use BrowserStack Local or an equivalent private
+tunnel with a non-sensitive fixture. Test current Chrome on Android and Safari
+on an iPhone-sized device at `390 × 844`. Run this check before merging a
+change to mobile layout, touch handling, browser compatibility, or the local
+server path. Do not send live repository data through the tunnel.

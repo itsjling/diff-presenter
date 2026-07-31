@@ -61,6 +61,15 @@ function stop(child) {
   });
 }
 
+function protectedUrl(reviewUrl, path) {
+  const route = new URL(path, reviewUrl);
+  const access = new URLSearchParams(new URL(reviewUrl).hash.slice(1)).get(
+    "access",
+  );
+  if (access) route.searchParams.set("access", access);
+  return route;
+}
+
 const temporary = mkdtempSync(join(tmpdir(), "diffsplain-updates-"));
 const output = join(temporary, "diff-data.json");
 writeFileSync(output, JSON.stringify({ version: "0" }));
@@ -82,7 +91,10 @@ try {
   const url = await waitForUrl(child);
   const samples = [];
   if (mode === "events") {
-    const response = await fetch(`${url}/events`);
+    const response = await fetch(protectedUrl(url, "events"));
+    if (!response.ok) {
+      throw new Error(`Event stream returned ${response.status}`);
+    }
     reader = response.body.getReader();
     await reader.read();
     for (let version = 1; version <= 9; version += 1) {
@@ -96,7 +108,7 @@ try {
     let seenVersion = "0";
     const waiters = new Map();
     poll = setInterval(async () => {
-      const response = await fetch(`${url}/diff-data.json`, {
+      const response = await fetch(protectedUrl(url, "diff-data.json"), {
         cache: "no-store",
       });
       const value = await response.json();

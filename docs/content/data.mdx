@@ -5,21 +5,27 @@ sidebar:
   order: 4
 ---
 
-`scripts/build-diff-data.mjs` writes the ignored `.cache/diff-data.json`
-snapshot unless you pass `--output`. The local server exposes the chosen file
-at `/diff-data.json`.
+`npx diffsplain` gives each running command its own temporary snapshot and
+serves it on a local page. This keeps two open reviews from reading or replacing
+each other’s data.
 
-`npx diffsplain` gives each running command its own temporary snapshot. This
-keeps two open reviews from reading or replacing each other’s data.
-
-Build a pull request snapshot:
+Review a pull request:
 
 ```sh
-node scripts/build-diff-data.mjs --repo /path/to/repo --pr 42
+npx diffsplain --pr 42
 ```
 
-The script also accepts a checkout, refs, a remote branch, or worktree changes
-against `HEAD`.
+See the [CLI guide](/cli/) for all review commands.
+
+## Review targets
+
+| Target | Comparison | Workspace changes | Network and cache | Refresh |
+| --- | --- | --- | --- | --- |
+| Current checkout (no target flag) | Default-branch merge base through the current checkout | Local commits, staged, unstaged, and untracked files | May query the remote to find its default branch; does not fetch | Local state every two seconds |
+| `--worktree` | `HEAD` through the current worktree | Staged, unstaged, and untracked files; excludes prior commits | No Git network | Local state every two seconds |
+| `--base REF --head REF` | The two resolved commit trees | None | No Git network | Moved refs every two seconds |
+| `--branch NAME` | Remote base/head merge base through the remote branch head | None | Fetches into the Diffsplain bare cache | Remote data every 30 seconds |
+| `--pr NUMBER` | Pull request base/head merge base through the pull request head | None | Reads pull request data with `gh`, then fetches into the bare cache | Remote data every 30 seconds |
 
 ## Snapshot contents
 
@@ -34,59 +40,60 @@ Each file records its path, status, line counts, full unified patch, short
 snippet, binary state, and agent note. The writer gives each snapshot a content
 hash and replaces the file only when its contents change.
 
+An opt-in failed-run support record is separate from this snapshot. It keeps
+only fixed version fields, numeric timings and byte counts, a run ID, and the
+exit state. It does not copy snapshot fields, patches, notes, paths, raw agent
+output, credentials, or environment values. See
+[failed run support records](/agent-notes#failed-run-support-records).
+
 `repo.base` and `repo.head` hold the exact commits used for the diff.
 `repo.target` records the target kind, remote refs, remote tips, and merge
 base.
 
 ## Watch for changes
 
-Add `--watch` to check Git state and the note file every two seconds:
+Diffsplain checks Git state and the note file every two seconds while a review
+is open:
 
 ```sh
-node scripts/build-diff-data.mjs \
-  --repo /path/to/repo \
-  --worktree \
-  --watch
+npx diffsplain --worktree
 ```
 
 `npx diffsplain --worktree` starts the watcher and local page together.
-The page checks the live JSON every 1.5 seconds and keeps the selected file
-when the snapshot changes.
+The page listens for live events and polls the JSON every 1.5 seconds when the
+event stream drops. Each refresh ignores older requests that finish late. A
+bad or missing refresh leaves the last valid snapshot and selected file on
+screen while the page reconnects.
 
 In watch mode, remote pull requests and branches update every 30 seconds.
 
+## Data and cleanup
+
+The agent receives the target metadata, change metadata, changed-file paths,
+selected patches or excerpts, and reusable notes. It does not receive files
+outside that snapshot. By default, each run uses a temporary snapshot, which
+normal shutdown removes. Agent input files are also temporary. If you pass
+`--output FILE`, that snapshot stays at the chosen path until you delete it.
+
+Notes for every target persist in the platform user cache described in
+[Agent notes](/agent-notes/). Fetched Git objects use the installed package's
+`.cache/git` folder by default. `--summaries FILE` and `--cache-dir PATH` put
+this state at paths you choose. Delete both default locations, or the chosen
+files and folders, when you no longer need them.
+
 ## Remote targets
 
-Pull requests and remote branches do not depend on the current checkout:
+Pull requests and remote branches do not change the current checkout:
 
 ```sh
-node scripts/build-diff-data.mjs \
-  --repo /path/to/repo \
-  --branch topic \
-  --base main \
-  --remote origin
+npx diffsplain --branch topic --base main --remote origin
 ```
 
-The script fetches Git objects into `.cache/git`, finds the merge base, and
-reads the diff from that bare cache. It does not change the chosen checkout,
-index, refs, or `FETCH_HEAD`.
+Diffsplain fetches Git objects into its bare cache, finds the merge base, and
+reads the diff there. It does not change the chosen checkout, index, refs, or
+`FETCH_HEAD`.
 
 ## Demo data
 
-`site/todo-demo.js` holds the ten sample files used by the landing page and
-`public/demo-diff-data.json`. Rebuild the checked-in demo after changing it:
-
-```sh
-node scripts/write-todo-demo.mjs
-```
-
-You can also build the demo from an exact range and note file:
-
-```sh
-node scripts/build-diff-data.mjs \
-  --repo /path/to/repo \
-  --base BASE \
-  --head HEAD \
-  --summaries data/todo-demo-summaries.json \
-  --output .cache/diff-data.json
-```
+The landing page uses checked-in sample data. See the
+[development guide](/development/) for its source and build command.

@@ -1,0 +1,53 @@
+name: Live provider canary
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-provider-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Codex
+        run: npm install --global @openai/codex
+
+      - name: Run one live sample
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "Set the OPENAI_API_KEY repository secret." >&2
+            exit 1
+          fi
+          mkdir -p .cache
+          npm run benchmark:canary -- \
+            --runs 1 \
+            --reasoning minimal \
+            --result-file .cache/live-provider-canary.json
+
+      - name: Save canary result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-provider-canary
+          path: .cache/live-provider-canary.json
+          if-no-files-found: ignore
+          retention-days: 14
