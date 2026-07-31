@@ -83,6 +83,7 @@ const cacheRoot = cacheOption
   : resolve(projectRoot, '.cache/git');
 const remoteMode = Boolean(prOption || branchOption);
 const watching = has('--watch');
+const watchContent = has('--watch-content');
 const ignoreSummaryWatch = has('--ignore-summary-watch');
 const noSummaries = has('--no-summaries');
 const interval = (name, fallback) => {
@@ -1207,7 +1208,7 @@ if (watching && started) {
     const next = fingerprint();
     remoteWait += watchInterval;
     const remoteDue = remoteMode && remoteWait >= remoteRefreshInterval;
-    if (next !== last || remoteDue) {
+    if (next !== last || remoteDue || watchContent) {
       last = next;
       remoteWait = 0;
       if (!refresh()) clearInterval(watcher);
