@@ -52,6 +52,7 @@
     "doctor": "node scripts/present.mjs doctor",
     "fallow:audit": "fallow audit",
     "present": "node scripts/present.mjs",
+    "package:verify": "node scripts/check.mjs --package-only",
     "release": "node scripts/release.mjs",
     "summarize": "node scripts/generate-summaries.mjs",
     "snapshot": "node scripts/build-diff-data.mjs",
