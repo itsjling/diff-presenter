@@ -4,6 +4,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   stat,
@@ -1677,6 +1678,157 @@ test("drops removed files without regenerating unchanged file notes", async () =
     );
     assert.equal(snapshot.notes.complete, true);
   } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("completes an empty review without looking for an agent", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+
+  try {
+    const result = run(repo, [
+      "--base",
+      "HEAD",
+      "--head",
+      "HEAD",
+      "--codex-bin",
+      join(repo, "missing-codex"),
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /No changed files to summarize/);
+    const notes = JSON.parse(await readFile(summaries, "utf8"));
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(notes.meta.status, "complete");
+    assert.deepEqual(snapshot.files, []);
+    assert.equal(snapshot.notes.complete, true);
+    assert.equal(snapshot.notes.status, "complete");
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("cleans temporary review data when agent selection fails", async () => {
+  const repo = await makeRepo();
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "diffsplain-tmp-"));
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+
+  try {
+    const result = run(
+      repo,
+      [
+        "--range",
+        "HEAD~1..HEAD",
+        "--agent",
+        "codex",
+        "--codex-bin",
+        join(repo, "missing-codex"),
+        "--summaries",
+        summaries,
+        "--output",
+        output,
+      ],
+      { env: { ...process.env, TMPDIR: temporaryRoot } },
+    );
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /not available/i);
+    assert.deepEqual(await readdir(temporaryRoot), []);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+for (const damagedState of ["{ damaged", "null"]) {
+test(`rebuilds damaged note state ${JSON.stringify(damagedState)} instead of reusing it`, async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+
+  try {
+    await writeFile(summaries, damagedState);
+    const codex = await recordingCodex(repo);
+    const result = run(repo, [
+      "--range",
+      "HEAD~1..HEAD",
+      "--codex-bin",
+      codex.bin,
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /Saved notes .* damaged\. Rebuilding/);
+    const notes = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(notes.meta.status, "complete");
+    assert.equal((await recordedCalls(codex.calls)).length, 2);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+}
+
+test("interrupting an agent leaves published notes incomplete", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+  const started = join(repo, "agent-started");
+  const codexBin = join(repo, "slow-codex.mjs");
+  let child;
+
+  try {
+    await writeFile(
+      codexBin,
+      `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+writeFileSync(${JSON.stringify(started)}, "started");
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5_000);
+process.stdout.write("{}");
+`,
+    );
+    await chmod(codexBin, 0o755);
+    child = spawn(
+      process.execPath,
+      [
+        script,
+        "--repo",
+        repo,
+        "--range",
+        "HEAD~1..HEAD",
+        "--codex-bin",
+        codexBin,
+        "--summaries",
+        summaries,
+        "--output",
+        output,
+      ],
+      { stdio: "ignore" },
+    );
+    await waitFor(async () => (await stat(started)).isFile() ? true : undefined);
+    child.kill("SIGTERM");
+    const interruptedResult = await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code, signal) => resolve({ code, signal }));
+    });
+    child = undefined;
+
+    const notes = JSON.parse(await readFile(summaries, "utf8"));
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.deepEqual(interruptedResult, { code: 0, signal: null });
+    assert.notEqual(notes.meta.status, "complete");
+    assert.notEqual(snapshot.notes?.complete, true);
+  } finally {
+    if (child && !child.killed) child.kill("SIGTERM");
     await rm(repo, { recursive: true, force: true });
   }
 });

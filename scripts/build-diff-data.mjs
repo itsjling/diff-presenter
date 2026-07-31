@@ -1040,14 +1040,19 @@ function build() {
   const failureByPath = new Map(
     failedFiles.map((failure) => [failure.path, failure.reason]),
   );
+  const emptyReviewComplete =
+    filesWithoutSummaries.length === 0 &&
+    generatedFor === reviewFingerprint &&
+    sourceSummaries.meta?.status === 'complete';
   const summariesAreComplete =
     summariesAreFresh &&
     failedFiles.length === 0 &&
     summaryErrors.length === 0 &&
-    completeChangeSummary(sourceSummaries.change) &&
-    filesWithoutSummaries.every((file) =>
-      completeFileSummary(sourceSummaries.files?.[file.path]),
-    );
+    (emptyReviewComplete ||
+      (completeChangeSummary(sourceSummaries.change) &&
+        filesWithoutSummaries.every((file) =>
+          completeFileSummary(sourceSummaries.files?.[file.path]),
+        )));
   const completedFiles = noSummaries
     ? 0
     : filesWithoutSummaries.filter((file) =>
