@@ -571,6 +571,7 @@ function scheduleAgent(fingerprint) {
     state?.hasCurrentAgentNotes &&
     selectedFingerprint === state.fingerprint
   ) {
+    console.log('Reusing current agent notes.');
     return;
   }
   if (

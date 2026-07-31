@@ -71,9 +71,35 @@ pins. It is safe to run again and needs no ignored or generated files. Node
 22.13.0 and npm 10.9.2 are pinned in `.nvmrc` and `package.json`; the
 `corepack npm` commands use the pinned npm version.
 
-For a shorter local loop, `corepack npm run lint` checks types and lint rules.
-`corepack npm test` builds the app, runs the Node test suite, then runs the
-desktop and mobile browser checks.
+For a shorter local loop, run one named lane:
+
+```sh
+corepack npm run lint
+corepack npm run test:unit
+corepack npm run test:integration
+corepack npm run test:coverage
+corepack npm run test:browser
+corepack npm run test:platform
+```
+
+| Command | What it checks |
+| --- | --- |
+| `npm run test:unit` | Fast parser, provider, doctor, release, config, and path checks. It does not build the app. |
+| `npm run test:integration` | The production build plus local Git, timing, agent note, presenter, and server checks. |
+| `npm run test:coverage` | Per-file coverage for the CLI parser, target builder, agent note writer, and presenter. |
+| `npm run test:browser` | The review journey in Chromium. It does not download a browser. |
+| `npm run test:platform` | Host command lookup and npm launcher rules with local fake tools. |
+| `npm test` | All five lanes in order. |
+
+The coverage lane writes text, JSON summary, and LCOV reports under
+`coverage/`. Each covered file must keep at least 80% statement and line
+coverage, 60% branch coverage, and 90% function coverage. The check applies
+the floor to each file.
+
+Pull request jobs run the unit, integration, coverage, and browser lanes from
+a clean Ubuntu checkout. They use local Git repos, fake coding agents, and
+checked-in browser data. A weekly job runs the platform lane on macOS 15 and
+Windows 2025. You can also start the **Test lanes** workflow by hand.
 
 For the supported browser, screen, and device checks, see [Mobile
 support](/mobile).
@@ -241,7 +267,6 @@ same bounded canary from an authenticated checkout with:
 ```sh
 npm run benchmark:canary -- --runs 1 --reasoning minimal
 ```
-
 ## Publish a release
 
 Publish from the protected **npm-publish** GitHub environment. It runs the

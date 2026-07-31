@@ -5,17 +5,21 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+export function npmCommand(platform = process.platform) {
+  return platform === 'win32' ? 'npm.cmd' : 'npm';
+}
+
 const verifiedTarball = '.cache/diffsplain-release.tgz';
 
-function npmCommand(args) {
+function npmInvocation(args) {
   return process.env.npm_execpath
     ? [process.execPath, [process.env.npm_execpath, ...args]]
-    : [npm, args];
+    : [npmCommand(), args];
 }
 
 function runNpm(args) {
-  const [command, commandArgs] = npmCommand(args);
+  const [command, commandArgs] = npmInvocation(args);
   const result = spawnSync(command, commandArgs, {
     cwd: root,
     stdio: 'inherit',
@@ -72,7 +76,7 @@ if (resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     console.log(`Tested commit: ${spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim()}`);
     process.exitCode = runRelease(process.argv.slice(2));
     if (process.exitCode === 0) {
-      const [command, commandArgs] = npmCommand(['pkg', 'get', 'version']);
+      const [command, commandArgs] = npmInvocation(['pkg', 'get', 'version']);
       const version = spawnSync(command, commandArgs, { cwd: root, encoding: 'utf8' }).stdout.trim();
       console.log(
         `Registry result: published diffsplain ${version} with provenance. Recovery: if the later Git push fails, inspect the release commit and tag, then push them without republishing.`,

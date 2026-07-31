@@ -55,6 +55,49 @@ test('prints the package version with either version flag', async () => {
   }
 });
 
+test('shows cache status and guards prune and clear commands', async () => {
+  const cacheRoot = await mkdtemp(join(tmpdir(), 'diffsplain-cache-command-'));
+  const env = { ...process.env, XDG_CACHE_HOME: cacheRoot };
+
+  try {
+    const status = spawnSync(process.execPath, [script, 'cache'], {
+      encoding: 'utf8',
+      env,
+    });
+    assert.equal(status.status, 0, status.stderr);
+    assert.match(status.stdout, /Location:/);
+    assert.match(status.stdout, /Active use: 0 targets/);
+
+    for (const args of [
+      ['cache', 'prune', '--age', '0'],
+      ['cache', 'prune', '--size', '0'],
+      ['cache', 'clear', '--yes'],
+    ]) {
+      const result = spawnSync(process.execPath, [script, ...args], {
+        encoding: 'utf8',
+        env,
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Removed 0 inactive cache entries/);
+    }
+
+    for (const args of [
+      ['cache', 'prune', '--other', '1'],
+      ['cache', 'clear'],
+      ['cache', 'unknown'],
+    ]) {
+      const result = spawnSync(process.execPath, [script, ...args], {
+        encoding: 'utf8',
+        env,
+      });
+      assert.equal(result.status, 2, result.stdout);
+      assert.match(result.stderr, /diffsplain cache/);
+    }
+  } finally {
+    await rm(cacheRoot, { recursive: true, force: true });
+  }
+});
+
 test('reports missing option values before startup', () => {
   for (const option of [
     '--repo',

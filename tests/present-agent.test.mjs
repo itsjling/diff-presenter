@@ -15,7 +15,7 @@ function git(repo, ...args) {
   }).trim();
 }
 
-async function waitFor(read, timeout = 12_000) {
+async function waitFor(read, timeout = 30_000) {
   const deadline = Date.now() + timeout;
   let lastError;
   while (Date.now() < deadline) {
@@ -30,11 +30,41 @@ async function waitFor(read, timeout = 12_000) {
   throw lastError || new Error("Timed out waiting for presenter output");
 }
 
+function waitForOutput(child, pattern, timeout = 30_000) {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    const timer = setTimeout(() => {
+      reject(new Error(`Timed out waiting for presenter output: ${output}`));
+    }, timeout);
+    const onOutput = (chunk) => {
+      output += chunk.toString();
+      if (pattern.test(output)) {
+        clearTimeout(timer);
+        resolve(output);
+      }
+    };
+    child.stdout.on("data", onOutput);
+    child.stderr.on("data", onOutput);
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      reject(
+        new Error(
+          `Presenter stopped before it was ready (${code ?? signal}): ${output}`,
+        ),
+      );
+    });
+  });
+}
+
 async function stop(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return { code: child.exitCode, signal: child.signalCode };
+  }
   const closed = new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error("Presenter did not stop after SIGTERM"));
-    }, 5_000);
+    }, 15_000);
     child.once("exit", (code, signal) => {
       clearTimeout(timer);
       resolve({ code, signal });
@@ -43,6 +73,16 @@ async function stop(child) {
   });
   child.kill("SIGTERM");
   return closed;
+}
+
+function agentCallCount(value) {
+  return (value.match(/codex-after-feed/g) || []).length;
+}
+
+async function stopIfRunning(child) {
+  if (child?.exitCode === null && child.signalCode === null) {
+    await stop(child);
+  }
 }
 
 test("starts the note agent after the watch snapshot and stops cleanly", async () => {
@@ -164,6 +204,9 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
     assert.equal(result.code, 0);
     assert.equal(result.signal, null);
 
+    const firstRunLog = await readFile(events, "utf8");
+    const firstRunCalls = agentCallCount(firstRunLog);
+    assert.equal(firstRunCalls, 2);
     presenter = spawn(
       process.execPath,
       [
@@ -194,18 +237,65 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
     );
     const restartLog = await waitFor(async () => {
       const value = await readFile(events, "utf8");
-      return (value.match(/codex-after-feed/g) || []).length === 4
+      return agentCallCount(value) === firstRunCalls + 2
         ? value
         : undefined;
     });
-    assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 4);
+    assert.equal(agentCallCount(restartLog), firstRunCalls + 2);
+    const changedModelSnapshot = await waitFor(async () => {
+      const value = JSON.parse(await readFile(output, "utf8"));
+      const noteState = [
+        value.notes.complete,
+        value.notes.fresh,
+        value.notes.model,
+      ].join(":");
+      return noteState === "true:true:changed-model" ? value : undefined;
+    });
+    assert.equal(changedModelSnapshot.notes.agent, "codex");
 
     const restartResult = await stop(presenter);
     presenter = undefined;
     assert.equal(restartResult.code, 0);
     assert.equal(restartResult.signal, null);
+
+    presenter = spawn(
+      process.execPath,
+      [
+        script,
+        "--repo",
+        repo,
+        "--worktree",
+        "--model",
+        "changed-model",
+        "--output",
+        output,
+        "--port",
+        "0",
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          BROWSER: join(bin, "browser"),
+          PATH: `${bin}:${process.env.PATH}`,
+          PRESENTER_EVENTS: events,
+          PRESENTER_OUTPUT: output,
+          PRESENTER_RESPONSE: response,
+          XDG_CACHE_HOME: cacheBase,
+        },
+        stdio: "pipe",
+      },
+    );
+    await waitForOutput(presenter, /^Reusing current agent notes\.$/m);
+    const reuseLog = await readFile(events, "utf8");
+    assert.equal(agentCallCount(reuseLog), firstRunCalls + 2);
+
+    const reuseResult = await stop(presenter);
+    presenter = undefined;
+    assert.equal(reuseResult.code, 0);
+    assert.equal(reuseResult.signal, null);
   } finally {
-    if (presenter && !presenter.killed) await stop(presenter);
+    await stopIfRunning(presenter);
     await rm(root, { recursive: true, force: true });
   }
 });

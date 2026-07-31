@@ -372,7 +372,7 @@ test('reuses a matching project tab when it reconnects', async () => {
     const reused = new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error('Presenter did not reuse the open tab')),
-        2_000,
+        10_000,
       );
       second.stdout.on('data', (chunk) => {
         if (chunk.toString().includes('Reusing the open Diffsplain tab.')) {

@@ -560,11 +560,12 @@ test("runs a discovered provider with the summary process boundary", async () =>
     );
     assert.match(fileCall.cwd, /diffsplain-agent-/);
     assert.ok(!fileCall.envKeys.includes("PRIVATE_AGENT_TOKEN"));
+    const extraEnvironmentNames = fileCall.envKeys.filter(
+      (name) => !summaryEnvironmentNames.has(name),
+    );
     assert.deepEqual(
-      fileCall.envKeys.filter(
-        (name) => !summaryEnvironmentNames.has(name),
-      ),
-      [],
+      extraEnvironmentNames,
+      process.env.NODE_V8_COVERAGE ? ["NODE_V8_COVERAGE"] : [],
     );
   } finally {
     await rm(repo, { recursive: true, force: true });

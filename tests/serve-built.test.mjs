@@ -53,6 +53,22 @@ function stop(child) {
   });
 }
 
+function within(promise, message, timeout = 10_000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeout);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function stopIfRunning(child) {
   if (child?.exitCode === null) await stop(child);
 }
@@ -324,11 +340,13 @@ test('preserves live updates and closes event streams on shutdown', async () => 
 
     await writeFile(output, JSON.stringify({ version: 'after' }));
     while (!buffered.includes('event: update')) {
-      const next = await reader.read();
+      const next = await within(
+        reader.read(),
+        'Server did not send an update event',
+      );
       assert.equal(next.done, false);
       buffered += decoder.decode(next.value);
     }
-
     assert.equal(await stop(child), 0);
     const closed = await reader.read();
     assert.equal(closed.done, true);

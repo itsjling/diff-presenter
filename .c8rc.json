@@ -1,0 +1,21 @@
+{
+  "all": true,
+  "include": [
+    "scripts/cli-args.mjs",
+    "scripts/build-diff-data.mjs",
+    "scripts/generate-summaries.mjs",
+    "scripts/present.mjs"
+  ],
+  "reporter": [
+    "text",
+    "json-summary",
+    "lcov"
+  ],
+  "reports-dir": "coverage",
+  "check-coverage": true,
+  "per-file": true,
+  "statements": 80,
+  "branches": 60,
+  "functions": 90,
+  "lines": 80
+}
