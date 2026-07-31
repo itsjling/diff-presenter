@@ -122,6 +122,14 @@ async function writeSnapshot(value) {
   await writeFile(output, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function startServer() {
   return new Promise((resolveServer, rejectServer) => {
     const vite = resolve(root, "node_modules/vite/bin/vite.js");
@@ -187,7 +195,11 @@ async function runInBrowser(name, options, journey) {
   try {
     await journey(page);
     assert.deepEqual(
-      consoleErrors.filter((message) => !message.includes("status of 503")),
+      consoleErrors.filter(
+        (message) =>
+          !message.includes("status of 503") &&
+          !message.includes("status of 404"),
+      ),
       [],
     );
   } catch (error) {
@@ -252,6 +264,338 @@ test("shows error, empty, binary, truncated, and refreshed review states on desk
     await writeSnapshot(fixture("two"));
     await page.getByRole("heading", { name: "Binary note two" }).waitFor();
   });
+});
+
+test("keeps the newest live snapshot through late responses and faults", async () => {
+  await runInBrowser(
+    "ordered live refresh",
+    { viewport: { width: 1280, height: 800 } },
+    async (page) => {
+      await writeSnapshot(fixture("ordered-one"));
+      await page.goto(serverUrl);
+      await page.getByRole("heading", { name: "Explain saved todos" }).waitFor();
+      await selectFile(page, "long-list");
+      await page
+        .getByRole("heading", { name: "Live review ordered-one" })
+        .waitFor();
+
+      const staleCaptured = deferred();
+      const releaseStale = deferred();
+      const staleDelivered = deferred();
+      let holdNext = true;
+      const delaySnapshot = async (route) => {
+        if (!holdNext) {
+          await route.continue();
+          return;
+        }
+        holdNext = false;
+        const response = await route.fetch();
+        const body = await response.body();
+        staleCaptured.resolve();
+        await releaseStale.promise;
+        await route.fulfill({ response, body });
+        staleDelivered.resolve();
+      };
+      await page.route("**/diff-data.json?*", delaySnapshot);
+
+      await writeSnapshot(fixture("ordered-stale"));
+      await staleCaptured.promise;
+      await writeSnapshot(fixture("ordered-newest"));
+      await page
+        .getByRole("heading", { name: "Live review ordered-newest" })
+        .waitFor();
+      releaseStale.resolve();
+      await staleDelivered.promise;
+      await page.unroute("**/diff-data.json?*", delaySnapshot);
+      await page.waitForTimeout(100);
+
+      await page
+        .getByRole("heading", { name: "Live review ordered-newest" })
+        .waitFor();
+      assert.equal(
+        await page.locator(".current-path").textContent(),
+        "src/long-list.ts",
+      );
+
+      await page.route(
+        "**/diff-data.json?*",
+        (route) =>
+          route.fulfill({
+            body: JSON.stringify({ error: "temporary failure" }),
+            contentType: "application/json",
+            status: 503,
+          }),
+        { times: 1 },
+      );
+      await writeSnapshot(fixture("failed-refresh"));
+      await page.getByText("Snapshot returned 503").waitFor();
+      await page
+        .getByRole("heading", { name: "Live review ordered-newest" })
+        .waitFor();
+
+      await writeSnapshot(fixture("recovered"));
+      await page.getByRole("heading", { name: "Live review recovered" }).waitFor();
+      await page.getByText("Snapshot returned 503").waitFor({ state: "hidden" });
+
+      await page.route(
+        "**/diff-data.json?*",
+        (route) =>
+          route.fulfill({
+            body: "{not valid JSON",
+            contentType: "application/json",
+            status: 200,
+          }),
+        { times: 1 },
+      );
+      await writeSnapshot(fixture("malformed-refresh"));
+      await page.getByText("Snapshot data is malformed").waitFor();
+      await page.getByRole("heading", { name: "Live review recovered" }).waitFor();
+
+      await writeSnapshot(fixture("after-malformed"));
+      await page
+        .getByRole("heading", { name: "Live review after-malformed" })
+        .waitFor();
+
+      await page.route(
+        "**/diff-data.json?*",
+        (route) =>
+          route.fulfill({
+            body: "Not found",
+            contentType: "text/plain",
+            status: 404,
+          }),
+        { times: 1 },
+      );
+      await writeSnapshot(fixture("missing-refresh"));
+      await page.getByText("Live snapshot is missing").waitFor();
+      await page
+        .getByRole("heading", { name: "Live review after-malformed" })
+        .waitFor();
+
+      await writeSnapshot(fixture("after-missing"));
+      await page
+        .getByRole("heading", { name: "Live review after-missing" })
+        .waitFor();
+      await page.getByText("Live snapshot is missing").waitFor({ state: "hidden" });
+
+      const duplicate = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/diff-data.json" &&
+          response.ok(),
+      );
+      await writeSnapshot(fixture("after-missing"));
+      await duplicate;
+      assert.equal(
+        await page
+          .getByRole("heading", { name: "Live review after-missing" })
+          .count(),
+        1,
+      );
+      assert.equal(
+        await page.locator(".current-path").textContent(),
+        "src/long-list.ts",
+      );
+    },
+  );
+});
+
+test("keeps a pending success when a newer refresh fails", async () => {
+  await runInBrowser(
+    "pending successful refresh",
+    { viewport: { width: 1280, height: 800 } },
+    async (page) => {
+      await writeSnapshot(fixture("pending-base"));
+      await page.goto(serverUrl);
+      await page.getByRole("heading", { name: "Explain saved todos" }).waitFor();
+      await selectFile(page, "long-list");
+
+      const successCaptured = deferred();
+      const releaseSuccess = deferred();
+      const successDelivered = deferred();
+      const delaySuccess = async (route) => {
+        const response = await route.fetch();
+        const body = await response.body();
+        successCaptured.resolve();
+        await releaseSuccess.promise;
+        await route.fulfill({ response, body });
+        successDelivered.resolve();
+      };
+      await page.route("**/diff-data.json?*", delaySuccess);
+      await writeSnapshot(fixture("pending-success"));
+      await successCaptured.promise;
+
+      await page.route(
+        "**/diff-data.json?*",
+        (route) =>
+          route.fulfill({
+            body: JSON.stringify({ error: "newer request failed" }),
+            contentType: "application/json",
+            status: 503,
+          }),
+        { times: 1 },
+      );
+      await writeSnapshot(fixture("newer-failure"));
+      await page.getByText("Snapshot returned 503").waitFor();
+
+      releaseSuccess.resolve();
+      await successDelivered.promise;
+      await page.unroute("**/diff-data.json?*", delaySuccess);
+      await page
+        .getByRole("heading", { name: "Live review pending-success" })
+        .waitFor();
+      await page.getByText("Snapshot returned 503").waitFor({ state: "hidden" });
+      assert.equal(
+        await page.locator(".current-path").textContent(),
+        "src/long-list.ts",
+      );
+    },
+  );
+});
+
+test("recovers from event faults without resetting the selected file", async () => {
+  await runInBrowser(
+    "event stream recovery",
+    { viewport: { width: 1280, height: 800 } },
+    async (page) => {
+      await page.addInitScript(() => {
+        class ControlledEventSource extends EventTarget {
+          static instances = [];
+
+          constructor(url) {
+            super();
+            this.closed = false;
+            this.url = String(url);
+            ControlledEventSource.instances.push(this);
+            queueMicrotask(() => {
+              this.dispatchEvent(
+                new MessageEvent("ready", { data: "{}" }),
+              );
+            });
+          }
+
+          close() {
+            this.closed = true;
+          }
+        }
+
+        window.EventSource = ControlledEventSource;
+        window.controlledEvents = {
+          emit(type, data = "{}") {
+            const source = ControlledEventSource.instances.at(-1);
+            const event =
+              type === "error"
+                ? new Event(type)
+                : new MessageEvent(type, { data });
+            source.dispatchEvent(event);
+          },
+          state() {
+            return ControlledEventSource.instances.map((source) => ({
+              closed: source.closed,
+              url: source.url,
+            }));
+          },
+        };
+      });
+
+      await writeSnapshot(fixture("stream-one"));
+      await page.goto(serverUrl);
+      await page.getByRole("heading", { name: "Explain saved todos" }).waitFor();
+      await selectFile(page, "long-list");
+      await page.getByRole("heading", { name: "Live review stream-one" }).waitFor();
+
+      const slowSnapshot = async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1_900));
+        await route.continue();
+      };
+      await page.route("**/diff-data.json?*", slowSnapshot);
+      await page.evaluate(() => window.controlledEvents.emit("error"));
+      await page.getByText("Live updates disconnected").waitFor();
+      await writeSnapshot(fixture("stream-polled"));
+      await page
+        .getByRole("heading", { name: "Live review stream-polled" })
+        .waitFor();
+      await page.unroute("**/diff-data.json?*", slowSnapshot);
+
+      const malformedRefresh = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/diff-data.json" &&
+          response.ok(),
+      );
+      await page.evaluate(() =>
+        window.controlledEvents.emit("update", "not-json"),
+      );
+      await malformedRefresh;
+      await page.getByText("A live update was malformed").waitFor();
+      let recoveredRequests = 0;
+      const countRecoveredRequests = async (route) => {
+        recoveredRequests += 1;
+        await route.continue();
+      };
+      await page.route("**/diff-data.json?*", countRecoveredRequests);
+      await writeSnapshot(fixture("stream-two"));
+      await page.evaluate(() => window.controlledEvents.emit("update"));
+      await page
+        .getByText("A live update was malformed")
+        .waitFor({ state: "hidden" });
+      await page.getByRole("heading", { name: "Live review stream-two" }).waitFor();
+      await page.waitForTimeout(1_700);
+      assert.equal(recoveredRequests, 1);
+      await page.unroute("**/diff-data.json?*", countRecoveredRequests);
+
+      await page.evaluate(() => {
+        window.controlledEvents.emit("update");
+        window.controlledEvents.emit("update");
+      });
+      await page.getByRole("heading", { name: "Live review stream-two" }).waitFor();
+      assert.equal(
+        await page.locator(".current-path").textContent(),
+        "src/long-list.ts",
+      );
+
+      const priorEventSources = await page.evaluate(() =>
+        window.controlledEvents.state(),
+      );
+      await page.evaluate(() => {
+        window.location.hash = "project=next-target";
+      });
+      await page.getByRole("heading", { name: "Live review stream-two" }).waitFor();
+      const eventSources = await page.evaluate(() =>
+        window.controlledEvents.state(),
+      );
+      assert.equal(eventSources.length, priorEventSources.length + 1);
+      assert.equal(eventSources.at(-2).closed, true);
+      assert.match(eventSources.at(-1).url, /project=next-target/);
+      assert.equal(
+        await page.locator(".current-path").textContent(),
+        "src/long-list.ts",
+      );
+
+      const access = "a".repeat(43);
+      await page.evaluate(
+        (nextAccess) => window.controlledEvents.emit("access", nextAccess),
+        access,
+      );
+      await page.waitForFunction(
+        (nextAccess) =>
+          window.controlledEvents.state().at(-1)?.url.includes(nextAccess),
+        access,
+      );
+      const accessEventSources = await page.evaluate(() =>
+        window.controlledEvents.state(),
+      );
+      assert.equal(accessEventSources.at(-2).closed, true);
+      assert.match(accessEventSources.at(-1).url, /project=next-target/);
+      assert.match(accessEventSources.at(-1).url, new RegExp(`access=${access}`));
+      assert.equal(
+        new URLSearchParams(new URL(page.url()).hash.slice(1)).get("access"),
+        access,
+      );
+      assert.equal(
+        await page.locator(".current-path").textContent(),
+        "src/long-list.ts",
+      );
+    },
+  );
 });
 
 test("runs the full picker and refresh journey at the supported mobile viewport", async () => {

@@ -59,9 +59,11 @@ is open:
 npx diffsplain --worktree
 ```
 
-The local server tells the page when the snapshot changes. If those update
-events fail, the page checks the live JSON every 1.5 seconds instead. It keeps
-the selected file when new data arrives.
+`npx diffsplain --worktree` starts the watcher and local page together.
+The page listens for live events and polls the JSON every 1.5 seconds when the
+event stream drops. Each refresh ignores older requests that finish late. A
+bad or missing refresh leaves the last valid snapshot and selected file on
+screen while the page reconnects.
 
 In watch mode, remote pull requests and branches update every 30 seconds.
 

@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { FileDiffOptions } from "@pierre/diffs";
 import { PatchDiff, Virtualizer } from "@pierre/diffs/react";
+import { useLiveSnapshot } from "./use-live-snapshot";
 
 type FileStatus = "added" | "modified" | "deleted" | "renamed" | "binary";
 
@@ -72,7 +73,6 @@ type DiffSnapshot = {
   };
 };
 
-const FALLBACK_POLL_MS = 1_500;
 const DIFF_OPTIONS = {
   diffIndicators: "classic",
   diffStyle: "unified",
@@ -135,6 +135,21 @@ function statusLabel(status: FileStatus) {
   return "Modified";
 }
 
+function BrandBlock() {
+  return (
+    <div className="brand-block">
+      <div className="brand-mark" aria-hidden="true">
+        <span>D</span>
+        <span>S</span>
+      </div>
+      <div>
+        <p className="brand-name">Diffsplain</p>
+        <p className="brand-tag">Agent-made change notes</p>
+      </div>
+    </div>
+  );
+}
+
 function DiffLines({ patch }: { patch: string }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const renderablePatch = useMemo(
@@ -194,16 +209,7 @@ function EmptyState({
   return (
     <main className="empty-shell">
       <div className="empty-topline">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">
-            <span>D</span>
-            <span>S</span>
-          </div>
-          <div>
-            <p className="brand-name">Diffsplain</p>
-            <p className="brand-tag">Agent-made change notes</p>
-          </div>
-        </div>
+        <BrandBlock />
         <div className={`sync-state ${loadError ? "sync-state--error" : ""}`}>
           <span className="live-dot" aria-hidden="true" />
           <div>
@@ -224,10 +230,27 @@ function EmptyState({
   );
 }
 
+function ConnectionNotice({
+  demoUnavailable,
+  message,
+}: {
+  demoUnavailable: boolean;
+  message: string | null;
+}) {
+  if (!message) return null;
+  return (
+    <div className="connection-error" role="status">
+      {message}
+      {demoUnavailable
+        ? ". Check public/demo-diff-data.json."
+        : " The last valid review stays visible while Diffsplain retries."}
+    </div>
+  );
+}
+
 export default function Home() {
-  const [snapshot, setSnapshot] = useState<DiffSnapshot | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [demoUnavailable, setDemoUnavailable] = useState(false);
+  const { demoUnavailable, loadError, snapshot } =
+    useLiveSnapshot<DiffSnapshot>();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -235,108 +258,23 @@ export default function Home() {
   const [motion, setMotion] = useState<"next" | "previous" | "pick">("pick");
   const [motionKey, setMotionKey] = useState(0);
   const [clock, setClock] = useState(0);
-  const latestVersion = useRef<string | null>(null);
   const touchStart = useRef<number | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
-  const session = useMemo(
-    () => new URLSearchParams(window.location.hash.slice(1)),
-    [],
-  );
-  const [access, setAccess] = useState(() => session.get("access"));
-
-  const refresh = useCallback(async () => {
-    if (demoUnavailable) return;
-
-    let usingBundledDemo = false;
-    try {
-      const liveUrl = new URL("diff-data.json", document.baseURI);
-      liveUrl.searchParams.set("t", String(Date.now()));
-      if (access) liveUrl.searchParams.set("access", access);
-      const liveResponse = await fetch(liveUrl, {
-        cache: "no-store",
-      });
-      usingBundledDemo =
-        liveResponse.status === 404 ||
-        liveResponse.headers.get("x-diffsplain-demo") === "true";
-      const response = usingBundledDemo
-        ? liveResponse.status === 404
-          ? await fetch(new URL("demo-diff-data.json", document.baseURI))
-          : liveResponse
-        : liveResponse;
-      if (!response.ok) throw new Error(`Snapshot returned ${response.status}`);
-      const next = (await response.json()) as DiffSnapshot;
-      if (!Array.isArray(next.files)) throw new Error("Snapshot has no files");
-
-      if (next.version !== latestVersion.current) {
-        latestVersion.current = next.version;
-        setSnapshot(next);
-        setSelectedPath((current) => {
-          if (current && next.files.some((file) => file.path === current)) {
-            return current;
-          }
-          return next.files[0]?.path ?? null;
-        });
-      }
-      setLoadError(null);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Could not read the snapshot";
-      if (usingBundledDemo) {
-        setDemoUnavailable(true);
-        setLoadError(`Bundled demo is unavailable: ${message}`);
-        return;
-      }
-      setLoadError(message);
-    }
-  }, [access, demoUnavailable]);
 
   useEffect(() => {
-    const initial = window.setTimeout(() => void refresh(), 0);
-    let poll: number | undefined;
-    let events: EventSource | undefined;
-    const startPolling = () => {
-      if (poll === undefined) {
-        poll = window.setInterval(() => void refresh(), FALLBACK_POLL_MS);
-      }
-    };
-    const stopPolling = () => {
-      if (poll !== undefined) {
-        window.clearInterval(poll);
-        poll = undefined;
-      }
-    };
-    if ("EventSource" in window) {
-      const eventsUrl = new URL("events", document.baseURI);
-      const project = session.get("project");
-      if (project) eventsUrl.searchParams.set("project", project);
-      if (access) eventsUrl.searchParams.set("access", access);
-      events = new EventSource(eventsUrl);
-      events.addEventListener("ready", () => {
-        stopPolling();
-        latestVersion.current = null;
-        setSnapshot(null);
-        void refresh();
-      });
-      events.addEventListener("update", () => void refresh());
-      events.addEventListener("access", (event) => {
-        const nextAccess = (event as MessageEvent<string>).data;
-        if (!/^[A-Za-z0-9_-]{32,}$/.test(nextAccess)) return;
-        session.set("access", nextAccess);
-        window.history.replaceState(null, "", `#${session}`);
-        setAccess(nextAccess);
-      });
-      events.addEventListener("error", startPolling);
-    } else {
-      startPolling();
-    }
     const ticker = window.setInterval(() => setClock((value) => value + 1), 5_000);
-    return () => {
-      window.clearTimeout(initial);
-      if (poll !== undefined) window.clearInterval(poll);
-      events?.close();
-      window.clearInterval(ticker);
-    };
-  }, [access, refresh, session]);
+    return () => window.clearInterval(ticker);
+  }, []);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    setSelectedPath((current) => {
+      if (current && snapshot.files.some((file) => file.path === current)) {
+        return current;
+      }
+      return snapshot.files[0]?.path ?? null;
+    });
+  }, [snapshot]);
 
   const files = useMemo(() => snapshot?.files ?? [], [snapshot]);
   const currentIndex = Math.max(
@@ -407,18 +345,24 @@ export default function Home() {
     return (
       <>
         <LoadingState />
-        {loadError ? (
-          <div className="connection-error" role="status">
-            {loadError}
-            {demoUnavailable ? ". Check public/demo-diff-data.json." : ". Retrying…"}
-          </div>
-        ) : null}
+        <ConnectionNotice
+          demoUnavailable={demoUnavailable}
+          message={loadError}
+        />
       </>
     );
   }
 
   if (!files.length) {
-    return <EmptyState snapshot={snapshot} loadError={loadError} />;
+    return (
+      <>
+        <EmptyState snapshot={snapshot} loadError={loadError} />
+        <ConnectionNotice
+          demoUnavailable={demoUnavailable}
+          message={loadError}
+        />
+      </>
+    );
   }
 
   if (!currentFile) return <LoadingState />;
@@ -468,16 +412,7 @@ export default function Home() {
       }}
     >
       <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">
-            <span>D</span>
-            <span>S</span>
-          </div>
-          <div>
-            <p className="brand-name">Diffsplain</p>
-            <p className="brand-tag">Agent-made change notes</p>
-          </div>
-        </div>
+        <BrandBlock />
 
         <div className="change-block">
           <div className="change-meta">
@@ -851,6 +786,10 @@ export default function Home() {
         </div>
       ) : null}
 
+      <ConnectionNotice
+        demoUnavailable={demoUnavailable}
+        message={loadError}
+      />
       <span className="sr-only" aria-live="polite">
         {clock >= 0
           ? notesGenerating || notesFailed
