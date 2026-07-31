@@ -44,6 +44,81 @@ and `corepack npm test` builds the app and runs the Node test suite.
 For the supported browser, screen, and device checks, see [Mobile
 support](/mobile).
 
+## Use a clean checkout
+
+Each checkout owns its dependencies and live data. Use the same commands in
+the main checkout, a linked worktree, and a Codex-managed worktree:
+
+```sh
+corepack enable
+corepack npm run setup
+corepack npm run check
+```
+
+Do not copy `node_modules`, `.cache/`, or a generated diff snapshot into a
+worktree. `npm run setup` creates the dependency tree from the lock file. The
+app falls back to checked-in demo data until you create live data locally.
+
+### Linked Git worktree
+
+Create and verify a linked worktree from the main checkout:
+
+```sh
+git worktree add -b feature/my-change ../diffsplain-my-change HEAD
+cd ../diffsplain-my-change
+corepack enable
+corepack npm run setup
+corepack npm run check
+```
+
+Before removal, inspect and commit, move, or discard its changes. Then remove
+the worktree from the main checkout:
+
+```sh
+git -C /path/to/diffsplain status --short
+git -C /path/to/diffsplain worktree remove ../diffsplain-my-change
+```
+
+Use `git worktree remove --force` only after you have dealt with changes.
+
+### Codex-managed worktree
+
+Choose **Worktree** when starting a Codex task, then run the same setup and
+check commands above. Codex worktrees start from tracked files. This project
+does not need `.worktreeinclude`, because setup does not depend on ignored
+files. Use Codex handoff when you need the same branch in the main checkout.
+
+### Codex cloud
+
+Set the Codex cloud setup and maintenance scripts to:
+
+```sh
+corepack enable
+corepack npm run setup
+```
+
+Then run this from the cloud task:
+
+```sh
+corepack npm run cloud:check
+```
+
+`cloud:check` runs the clean-checkout gate and the provider/browser tests.
+Those tests use fake coding providers and a fake browser command. Real Codex,
+Claude, Copilot, Cursor, OpenCode, GitHub, or browser login is optional and is
+needed only for a live integration task. Keep credentials in Codex environment
+settings, not checked-in rules or scripts.
+
+To test the linked-worktree path itself, run:
+
+```sh
+corepack npm run setup:smoke
+```
+
+It creates a temporary linked worktree, checks that no dependencies or live
+snapshot were copied, runs setup, then removes the worktree. Commit or stash
+changes to package install files first, so the test checks the same files.
+
 ## Trust repo automation
 
 The checked-in Codex hook manifest runs no commands. This keeps a branch from
