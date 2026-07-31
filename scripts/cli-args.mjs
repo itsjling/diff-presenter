@@ -101,6 +101,19 @@ function githubRepoFromPullRequest(value) {
   }
 }
 
+function validPullRequest(value) {
+  if (/^[1-9]\d*$/.test(value)) return true;
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === 'https:' || url.protocol === 'http:') &&
+      /^\/[^/]+\/[^/]+\/pull\/[1-9]\d*(?:\/|$)/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function remoteRepo(value, callerDirectory, pathExists) {
   if (pathExists(resolve(callerDirectory, value))) return undefined;
   if (
@@ -137,32 +150,38 @@ export function parseCliArgs(
     const argument = rawArgs[index];
     const parsed = splitOption(argument);
     if (!parsed) {
+      if (argument.startsWith('-')) fail(`Unknown option: ${argument}`);
+      if (!argument) fail('Repo cannot be empty');
       positionals.push(argument);
       continue;
     }
 
     if (parsed.name === '--agent') {
+      if (agentSet) fail('--agent was passed more than once');
       agentSet = true;
       if (parsed.value !== undefined) {
         if (!parsed.value) fail('--agent needs a value');
         agent = parsed.value;
       } else {
         const next = rawArgs[index + 1];
-        if (next && !next.startsWith('-')) {
-          agent = next;
-          index += 1;
-        }
+        if (!next || splitOption(next)) fail('--agent needs a value');
+        agent = next;
+        index += 1;
       }
       continue;
     }
 
     if (parsed.name === '--no-agent') {
+      if (noAgent) fail('--no-agent was passed more than once');
       if (parsed.value !== undefined) fail('--no-agent does not take a value');
       noAgent = true;
       continue;
     }
 
     if (flagOptions.has(parsed.name)) {
+      if (options.has(parsed.name)) {
+        fail(`${parsed.name} was passed more than once`);
+      }
       if (parsed.value !== undefined) {
         fail(`${parsed.name} does not take a value`);
       }
@@ -178,7 +197,7 @@ export function parseCliArgs(
     let value = parsed.value;
     if (value === undefined) {
       value = rawArgs[index + 1];
-      if (!value || value.startsWith('--')) fail(`${parsed.name} needs a value`);
+      if (!value || splitOption(value)) fail(`${parsed.name} needs a value`);
       index += 1;
     }
     if (!value) fail(`${parsed.name} needs a value`);
@@ -213,6 +232,9 @@ export function parseCliArgs(
   }
   if (!branch && !pullRequest && !worktree && Boolean(base) !== Boolean(head)) {
     fail('--base and --head must be used together');
+  }
+  if (pullRequest && !validPullRequest(pullRequest)) {
+    fail('--pr must be a positive number or a pull request URL');
   }
 
   const repoArgument = positionals[0] || options.get('--repo');
