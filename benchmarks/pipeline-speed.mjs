@@ -115,6 +115,21 @@ function makeTools(base) {
   const bin = join(base, "bin");
   const calls = join(base, "agent-calls.jsonl");
   const gitCalls = join(base, "git-calls.log");
+  const benchmarkNote = fixtureKind === "working"
+    ? {
+        title: "Scope cache keys by branch",
+        summary: "Adds the branch name to each cache key.",
+        why: "Keeps notes from one branch out of another branch.",
+        highlights: ["Existing cache entries remain readable."],
+        risks: [],
+      }
+    : {
+        title: "Keep history across a rename",
+        summary: "Links the old path to the rename target.",
+        why: "Keeps file history visible after the path changes.",
+        highlights: ["The new path owns later notes."],
+        risks: [],
+      };
   mkdirSync(bin);
 
   const fakeAgent = join(bin, "fake-codex.mjs");
@@ -138,13 +153,7 @@ appendFileSync(
   }) + "\\n",
 );
 process.stdout.write(JSON.stringify({
-  change: {
-    title: "Benchmark change",
-    summary: "Updates benchmark files.",
-    why: "Measures Diffsplain speed.",
-    highlights: [],
-    risks: [],
-  },
+  change: ${JSON.stringify(benchmarkNote)},
   files: input.files.map((file) => ({
     path: file.path,
     title: "Update " + file.path,
@@ -197,6 +206,17 @@ function timed(command, commandArgs, options) {
   const started = performance.now();
   run(command, commandArgs, options);
   return performance.now() - started;
+}
+
+async function stopChild(child) {
+  child.kill("SIGTERM");
+  await new Promise((resolvePromise) => {
+    const timer = setTimeout(resolvePromise, 2_000);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolvePromise();
+    });
+  });
 }
 
 async function waitForPresenter(commandArgs, env, targetLine) {
@@ -271,22 +291,12 @@ async function waitForPresenter(commandArgs, env, targetLine) {
   } finally {
     clearTimeout(timeout);
     clearInterval(outputPoll);
-    child.kill("SIGTERM");
-    await new Promise((resolvePromise) => {
-      const timer = setTimeout(resolvePromise, 2_000);
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolvePromise();
-      });
-    });
+    await stopChild(child);
   }
 }
 
-async function measureRestart(repo, output, tools, runNumber) {
-  const summaries = join(repo, ".diffsplain", "summaries.json");
-  rmSync(summaries, { force: true });
-  clear(tools.calls);
-  const child = spawn(
+function restartPresenter(repo, output, summaries, tools) {
+  return spawn(
     process.execPath,
     [
       resolve(projectRoot, "scripts/present.mjs"),
@@ -295,6 +305,8 @@ async function measureRestart(repo, output, tools, runNumber) {
       "--worktree",
       "--codex-bin",
       tools.fakeAgent,
+      "--summaries",
+      summaries,
       "--output",
       output,
       "--port",
@@ -306,61 +318,78 @@ async function measureRestart(repo, output, tools, runNumber) {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  let editedAt;
-  let marker;
+}
+
+function watchAgentRequests(child, onRequest) {
   let buffer = "";
   let stderr = "";
-  const started = performance.now();
-  const edit = () => {
-    if (editedAt !== undefined) return;
-    editedAt = performance.now();
-    marker = `restart marker ${runNumber} ${Date.now()}`;
-    const path = join(repo, "file-000.txt");
-    writeFileSync(path, `${readFileSync(path, "utf8")}${marker}\n`);
-  };
   const consume = (text) => {
     buffer += text;
     const complete = buffer.split("\n");
     buffer = complete.pop() || "";
-    for (const line of complete) {
-      if (line.startsWith("Asking ")) edit();
-    }
+    if (complete.some((line) => line.startsWith("Asking "))) onRequest();
   };
   child.stdout.on("data", (chunk) => consume(chunk.toString()));
   child.stderr.on("data", (chunk) => {
     stderr += chunk;
     consume(chunk.toString());
   });
+  return () => stderr;
+}
+
+function snapshotHasMarker(output, marker) {
+  if (!existsSync(output)) return false;
+  const snapshot = JSON.parse(readFileSync(output, "utf8"));
+  return Boolean(
+    snapshot.notes?.complete &&
+      snapshot.notes.generatedFor === snapshot.notes.reviewFingerprint &&
+      snapshot.files?.some((file) => file.patch?.includes(marker)),
+  );
+}
+
+async function measureRestart(repo, output, tools, runNumber) {
+  const summaries = join(
+    dirname(output),
+    `restart-${runNumber}-summaries.json`,
+  );
+  const probe = join(repo, "restart-probe.txt");
+  rmSync(summaries, { force: true });
+  rmSync(probe, { force: true });
+  clear(tools.calls);
+  const child = restartPresenter(repo, output, summaries, tools);
+  let editedAt;
+  let editTimer;
+  let marker;
+  const started = performance.now();
+  const edit = () => {
+    if (editedAt !== undefined) return;
+    editedAt = performance.now();
+    marker = `restart marker ${runNumber} ${Date.now()}`;
+    writeFileSync(probe, `${marker}\n`);
+  };
+  const stderr = watchAgentRequests(child, () => {
+    if (editedAt === undefined && editTimer === undefined) {
+      editTimer = setTimeout(edit, 250);
+    }
+  });
 
   try {
     const deadline = performance.now() + 25_000;
     while (performance.now() < deadline) {
-      if (editedAt !== undefined && existsSync(output)) {
-        const snapshot = JSON.parse(readFileSync(output, "utf8"));
-        if (
-          snapshot.notes?.complete &&
-          snapshot.notes.generatedFor === snapshot.notes.reviewFingerprint &&
-          snapshot.files?.some((file) => file.patch?.includes(marker))
-        ) {
-          return {
-            elapsedMs: performance.now() - editedAt,
-            totalMs: performance.now() - started,
-            agentCalls: lines(tools.calls).length,
-          };
-        }
+      if (editedAt !== undefined && snapshotHasMarker(output, marker)) {
+        return {
+          elapsedMs: performance.now() - editedAt,
+          totalMs: performance.now() - started,
+          agentCalls: lines(tools.calls).length,
+        };
       }
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
     }
-    throw new Error(`Timed out waiting for restarted notes\n${stderr}`);
+    throw new Error(`Timed out waiting for restarted notes\n${stderr()}`);
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolvePromise) => {
-      const timer = setTimeout(resolvePromise, 2_000);
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolvePromise();
-      });
-    });
+    clearTimeout(editTimer);
+    await stopChild(child);
+    rmSync(probe, { force: true });
   }
 }
 
@@ -465,6 +494,14 @@ try {
       medianInputBytes: percentile(inputBytes, 0.5),
       inputByteSamples: inputBytes,
     };
+    const generated = JSON.parse(readFileSync(summaries, "utf8")).change;
+    result.generatedNote = {
+      title: generated.title,
+      what: generated.summary,
+      why: generated.why,
+      details: generated.highlights,
+      risks: generated.risks,
+    };
   }
 
   if (selectedCase === "all" || selectedCase === "present") {
@@ -525,7 +562,7 @@ try {
     };
   }
 
-  if (selectedCase === "restart") {
+  if (selectedCase === "all" || selectedCase === "restart") {
     run("npm", ["run", "build"], {
       cwd: projectRoot,
       env: tools.env,
