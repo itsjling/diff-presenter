@@ -6,12 +6,39 @@ import test from 'node:test';
 import {
   agentDisabledReason,
   agentCommand,
+  agentSupportsReasoning,
+  codingAgentCapabilities,
   codingAgentBinary,
   findCommand,
   parseAgentResponse,
   selectCodingAgent,
   summaryAgentEnvironment,
 } from '../scripts/coding-agents.mjs';
+
+test('declares reasoning support for each coding agent', () => {
+  const expected = {
+    codex: true,
+    claude: false,
+    copilot: false,
+    cursor: false,
+    opencode: true,
+  };
+
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.keys(codingAgentCapabilities).map((agent) => [
+        agent,
+        agentSupportsReasoning(agent),
+      ]),
+    ),
+    expected,
+  );
+  assert.ok(
+    Object.values(codingAgentCapabilities).every(
+      (capability) => capability.model,
+    ),
+  );
+});
 
 test('discovers executable providers on the configured path', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'diffsplain-provider-'));

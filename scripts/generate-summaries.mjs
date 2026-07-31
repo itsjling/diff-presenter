@@ -15,6 +15,7 @@ import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   agentCommand,
+  assertReasoningSupported,
   codingAgentBinary,
   commandAvailable,
   parseAgentResponse,
@@ -126,6 +127,11 @@ const reasoningLevels = new Set([
 ]);
 if (reasoning && !reasoningLevels.has(reasoning)) {
   fail('--reasoning must be minimal, low, medium, high, or xhigh');
+}
+try {
+  assertReasoningSupported(selectedAgent, reasoning);
+} catch (error) {
+  fail(error.message);
 }
 if (!/^[1-9]\d*$/.test(batchSizeValue) || Number(batchSizeValue) > 50) {
   fail('--batch-size must be a number from 1 to 50');
@@ -682,6 +688,7 @@ function publishSnapshot(snapshot, summaries) {
     files,
     notes: {
       ...notesWithoutFailures(snapshot.notes),
+      agent: selectedAgent,
       generatedFor: reviewFingerprint,
       fresh: true,
       complete: state.complete,
@@ -870,6 +877,24 @@ function fileFingerprint(file) {
     .digest('hex');
 }
 
+const generationSettings = {
+  agent: selectedAgent,
+  model: model || null,
+  reasoning: reasoning || null,
+};
+
+function generationSettingsMatch(meta) {
+  if (!meta || typeof meta !== 'object' || typeof meta.agent !== 'string') {
+    return false;
+  }
+  const previousSettings = {
+    agent: meta.agent,
+    model: Object.hasOwn(meta, 'model') ? meta.model : null,
+    reasoning: Object.hasOwn(meta, 'reasoning') ? meta.reasoning : null,
+  };
+  return JSON.stringify(previousSettings) === JSON.stringify(generationSettings);
+}
+
 const temporaryDirectory = mkdtempSync(
   resolve(tmpdir(), 'diffsplain-agent-'),
 );
@@ -888,11 +913,9 @@ try {
   if (paths.length === 0) {
     workingSnapshot = rawSnapshot;
     workingSummaries = {
-      ...(completeChangeNote(previousSummaries.change)
-        ? { change: previousSummaries.change }
-        : {}),
       files: {},
       meta: {
+        agent: selectedAgent,
         reviewFingerprint: rawSnapshot.notes.reviewFingerprint,
         fileFingerprints: {},
         status: 'complete',
@@ -924,6 +947,7 @@ try {
     const fileFingerprints = Object.fromEntries(
       paths.map((path) => [path, fileFingerprint(rawFiles.get(path))]),
     );
+    const settingsMatch = generationSettingsMatch(previousSummaries.meta);
     const summaryFiles = new Map(
       snapshot.files.map((file) => [file.path, file]),
     );
@@ -933,6 +957,7 @@ try {
     for (const path of paths) {
       if (
         !force &&
+        settingsMatch &&
         previousFingerprints[path] === fileFingerprints[path] &&
         completeFileNote(previousFiles[path])
       ) {
@@ -948,6 +973,7 @@ try {
     }
     const changeNeedsRefresh =
       force ||
+      !settingsMatch ||
       previousSummaries.meta?.reviewFingerprint !==
         rawSnapshot.notes.reviewFingerprint ||
       !completeChangeNote(previousSummaries.change);
@@ -958,6 +984,7 @@ try {
       ...(!changeNeedsRefresh ? { change: previousSummaries.change } : {}),
       files: reusableFiles,
       meta: {
+        agent: selectedAgent,
         reviewFingerprint: rawSnapshot.notes.reviewFingerprint,
         fileFingerprints,
         ...(needsGeneration

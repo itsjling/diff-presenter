@@ -6,12 +6,14 @@ import {
   mkdtemp,
   readFile,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import test from "node:test";
+import { summaryPath } from "../scripts/summary-path.mjs";
 
 const script = new URL("../scripts/generate-summaries.mjs", import.meta.url)
   .pathname;
@@ -128,6 +130,54 @@ process.stdout.write(JSON.stringify(response));
   await writeFile(
     join(root, ".git", "info", "exclude"),
     "recording-codex.mjs\ncodex-calls.jsonl\n",
+  );
+  return { bin, calls };
+}
+
+async function recordingOpenCode(root) {
+  const bin = join(root, "recording-opencode.mjs");
+  const calls = join(root, "opencode-calls.jsonl");
+  await writeFile(
+    bin,
+    `#!/usr/bin/env node
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+const input = JSON.parse(readFileSync(0, "utf8"));
+const call = existsSync(${JSON.stringify(calls)})
+  ? readFileSync(${JSON.stringify(calls)}, "utf8").trim().split("\\n").length + 1
+  : 1;
+appendFileSync(
+  ${JSON.stringify(calls)},
+  JSON.stringify({
+    files: input.files.map((file) => file.path),
+    existing: Object.keys(input.existingFileNotes || {}).sort(),
+  }) + "\\n",
+);
+const response = {
+  change: {
+    title: "Change note " + call,
+    summary: "Summarizes call " + call + ".",
+    why: "Covers cache settings.",
+    highlights: [],
+    risks: [],
+  },
+};
+if (input.files.length) {
+  response.files = input.files.map((file) => ({
+    path: file.path,
+    title: "Note " + call + " for " + file.path,
+    what: "Explains " + file.path + ".",
+    why: "This file changed.",
+    details: [],
+    risks: [],
+  }));
+}
+process.stdout.write(JSON.stringify({ type: "text", part: { text: JSON.stringify(response) } }) + "\\n");
+`,
+  );
+  await chmod(bin, 0o755);
+  await writeFile(
+    join(root, ".git", "info", "exclude"),
+    "recording-codex.mjs\nrecording-opencode.mjs\ncodex-calls.jsonl\nopencode-calls.jsonl\n",
   );
   return { bin, calls };
 }
@@ -397,6 +447,57 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
     );
     assert.equal(snapshot.notes.fresh, true);
     assert.equal(snapshot.notes.complete, true);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("drops a cached change note when the current review is empty", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+
+  try {
+    const codex = await fakeCodex(repo, notes({}));
+    await writeFile(
+      summaries,
+      JSON.stringify({
+        change: {
+          title: "Old agent change",
+          summary: "This note belongs to an earlier review.",
+          why: "It must not appear on an empty review.",
+          highlights: [],
+          risks: [],
+        },
+        files: {},
+        meta: {
+          agent: "claude",
+          reviewFingerprint: "old-review",
+          fileFingerprints: {},
+          status: "complete",
+        },
+      }),
+    );
+
+    const result = run(repo, [
+      "--base",
+      "HEAD",
+      "--head",
+      "HEAD",
+      "--codex-bin",
+      codex.bin,
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+
+    const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(Object.hasOwn(writtenNotes, "change"), false);
+    assert.doesNotMatch(JSON.stringify(snapshot), /Old agent change/);
+    assert.equal(writtenNotes.meta.status, "complete");
   } finally {
     await rm(repo, { recursive: true, force: true });
   }
@@ -780,6 +881,59 @@ test("keeps notes fresh when the rebuilt output is a changed tracked file", asyn
     assert.equal(snapshot.notes.fresh, true);
     assert.equal(snapshot.notes.complete, true);
   } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("stores default worktree notes outside the target repo", async () => {
+  const repo = await makeRepo();
+  const cacheBase = `${repo}-cache`;
+  const output = `${repo}.json`;
+  const summaries = summaryPath({
+    cacheRoot: join(cacheBase, "diffsplain"),
+    callerDirectory: process.cwd(),
+    repo,
+  });
+
+  try {
+    await writeFile(join(repo, "changed.txt"), "worktree change\n");
+    const codex = await fakeCodex(
+      repo,
+      notes({
+        "changed.txt": {
+          title: "Update text",
+          what: "Replaces the stored line.",
+          why: "Covers the default worktree path.",
+          details: [],
+          risks: [],
+        },
+      }),
+    );
+    await writeFile(
+      join(repo, ".git", "info", "exclude"),
+      "codex-args.json\ncodex-response.json\nfake-codex.mjs\n",
+    );
+    const before = git(repo, "status", "--porcelain=v1", "--untracked-files=all");
+
+    const result = run(
+      repo,
+      ["--codex-bin", codex.bin, "--output", output],
+      {
+        env: { ...process.env, XDG_CACHE_HOME: cacheBase },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      git(repo, "status", "--porcelain=v1", "--untracked-files=all"),
+      before,
+    );
+    await assert.rejects(stat(join(repo, ".diffsplain")), { code: "ENOENT" });
+    const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(writtenNotes.files["changed.txt"].title, "Update text");
+  } finally {
+    await rm(summaries, { force: true });
+    await rm(cacheBase, { recursive: true, force: true });
+    await rm(output, { force: true });
     await rm(repo, { recursive: true, force: true });
   }
 });
@@ -1397,6 +1551,72 @@ test("regenerates notes only for changed and added files", async () => {
     const snapshot = JSON.parse(await readFile(output, "utf8"));
     assert.equal(snapshot.notes.complete, true);
     assert.ok(snapshot.files.every((file) => file.noteReady));
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("reuses notes only when agent settings match", async () => {
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+  const base = git(repo, "rev-parse", "HEAD~1");
+
+  try {
+    const codex = await recordingCodex(repo);
+    const opencode = await recordingOpenCode(repo);
+    const args = [
+      "--base",
+      base,
+      "--head",
+      "HEAD",
+      "--codex-bin",
+      codex.bin,
+      "--summaries",
+      summaries,
+      "--output",
+      output,
+    ];
+
+    assert.equal(run(repo, args).status, 0);
+    assert.equal((await recordedCalls(codex.calls)).length, 2);
+
+    const same = run(repo, args);
+    assert.equal(same.status, 0, same.stderr);
+    assert.equal((await recordedCalls(codex.calls)).length, 2);
+
+    assert.equal(run(repo, [...args, "--model", "gpt-test"]).status, 0);
+    assert.equal((await recordedCalls(codex.calls)).length, 4);
+
+    assert.equal(
+      run(repo, [...args, "--model", "gpt-test", "--reasoning", "low"]).status,
+      0,
+    );
+    assert.equal((await recordedCalls(codex.calls)).length, 6);
+
+    const changedAgent = run(
+      repo,
+      [
+        ...args,
+        "--agent",
+        "opencode",
+        "--model",
+        "gpt-test",
+        "--reasoning",
+        "low",
+      ],
+      { env: { ...process.env, OPENCODE_BIN: opencode.bin } },
+    );
+    assert.equal(changedAgent.status, 0, changedAgent.stderr);
+    assert.deepEqual(await recordedCalls(opencode.calls), [
+      { files: ["added.txt", "changed.txt"], existing: [] },
+      { files: [], existing: ["added.txt", "changed.txt"] },
+    ]);
+
+    const writtenNotes = JSON.parse(await readFile(summaries, "utf8"));
+    const snapshot = JSON.parse(await readFile(output, "utf8"));
+    assert.equal(writtenNotes.meta.agent, "opencode");
+    assert.equal(snapshot.notes.agent, "opencode");
   } finally {
     await rm(repo, { recursive: true, force: true });
   }

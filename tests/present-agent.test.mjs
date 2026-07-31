@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { summaryPath } from "../scripts/summary-path.mjs";
 
 const script = new URL("../scripts/present.mjs", import.meta.url).pathname;
 
@@ -51,7 +52,12 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
   const output = join(root, "diff-data.json");
   const events = join(root, "events.log");
   const response = join(root, "response.json");
-  const summaries = join(repo, ".diffsplain", "summaries.json");
+  const cacheBase = join(root, "cache");
+  const summaries = summaryPath({
+    cacheRoot: join(cacheBase, "diffsplain"),
+    callerDirectory: root,
+    repo,
+  });
   let presenter;
 
   try {
@@ -128,6 +134,7 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
           PRESENTER_EVENTS: events,
           PRESENTER_OUTPUT: output,
           PRESENTER_RESPONSE: response,
+          XDG_CACHE_HOME: cacheBase,
         },
         stdio: "pipe",
       },
@@ -164,6 +171,8 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         "--repo",
         repo,
         "--worktree",
+        "--model",
+        "changed-model",
         "--output",
         output,
         "--port",
@@ -178,13 +187,14 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
           PRESENTER_EVENTS: events,
           PRESENTER_OUTPUT: output,
           PRESENTER_RESPONSE: response,
+          XDG_CACHE_HOME: cacheBase,
         },
         stdio: "pipe",
       },
     );
     await new Promise((resolve) => setTimeout(resolve, 3_500));
     const restartLog = await readFile(events, "utf8");
-    assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 2);
+    assert.equal((restartLog.match(/codex-after-feed/g) || []).length, 4);
 
     const restartResult = await stop(presenter);
     presenter = undefined;

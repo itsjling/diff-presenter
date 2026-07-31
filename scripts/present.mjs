@@ -14,6 +14,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { helpText, parseCliArgs } from './cli-args.mjs';
 import {
+  assertReasoningSupported,
   codingAgentBinary,
   commandAvailable,
   selectCodingAgent,
@@ -56,20 +57,24 @@ if (cli.doctor) {
 const { agentEnabled, browserEnabled, host, port } = cli;
 const feedArgs = [...cli.feedArgs];
 const agentArgs = [...cli.agentArgs];
+let selectedAgent;
 if (agentEnabled) {
   try {
-    const selectedAgent = await selectCodingAgent(
+    selectedAgent = await selectCodingAgent(
       cli.agent,
       (agent) =>
         commandAvailable(
           codingAgentBinary(agent, { codexBin: cli.codexBin }),
         ),
     );
+    assertReasoningSupported(selectedAgent, cli.reasoning);
     agentArgs.push('--agent', selectedAgent);
   } catch (error) {
     console.error(error.message);
     process.exit(1);
   }
+} else {
+  feedArgs.push('--no-summaries');
 }
 const outputIndex = feedArgs.indexOf('--output');
 let runtimeDirectory;
@@ -228,7 +233,10 @@ function snapshotState() {
         hasCurrentAgentNotes:
           snapshot.notes.complete &&
           snapshot.notes.fresh &&
-          snapshot.notes.generatedFor === fingerprint,
+          snapshot.notes.generatedFor === fingerprint &&
+          snapshot.notes.agent === selectedAgent &&
+          (snapshot.notes.model || null) === (cli.model || null) &&
+          (snapshot.notes.reasoning || null) === (cli.reasoning || null),
       };
     }
     const reviewData = {
