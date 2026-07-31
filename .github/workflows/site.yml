@@ -27,6 +27,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
+      - name: Update Corepack
+        run: npm install --global corepack@0.34.0
       - name: Enable the pinned pnpm version
         run: corepack enable
       - name: Install dependencies
