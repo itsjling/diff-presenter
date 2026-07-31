@@ -30,11 +30,70 @@ function waitForUrl(child) {
   });
 }
 
+function waitForReady(child) {
+  return new Promise((resolve, reject) => {
+    let output = '';
+    const timer = setTimeout(() => {
+      reject(new Error(`Built server did not report readiness: ${output}`));
+    }, 10_000);
+    child.stdout.on('data', (chunk) => {
+      output += chunk;
+      for (const line of output.split('\n')) {
+        try {
+          const event = JSON.parse(line);
+          if (event.event === 'ready') {
+            clearTimeout(timer);
+            resolve(event);
+            return;
+          }
+        } catch {
+          // The server also writes human-readable status lines.
+        }
+      }
+    });
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      reject(new Error(`Built server exited with ${code}: ${output}`));
+    });
+  });
+}
+
+function waitForText(stream, pattern) {
+  return new Promise((resolve, reject) => {
+    let output = '';
+    const timer = setTimeout(() => {
+      reject(new Error(`Did not find ${pattern}: ${output}`));
+    }, 10_000);
+    stream.on('data', (chunk) => {
+      output += chunk;
+      if (pattern.test(output)) {
+        clearTimeout(timer);
+        resolve(output);
+      }
+    });
+  });
+}
+
 function stop(child) {
   return new Promise((resolve, reject) => {
     child.once('exit', resolve);
     child.once('error', reject);
     child.kill('SIGTERM');
+  });
+}
+
+function waitForExit(child) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('Built server did not exit after its bind error'));
+    }, 10_000);
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal });
+    });
   });
 }
 
@@ -115,6 +174,103 @@ test('reports a matching project tab connection', async () => {
   } finally {
     await reader?.cancel();
     if (child && child.exitCode === null) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('reports machine-readable readiness and closes its health endpoint', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'diffsplain-health-'));
+  const output = join(directory, 'diff-data.json');
+  let child;
+
+  try {
+    await writeFile(output, '{}');
+    child = spawn(
+      process.execPath,
+      [script, '--output', output, '--port', '0'],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const ready = await waitForReady(child);
+    assert.ok(['127.0.0.1', '::1'].includes(ready.address));
+    assert.ok(ready.port > 0);
+    assert.equal(ready.url, `http://localhost:${ready.port}`);
+
+    const health = await fetch(`${ready.url}/health`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), {
+      status: 'ok',
+      address: ready.address,
+      port: ready.port,
+    });
+
+    assert.equal(await stop(child), 0);
+    await assert.rejects(fetch(`${ready.url}/health`));
+  } finally {
+    if (child && child.exitCode === null) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('warns before binding the review to a remote address', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'diffsplain-remote-'));
+  const output = join(directory, 'diff-data.json');
+  let child;
+
+  try {
+    await writeFile(output, '{}');
+    child = spawn(
+      process.execPath,
+      [script, '--output', output, '--port', '0', '--host', '0.0.0.0'],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const warning = waitForText(child.stderr, /anyone who can reach/i);
+    const ready = await waitForReady(child);
+    await warning;
+    assert.equal(ready.address, '0.0.0.0');
+    assert.ok(ready.port > 0);
+
+    const health = await fetch(`http://127.0.0.1:${ready.port}/health`);
+    assert.equal(health.status, 200);
+  } finally {
+    if (child && child.exitCode === null) await stop(child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('exits with an error when the requested host cannot bind', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'diffsplain-bind-error-'));
+  const output = join(directory, 'diff-data.json');
+  let child;
+  let stdout = '';
+  let stderr = '';
+
+  try {
+    await writeFile(output, '{}');
+    child = spawn(
+      process.execPath,
+      [
+        script,
+        '--output',
+        output,
+        '--port',
+        '0',
+        '--host',
+        '192.0.2.1',
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
+
+    assert.deepEqual(await waitForExit(child), { code: 1, signal: null });
+    assert.match(stderr, /Could not start Diffsplain/);
+    assert.doesNotMatch(stdout, /"event":"ready"/);
+  } finally {
+    if (child && child.exitCode === null) child.kill('SIGKILL');
     await rm(directory, { recursive: true, force: true });
   }
 });

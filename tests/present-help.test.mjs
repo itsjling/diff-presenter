@@ -36,6 +36,35 @@ test('prints the package version with either version flag', async () => {
   }
 });
 
+test('reports missing option values before startup', () => {
+  for (const option of [
+    '--repo',
+    '--branch',
+    '--pr',
+    '--base',
+    '--head',
+    '--remote',
+    '--summaries',
+    '--output',
+    '--cache-dir',
+    '--codex-bin',
+    '--model',
+    '--reasoning',
+    '--batch-size',
+    '--jobs',
+    '--port',
+    '--agent',
+  ]) {
+    const result = spawnSync(process.execPath, [script, option], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: '' },
+    });
+    assert.equal(result.status, 2, `${option}: ${result.stderr}`);
+    assert.match(result.stderr, new RegExp(`${option} needs a value`));
+    assert.match(result.stderr, /diffsplain --help/);
+  }
+});
+
 test('fails before startup when no coding agent is installed', () => {
   const result = spawnSync(process.execPath, [script], {
     encoding: 'utf8',

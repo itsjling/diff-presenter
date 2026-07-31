@@ -29,7 +29,11 @@ exit 9
 async function withCommands(commands, callback) {
   const directory = await mkdtemp(join(tmpdir(), 'diffsplain-doctor-'));
   try {
-    await Promise.all(Object.entries(commands).map(([name, options]) => fakeCommand(directory, name, options)));
+    await Promise.all(
+      Object.entries(commands).map(([name, commandOptions]) =>
+        fakeCommand(directory, name, commandOptions),
+      ),
+    );
     await callback(directory);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -47,6 +51,35 @@ function options(directory, deep = false) {
   };
 }
 
+test('reports Cursor as disabled when it cannot meet the review boundary', async () => {
+  await withCommands(
+    { git: {}, gh: { authStatus: 0 }, 'cursor-agent': {} },
+    async (directory) => {
+      const report = await doctorReport(options(directory));
+      const cursor = report.json.capabilities.agentNotes.cursor;
+
+      assert.equal(report.ready, true);
+      assert.equal(cursor.installed, false);
+      assert.equal(cursor.compatible, 'no');
+      assert.equal(cursor.smokeTest, 'not-run');
+      assert.match(report.text, /Coding agents \(none installed\)/);
+      assert.match(
+        report.text,
+        /! Cursor\s+disabled \(Cursor review is disabled: Cursor Agent has no supported read-only, no-network, no-tool mode\.\)/,
+      );
+      assert.match(
+        report.text,
+        /Agent notes: Cursor[\s\S]*installed\s+no[\s\S]*compatible\s+no/,
+      );
+      assert.match(
+        report.text,
+        /No agent is required for a plain local review; use --no-agent/,
+      );
+      assert.match(report.text, /Platform: \S+ test-arch/);
+    },
+  );
+});
+
 test('reports core review independently from optional capabilities', async () => {
   await withCommands({ git: {} }, async (directory) => {
     const report = await doctorReport(options(directory));
@@ -63,27 +96,27 @@ test('reports core review independently from optional capabilities', async () =>
 
 test('keeps installation, compatibility, authentication, and smoke tests separate', async () => {
   await withCommands(
-    { git: {}, gh: { authStatus: 0 }, 'cursor-agent': {} },
+    { git: {}, gh: { authStatus: 0 }, codex: {} },
     async (directory) => {
       const report = await doctorReport(options(directory));
-      const cursor = report.json.capabilities.agentNotes.cursor;
+      const codex = report.json.capabilities.agentNotes.codex;
 
-      assert.equal(cursor.installed, true);
-      assert.equal(cursor.compatible, 'not-verified');
-      assert.equal(cursor.authenticated, 'not-checked');
-      assert.equal(cursor.smokeTest, 'not-run');
+      assert.equal(codex.installed, true);
+      assert.equal(codex.compatible, 'not-verified');
+      assert.equal(codex.authenticated, 'not-checked');
+      assert.equal(codex.smokeTest, 'not-run');
       assert.equal(report.json.capabilities.pullRequestLookup.authenticated, 'passed');
-      assert.match(report.text, /Agent notes: Cursor[\s\S]*authenticated\s+not-checked/);
+      assert.match(report.text, /Agent notes: Codex[\s\S]*authenticated\s+not-checked/);
     },
   );
 });
 
 test('runs only explicit deep local command checks', async () => {
-  await withCommands({ git: {}, 'cursor-agent': {} }, async (directory) => {
+  await withCommands({ git: {}, codex: {} }, async (directory) => {
     const report = await doctorReport(options(directory, true));
 
     assert.equal(
-      report.json.capabilities.agentNotes.cursor.smokeTest,
+      report.json.capabilities.agentNotes.codex.smokeTest,
       'passed (local command only)',
     );
     assert.equal(
