@@ -151,6 +151,62 @@ test("selects a demo file and shows its matching diff and note", async () => {
         await page.locator("[data-demo-live]").textContent(),
         `Showing ${selectedFile.path}, file 9 of 10`,
       );
+
+      await page.getByRole("button", { name: /Choose file/ }).click();
+      await page.waitForFunction(() => {
+        const list = document.querySelector(".demo-picker-list");
+        const active = list?.querySelector('[aria-current="true"]');
+        if (!list || !active) return false;
+        const listBounds = list.getBoundingClientRect();
+        const activeBounds = active.getBoundingClientRect();
+        return (
+          Math.abs(
+            listBounds.top +
+              listBounds.height / 2 -
+              (activeBounds.top + activeBounds.height / 2),
+          ) <= 1
+        );
+      });
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(
+        () =>
+          document.activeElement?.matches("[data-demo-picker-trigger]"),
+      );
+      await page.keyboard.press("ArrowRight");
+      assert.equal(
+        await page.locator("[data-demo-path]").textContent(),
+        todoDemoFiles[9].path,
+      );
+
+      const picker = page.getByRole("button", { name: /Choose file/ });
+      const backdrop = page.locator("[data-demo-picker-backdrop]");
+      await picker.click();
+      await page
+        .getByRole("button", { name: "Close file picker" })
+        .click();
+      await backdrop.waitFor({ state: "hidden" });
+      await page.waitForFunction(
+        () =>
+          document.activeElement?.matches("[data-demo-picker-trigger]"),
+      );
+      await page.keyboard.press("ArrowRight");
+      assert.equal(
+        await page.locator("[data-demo-path]").textContent(),
+        todoDemoFiles[0].path,
+      );
+
+      await picker.click();
+      await backdrop.click({ position: { x: 5, y: 5 } });
+      await backdrop.waitFor({ state: "hidden" });
+      await page.waitForFunction(
+        () =>
+          document.activeElement?.matches("[data-demo-picker-trigger]"),
+      );
+      await page.keyboard.press("ArrowRight");
+      assert.equal(
+        await page.locator("[data-demo-path]").textContent(),
+        todoDemoFiles[1].path,
+      );
     },
   );
 });

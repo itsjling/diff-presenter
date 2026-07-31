@@ -289,11 +289,45 @@ async function checkPickerFocusLoop(page, controls) {
   );
   assert.equal(await hasFocus(trigger), true);
 
+  await selectSummaryHeading(page);
   await trigger.press("ArrowRight");
   await page.waitForFunction(
     () =>
       document.querySelector(".current-path")?.textContent ===
       "src/long-list.ts",
+  );
+  assert.equal(await hasFocus(trigger), true);
+
+  await trigger.press("Enter");
+  await dialog.waitFor();
+  await close.click();
+  await dialog.waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () => document.activeElement?.classList.contains("file-picker-trigger"),
+  );
+  await selectSummaryHeading(page);
+  await trigger.press("ArrowRight");
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".current-path")?.textContent ===
+      "assets/logo.png",
+  );
+  assert.equal(await hasFocus(trigger), true);
+
+  await trigger.press("Enter");
+  await dialog.waitFor();
+  await page.locator(".picker-backdrop").click({
+    position: { x: 5, y: 5 },
+  });
+  await dialog.waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () => document.activeElement?.classList.contains("file-picker-trigger"),
+  );
+  await selectSummaryHeading(page);
+  await trigger.press("ArrowRight");
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".current-path")?.textContent === "src/todos.ts",
   );
   assert.equal(await hasFocus(trigger), true);
 }
@@ -316,15 +350,13 @@ async function assertGestureIgnored(page, locator, start, end) {
 }
 
 async function selectSummaryHeading(page) {
-  await page
-    .getByRole("heading", { name: "Live review interaction" })
-    .evaluate((element) => {
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    });
+  await page.locator(".summary-pane h2").evaluate((element) => {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
 }
 
 async function checkProtectedTouchGestures(page, controls) {
@@ -828,10 +860,10 @@ test("centers the selected file when reopening the picker", async () => {
       const controls = pickerControls(page);
       await controls.trigger.click();
       const selectedRow = page.getByRole("button", {
-        name: /src\/file-16\.ts/i,
+        name: /src\/file-30\.ts/i,
       });
       await selectedRow.click();
-      await page.getByRole("heading", { name: "Explain file 16" }).waitFor();
+      await page.getByRole("heading", { name: "Explain file 30" }).waitFor();
 
       await controls.trigger.click();
       await controls.dialog.waitFor();

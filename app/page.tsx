@@ -209,14 +209,18 @@ function trapPickerFocus(event: KeyboardEvent, dialog: HTMLElement | null) {
 
 function fileNavigationStep(event: KeyboardEvent) {
   const target = event.target;
-  if (!(target instanceof HTMLElement) || hasSelectedText()) return 0;
+  if (!(target instanceof HTMLElement)) return 0;
   if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return 0;
+  const focusedFileControl = target.closest(
+    ".nav-button, .file-picker-trigger",
+  );
   if (
     target !== document.body &&
-    !target.closest(".nav-button, .file-picker-trigger")
+    !focusedFileControl
   ) {
     return 0;
   }
+  if (!focusedFileControl && hasSelectedText()) return 0;
   if (event.key === "ArrowRight") return 1;
   if (event.key === "ArrowLeft") return -1;
   return 0;
@@ -452,6 +456,13 @@ export default function Home() {
         const list = pickerListRef.current;
         const activeRow = activePickerRowRef.current;
         if (list && activeRow) {
+          if (list.scrollHeight > list.clientHeight) {
+            const edgeSpace = Math.max(
+              0,
+              (list.clientHeight - activeRow.offsetHeight) / 2,
+            );
+            list.style.paddingBlock = `${edgeSpace}px`;
+          }
           list.scrollTop =
             activeRow.offsetTop -
             (list.clientHeight - activeRow.offsetHeight) / 2;

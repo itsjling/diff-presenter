@@ -811,6 +811,7 @@ code {
   max-height: 286px;
   overflow: auto;
   padding: 10px 13px 16px;
+  position: relative;
 }
 
 .demo-picker-row {
