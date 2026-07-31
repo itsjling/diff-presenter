@@ -31,10 +31,10 @@ jobs:
         with:
           node-version: 24.x
           registry-url: https://registry.npmjs.org
-      - name: Enable the pinned npm version
+      - name: Enable pinned package managers
         run: corepack enable
       - name: Install lockfile dependencies
-        run: corepack npm ci
+        run: corepack pnpm install --frozen-lockfile
       - name: Set release author
         run: |
           git config user.name github-actions[bot]

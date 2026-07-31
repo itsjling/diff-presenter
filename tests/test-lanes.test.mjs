@@ -27,18 +27,18 @@ test('keeps the test lanes separate and composes the complete test gate', async 
   }
   assert.equal(
     scripts.test,
-    'npm run test:unit && npm run test:integration && npm run test:coverage && npm run test:browser && npm run test:platform',
+    'pnpm run test:unit && pnpm run test:integration && pnpm run test:coverage && pnpm run test:browser && pnpm run test:platform',
   );
-  assert.doesNotMatch(scripts['test:unit'], /browser|npm run build/);
-  assert.match(scripts['test:integration'], /npm run build/);
+  assert.doesNotMatch(scripts['test:unit'], /browser|pnpm run build/);
+  assert.match(scripts['test:integration'], /pnpm run build/);
   assert.match(scripts['test:integration'], /--test-concurrency=1/);
-  assert.match(scripts['test:coverage'], /npm run build/);
+  assert.match(scripts['test:coverage'], /pnpm run build/);
   assert.match(scripts['test:coverage'], /--test-concurrency=1/);
   assert.equal(
     scripts['test:browser'],
-    'npm run build && node --test tests/browser/*.test.mjs',
+    'pnpm run build && node --test tests/browser/*.test.mjs',
   );
-  assert.match(scripts['test:browser'], /npm run build/);
+  assert.match(scripts['test:browser'], /pnpm run build/);
   assert.doesNotMatch(scripts['test:browser'], /playwright install/);
   assert.match(scripts['test:browser:install'], /playwright install chromium/);
 
@@ -94,11 +94,11 @@ test('runs pull request lanes on Linux and scheduled shell checks elsewhere', as
   );
 
   for (const command of [
-    'npm run test:unit',
-    'npm run test:integration',
-    'npm run test:coverage',
-    'npm run test:browser',
-    'npm run test:platform',
+    'pnpm run test:unit',
+    'pnpm run test:integration',
+    'pnpm run test:coverage',
+    'pnpm run test:browser',
+    'pnpm run test:platform',
   ]) {
     assert.match(workflow, new RegExp(command.replaceAll(':', '\\:')));
   }
@@ -106,7 +106,7 @@ test('runs pull request lanes on Linux and scheduled shell checks elsewhere', as
   assert.match(workflow, /schedule:/);
   assert.match(workflow, /macos-15/);
   assert.match(workflow, /windows-2025/);
-  assert.match(workflow, /run: npm ci/g);
+  assert.match(workflow, /run: corepack pnpm install --frozen-lockfile/g);
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.doesNotMatch(workflow, /pull_request_target:|secrets\.|write-all/);
 });

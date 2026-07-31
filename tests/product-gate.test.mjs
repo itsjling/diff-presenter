@@ -14,9 +14,9 @@ test('runs the product gate from the lockfile on supported Node lines', async ()
 
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /node-version: \[22\.13\.0, 24\.x\]/);
-  assert.match(workflow, /npm install --global npm@11\.5\.1/);
-  assert.match(workflow, /run: npm ci/);
-  assert.match(workflow, /run: npm run check/);
+  assert.match(workflow, /run: corepack enable/);
+  assert.match(workflow, /run: pnpm install --frozen-lockfile/);
+  assert.match(workflow, /run: pnpm run check/);
   assert.match(fallow, /not full project health/);
 });
 

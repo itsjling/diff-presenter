@@ -60,30 +60,30 @@ Arguments:
 
 ```sh
 corepack enable
-corepack npm run setup
-corepack npm run dev
+corepack pnpm run setup
+corepack pnpm run dev
 ```
 
 Run the public CLI from this checkout:
 
 ```sh
-corepack npm run diffsplain -- --worktree
-corepack npm run diffsplain -- doctor
-corepack npm run doctor
+corepack pnpm run diffsplain -- --worktree
+corepack pnpm run diffsplain -- doctor
+corepack pnpm run doctor
 ```
 
 Install Chromium once, then run the checks:
 
 ```sh
-corepack npm run test:browser:install
-corepack npm run check
-corepack npm run test:browser
+corepack pnpm run test:browser:install
+corepack pnpm run check
+corepack pnpm run test:browser
 ```
 
 Run the Blume docs:
 
 ```sh
-corepack npm run docs:dev
+corepack pnpm run docs:dev
 ```
 
 More guides are in [`docs/`](docs/).

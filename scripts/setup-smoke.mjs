@@ -7,13 +7,14 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const npm = process.env.npm_execpath
+const packageManager = process.env.npm_execpath
   ? { command: process.execPath, prefix: [process.env.npm_execpath] }
-  : { command: 'npm', prefix: [] };
+  : { command: 'corepack', prefix: ['pnpm'] };
 const setupInputs = [
   '.npmrc',
   'npm-shrinkwrap.json',
-  'package-lock.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
   'package.json',
 ];
 
@@ -66,7 +67,11 @@ async function main() {
     await missing(join(worktree, 'node_modules'));
     await missing(join(worktree, '.cache', 'diff-data.json'));
 
-    await run(npm.command, [...npm.prefix, 'run', 'setup'], worktree);
+    await run(
+      packageManager.command,
+      [...packageManager.prefix, 'run', 'setup'],
+      worktree,
+    );
     await access(join(worktree, 'node_modules'));
     await missing(join(worktree, '.cache', 'diff-data.json'));
     console.log(`✓ Fresh worktree passed setup: ${worktree}`);

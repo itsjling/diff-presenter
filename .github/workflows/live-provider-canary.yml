@@ -22,9 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - run: npm ci
+      - run: corepack pnpm install --frozen-lockfile
 
       - name: Install Codex
         run: npm install --global @openai/codex
@@ -38,7 +37,7 @@ jobs:
             exit 1
           fi
           mkdir -p .cache
-          npm run benchmark:canary -- \
+          corepack pnpm run benchmark:canary -- \
             --runs 1 \
             --reasoning minimal \
             --result-file .cache/live-provider-canary.json

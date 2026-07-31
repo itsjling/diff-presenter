@@ -30,7 +30,7 @@ test("documents browser setup before the full checks", async () => {
   );
   assert.match(
     readme,
-    /corepack npm run test:browser:install\ncorepack npm run check\ncorepack npm run test:browser/,
+    /corepack pnpm run test:browser:install\ncorepack pnpm run check\ncorepack pnpm run test:browser/,
   );
 });
 

@@ -77,7 +77,7 @@ Before merging a change that affects the review page, check these flows at the
 sizes above when the change can affect them:
 
 1. Build the current page, then start a no-agent review with
-   `npm run build && npm run diffsplain -- --worktree --no-agent`.
+   `pnpm run build && pnpm run diffsplain -- --worktree --no-agent`.
 2. Open the file picker, search for a path, choose a file, and move back and
    forth with the available input methods.
 3. Open a shortened patch, reveal its full patch, and scroll code sideways at
@@ -96,7 +96,7 @@ request review separately when a change affects target loading or remote data.
 For a quick local check, run:
 
 ```sh
-npm run dev
+pnpm run dev
 ```
 
 Open `http://localhost:2299` and use the browser's device emulation at the
@@ -106,7 +106,7 @@ For a simulator or physical device check during development, expose the Vite
 server only on a trusted local network:
 
 ```sh
-npm run dev -- --host 0.0.0.0
+pnpm run dev -- --host 0.0.0.0
 ```
 
 Use `http://localhost:2299` in an iOS Simulator. On Android Emulator, use

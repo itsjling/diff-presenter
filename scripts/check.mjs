@@ -9,15 +9,15 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join, resolve } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const npm = process.env.npm_execpath
+const packageManager = process.env.npm_execpath
   ? { command: process.execPath, prefix: [process.env.npm_execpath] }
-  : { command: 'npm', prefix: [] };
+  : { command: 'corepack', prefix: ['pnpm'] };
 
 async function runCommand(command, args) {
   await new Promise((resolveCommand, rejectCommand) => {
@@ -37,12 +37,16 @@ async function runCommand(command, args) {
   });
 }
 
-function runNpm(args) {
-  return runCommand(npm.command, [...npm.prefix, ...args]);
+function runPackageManager(args) {
+  return runCommand(packageManager.command, [...packageManager.prefix, ...args]);
 }
 
-function execNpm(args, options) {
-  return execFileAsync(npm.command, [...npm.prefix, ...args], options);
+function execPackageManager(args, options) {
+  return execFileAsync(
+    packageManager.command,
+    [...packageManager.prefix, ...args],
+    options,
+  );
 }
 
 const proofFailure = process.env.DIFFSPLAIN_CHECK_PROOF_FAIL_STAGE;
@@ -187,12 +191,21 @@ async function smokeTestPackage() {
   const consumerRoot = join(packageRoot, 'consumer');
 
   try {
-    const { stdout } = await execNpm(
-      ['pack', '--ignore-scripts', '--json', '--pack-destination', packageRoot],
+    const { stdout } = await execPackageManager(
+      [
+        'pack',
+        '--config.ignore-scripts=true',
+        '--json',
+        '--pack-destination',
+        packageRoot,
+      ],
       { cwd: root },
     );
-    const [pack] = JSON.parse(stdout);
-    const tarball = join(packageRoot, pack.filename);
+    const packResult = JSON.parse(stdout);
+    const pack = Array.isArray(packResult) ? packResult[0] : packResult;
+    const tarball = isAbsolute(pack.filename)
+      ? pack.filename
+      : join(packageRoot, pack.filename);
     validatePackageManifest(pack);
     if (releaseTarball) {
       await mkdir(dirname(releaseTarball), { recursive: true });
@@ -204,8 +217,8 @@ async function smokeTestPackage() {
       join(consumerRoot, 'package.json'),
       JSON.stringify({ private: true, name: 'diffsplain-smoke-test' }),
     );
-    await execNpm(
-      ['install', '--ignore-scripts', '--no-audit', '--no-fund', tarball],
+    await execPackageManager(
+      ['install', '--ignore-scripts', tarball],
       { cwd: consumerRoot },
     );
 
@@ -237,11 +250,11 @@ async function smokeTestPackage() {
 }
 
 const stages = [
-  ['lint', 'React and TypeScript lint', () => runNpm(['run', 'lint'])],
-  ['build', 'Production app build', () => runNpm(['run', 'build'])],
-  ['test', 'Unit and integration tests', () => runNpm(['run', 'test:run'])],
-  ['docs', 'Documentation checks', () => runNpm(['run', 'docs:check'])],
-  ['docs', 'Production docs build', () => runNpm(['run', 'docs:build'])],
+  ['lint', 'React and TypeScript lint', () => runPackageManager(['run', 'lint'])],
+  ['build', 'Production app build', () => runPackageManager(['run', 'build'])],
+  ['test', 'Unit and integration tests', () => runPackageManager(['run', 'test:run'])],
+  ['docs', 'Documentation checks', () => runPackageManager(['run', 'docs:check'])],
+  ['docs', 'Production docs build', () => runPackageManager(['run', 'docs:build'])],
 ];
 
 export async function runCheck() {
