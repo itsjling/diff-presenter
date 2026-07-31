@@ -26,6 +26,27 @@ npm test
 
 `npm test` builds the app and runs the Node test suite.
 
+## Trust repo automation
+
+The checked-in Codex hook manifest runs no commands. This keeps a branch from
+using that manifest to approve its own code. Review `.codex/`, `.agents/`,
+`AGENTS.md`, and `skills-lock.json` at the commit you plan to use. After that
+review, you may run the vendored UI check yourself:
+
+```sh
+node .agents/skills/impeccable/scripts/hook.mjs
+```
+
+Do not put this command back in the repo-owned hook manifest. Use a user-owned
+hook outside the checkout if you want it to run on each edit.
+
+`skills-lock.json` records the source, version, path, and content hash for
+vendored skills. Pull requests that change a hook manifest, vendored automation,
+agent instructions, or this lock file request the automation owner's review.
+The `Automation trust review` check reads the pull request through the GitHub
+API without checking out branch code. It passes after a maintainer adds the
+`automation-reviewed` label.
+
 ## Publish a release
 
 Commit all release changes, then pass a version and any extra `npm version`
