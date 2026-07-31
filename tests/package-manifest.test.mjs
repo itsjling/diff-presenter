@@ -6,6 +6,7 @@ const requiredFiles = [
   'README.md',
   'package.json',
   'dist/index.html',
+  'scripts/access-token.mjs',
   'scripts/build-diff-data.mjs',
   'scripts/cache.mjs',
   'scripts/cli-args.mjs',

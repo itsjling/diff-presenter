@@ -100,6 +100,13 @@ function stop(child) {
   });
 }
 
+function reviewUrl(base, path) {
+  const url = new URL(path, base);
+  const access = new URLSearchParams(new URL(base).hash.slice(1)).get('access');
+  if (access) url.searchParams.set('access', access);
+  return url;
+}
+
 test('keeps simultaneous presenters on separate ports and data files', async () => {
   const root = await mkdtemp(join(tmpdir(), 'diffsplain-instances-'));
   const browser = join(root, 'browser');
@@ -140,11 +147,11 @@ test('keeps simultaneous presenters on separate ports and data files', async () 
 
     const [firstData, secondData] = await Promise.all([
       waitFor(async () => {
-        const response = await fetch(new URL('diff-data.json', firstUrl));
+        const response = await fetch(reviewUrl(firstUrl, 'diff-data.json'));
         return response.ok ? response.json() : undefined;
       }),
       waitFor(async () => {
-        const response = await fetch(new URL('diff-data.json', secondUrl));
+        const response = await fetch(reviewUrl(secondUrl, 'diff-data.json'));
         return response.ok ? response.json() : undefined;
       }),
     ]);
@@ -215,7 +222,7 @@ test('does not expose cached notes when --no-agent is set', async () => {
     );
     const url = await waitForUrl(child);
     const data = await waitFor(async () => {
-      const response = await fetch(new URL('diff-data.json', url));
+      const response = await fetch(reviewUrl(url, 'diff-data.json'));
       return response.ok ? response.json() : undefined;
     });
 
@@ -291,7 +298,7 @@ test('does not serve an old snapshot while the first refresh runs', async () => 
     );
 
     const url = await waitForUrl(presenter);
-    const response = await fetch(new URL('diff-data.json', url));
+    const response = await fetch(reviewUrl(url, 'diff-data.json'));
     assert.equal(response.status, 200);
     const snapshot = await response.json();
     assert.equal(snapshot.repo.name, 'repo');
@@ -357,7 +364,10 @@ test('reuses a matching project tab when it reconnects', async () => {
       { cwd: root, env: environment, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     const secondUrl = new URL(await waitForUrl(second));
-    assert.equal(secondUrl.hash, firstUrl.hash);
+    const firstSession = new URLSearchParams(firstUrl.hash.slice(1));
+    const secondSession = new URLSearchParams(secondUrl.hash.slice(1));
+    assert.equal(secondSession.get('project'), firstSession.get('project'));
+    assert.notEqual(secondSession.get('access'), firstSession.get('access'));
 
     const reused = new Promise((resolve, reject) => {
       const timer = setTimeout(
@@ -371,14 +381,17 @@ test('reuses a matching project tab when it reconnects', async () => {
         }
       });
     });
-    const eventsUrl = new URL('events', secondUrl);
+    const eventsUrl = reviewUrl(secondUrl, 'events');
+    eventsUrl.searchParams.set('access', firstSession.get('access'));
     eventsUrl.searchParams.set(
       'project',
-      new URLSearchParams(secondUrl.hash.slice(1)).get('project'),
+      secondSession.get('project'),
     );
     const response = await fetch(eventsUrl);
     reader = response.body.getReader();
-    await reader.read();
+    const initialEvents = new TextDecoder().decode((await reader.read()).value);
+    assert.match(initialEvents, /event: access/);
+    assert.match(initialEvents, new RegExp(secondSession.get('access')));
     await reused;
 
     const opened = (await readFile(browserLog, 'utf8')).trim().split('\n');

@@ -72,10 +72,12 @@ corepack npm run diffsplain -- doctor
 corepack npm run doctor
 ```
 
-Run the checks:
+Install Chromium once, then run the checks:
 
 ```sh
+corepack npm run test:browser:install
 corepack npm run check
+corepack npm run test:browser
 ```
 
 Run the Blume docs:

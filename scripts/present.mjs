@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
+  chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -20,6 +23,7 @@ import {
   selectCodingAgent,
 } from './coding-agents.mjs';
 import { doctorReport } from './doctor.mjs';
+import { accessTokenDirectory } from './access-token.mjs';
 import { cacheStatus, clearCache, formatCacheStatus, pruneCache } from './cache.mjs';
 import {
   agentFallbackRecordNeeded,
@@ -242,6 +246,20 @@ const projectKey = createHash('sha256')
   )
   .digest('hex')
   .slice(0, 12);
+const accessDirectory = accessTokenDirectory();
+const accessPath = join(accessDirectory, `${projectKey}.token`);
+mkdirSync(accessDirectory, { recursive: true, mode: 0o700 });
+chmodSync(accessDirectory, 0o700);
+let previousAccess;
+try {
+  const savedAccess = readFileSync(accessPath, 'utf8').trim();
+  if (/^[A-Za-z0-9_-]{43}$/.test(savedAccess)) previousAccess = savedAccess;
+} catch {
+  // The first run for a project has no prior tab access value.
+}
+const access = randomBytes(32).toString('base64url');
+writeFileSync(accessPath, access, { mode: 0o600 });
+chmodSync(accessPath, 0o600);
 if (agentEnabled) {
   feedArgs.push('--ignore-summary-watch');
   agentArgs.push('--snapshot', outputPath);
@@ -331,6 +349,9 @@ function startSite() {
       host,
       '--project',
       projectKey,
+      '--access',
+      access,
+      ...(previousAccess ? ['--previous-access', previousAccess] : []),
       ...(!cli.portWasPassed ? ['--increment-port'] : []),
     ],
     { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] },

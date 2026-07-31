@@ -448,6 +448,10 @@ export function parseCliArgs(
       `--port must be a number from ${portOption.min} to ${portOption.max}`,
     );
   }
+  const host = (options.get('--host') || hostOption.default).replace(
+    /^\[|\]$/g,
+    '',
+  );
 
   return {
     help: false,
@@ -465,7 +469,7 @@ export function parseCliArgs(
       : undefined,
     port: Number(portValue),
     portWasPassed: options.has('--port'),
-    host: options.get('--host') || hostOption.default,
+    host,
     browserEnabled: !options.has('--no-browser'),
     forceSummaryRegeneration: options.has('--force'),
   };
