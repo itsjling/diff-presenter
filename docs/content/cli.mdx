@@ -80,16 +80,45 @@ npx diffsplain \
 
 ## Check your setup
 
-Run the doctor command to see Node, Git, GitHub CLI, and coding agent paths and
-versions:
+Run the doctor command to see the separate local review, agent note, and pull
+request lookup capabilities:
 
 ```sh
 npx diffsplain doctor
 ```
 
-The report lists every supported agent, even when it is not installed. Its
-status says when no agent is available and whether pull request lookup can use
-`gh`.
+The report lists every supported agent, even when it is not installed. It keeps
+installation, compatibility, authentication, and smoke-test results separate.
+Missing agents do not stop a plain local review with `--no-agent`.
+
+Use JSON for setup checks in scripts or cloud jobs:
+
+```sh
+npx diffsplain doctor --json
+```
+
+The normal check does not send prompts to a provider. `--deep` runs local
+`--help` checks for installed providers after a warning; it does not send a
+provider prompt.
+
+## First run and shutdown
+
+Run the setup check through `npx`, which installs the package if needed:
+
+```sh
+npx diffsplain doctor
+```
+
+You can instead run `npm install -g diffsplain` and then `diffsplain doctor`.
+Use `--no-agent` for a plain local review when no coding agent is ready.
+
+A normal review prints a local URL and tries to open it in your browser. If the
+browser cannot open, open that URL yourself. The command keeps watching until
+you press <kbd>Ctrl</kbd>+<kbd>C</kbd>. It then stops the watcher, local server,
+and any active note process. Normal shutdown removes temporary page and agent
+input files. Saved notes remain in the user cache. Fetched Git objects remain
+in the installed package's `.cache/git` folder. See
+[Agent notes](/agent-notes/) and [Diff data](/data/) for paths and cleanup.
 
 ## Run from source
 
@@ -116,19 +145,44 @@ npm run doctor
 | `--branch NAME` | Compare a remote branch with its default branch. |
 | `--worktree` | Review tracked and untracked changes against `HEAD`. |
 | `--base REF --head REF` | Review an exact local range. |
-| `--agent NAME` | Use `codex`, `claude`, `copilot`, `cursor`, or `opencode`. |
+| `--agent NAME` | Use `codex`, `claude`, `copilot`, or `opencode`. |
 | `--no-agent` | Show the diff without agent notes. |
 | `--model NAME` | Choose the model used for notes. |
 | `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
 | `--batch-size COUNT` | Set the most files per agent pass, from `1` to `50`. Large patches use smaller batches. |
 | `--jobs COUNT` | Set agent passes to run at once, from `1` to `8`. |
 | `--force` | Regenerate all agent notes instead of using cached notes. |
+| `--support-record` | Print a safe JSON record if the review fails. |
+| `--support-record-file FILE` | Write one safe JSON record if the review fails. |
 | `--remote NAME\|URL` | Choose the Git remote. The default is `origin`. |
+| `--summaries FILE` | Choose the saved agent-note file. |
+| `--output FILE` | Choose the live snapshot file. |
+| `--cache-dir PATH` | Choose the bare Git cache folder. |
+| `--codex-bin PATH` | Choose the Codex executable. |
 | `--port NUMBER` | Choose an exact local port. The default starts at `2299`. |
+| `--host ADDRESS` | Choose the page bind address. The default is `localhost`. |
+| `--no-browser` | Do not open the page in a browser. |
 | `-h`, `--help` | Show command help. |
 | `-v`, `--version` | Show the installed version. |
 
 Remote repos need `--branch` or `--pr`. You cannot combine two target options.
-When you omit `--port`, Diffsplain increments from `2299` until it finds a free
-port. When you omit `--agent`, Diffsplain tries Codex, Claude, Copilot, Cursor,
-then OpenCode. It stops with an error if none are installed.
+For an exact local range, `--base` and `--head` must appear together. A branch
+can use `--base` without `--head`; it cannot use `--head`. `--worktree` cannot
+use another target. `--no-agent` cannot use `--summaries`. Paths passed to
+`--repo`, `--summaries`, `--output`, `--cache-dir`, and `--codex-bin` resolve
+from the current directory. `CODEX_BIN`, `CLAUDE_BIN`, `COPILOT_BIN`,
+`CURSOR_BIN`, and `OPENCODE_BIN` can select provider binaries. Supported agents
+accept `--model`. Only Codex and OpenCode accept `--reasoning`; its levels are
+`minimal`, `low`, `medium`, `high`, and `xhigh`.
+
+`--batch-size` defaults to `12` and accepts `1` through `50`. `--jobs` defaults
+to `3` and accepts `1` through `8`. `--port` accepts `0` through `65535`. When
+you omit it, Diffsplain starts at `2299` and increments until it finds a free
+port. When you omit `--agent`, Diffsplain tries Codex, Claude, Copilot, then
+OpenCode. It stops with an error if none are installed. Cursor reviews stay
+disabled because Cursor Agent has no supported read-only, no-network, no-tool
+mode. `--agent cursor` reports that boundary failure without starting Cursor.
+
+The two support record options are opt-in and cannot be combined. They include
+the selected agent, so you cannot use them with `--no-agent`. See
+[Agent notes](/agent-notes#failed-run-support-records) for the data contract.
