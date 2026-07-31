@@ -39,7 +39,9 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "packageManager": "npm@10.9.2",
   "scripts": {
+    "check": "node scripts/check.mjs",
     "dev": "vite --port 2299",
     "docs:dev": "cd docs && blume dev",
     "docs:build": "cd docs && blume build",
@@ -56,7 +58,9 @@
     "build": "vite build && node scripts/clean-built-live-data.mjs",
     "start": "node scripts/serve-built.mjs",
     "prepack": "npm run build",
+    "setup": "npm ci",
     "test": "npm run build && node --test tests/*.test.mjs",
+    "test:run": "node --test tests/*.test.mjs",
     "lint": "tsc --noEmit && eslint ."
   },
   "devDependencies": {
