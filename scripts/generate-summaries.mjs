@@ -86,7 +86,8 @@ Options:
   --summaries FILE    Agent note file
   --output FILE       Rebuilt Diffsplain JSON
   --cache-dir PATH    Bare cache for fetched Git objects
-  --agent NAME        Use codex, claude, copilot, cursor, or opencode
+  --agent NAME        Use codex, claude, copilot, or opencode
+                      Cursor is disabled because it cannot meet the review boundary
   --codex-bin FILE    Codex CLI path (default: codex)
   --model NAME        Model passed to the coding agent
   --reasoning LEVEL   Agent reasoning effort when supported

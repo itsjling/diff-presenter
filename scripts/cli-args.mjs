@@ -1,6 +1,9 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { codingAgents } from './coding-agents.mjs';
+import {
+  codingAgents,
+  enabledCodingAgents,
+} from './coding-agents.mjs';
 
 const valueOptions = new Set([
   '--repo',
@@ -54,7 +57,7 @@ Targets:
 Options:
   --repo PATH|URL|OWNER/NAME
                       Repo to review (default: current repo)
-  --agent NAME        Use codex, claude, copilot, cursor, or opencode
+  --agent NAME        Use codex, claude, copilot, or opencode
   --no-agent          Do not write agent notes
   --model NAME        Model for agent notes
   --reasoning LEVEL   Agent reasoning effort when supported
@@ -69,7 +72,11 @@ Options:
   -v, --version       Show the installed version
 
 Agent fallback:
-  codex, claude, copilot, cursor, opencode
+  codex, claude, copilot, opencode
+
+Cursor:
+  Disabled because Cursor Agent has no supported read-only, no-network,
+  no-tool mode
 
 Examples:
   diffsplain
@@ -217,7 +224,7 @@ export function parseCliArgs(
   if (noAgent && agentSet) fail('--agent and --no-agent cannot be used together');
   if (!noAgent && agent && !codingAgents.includes(agent)) {
     fail(
-      `Unsupported agent "${agent}". Choose ${codingAgents.join(', ')}.`,
+      `Unsupported agent "${agent}". Choose ${enabledCodingAgents.join(', ')}.`,
     );
   }
 

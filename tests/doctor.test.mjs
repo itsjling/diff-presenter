@@ -24,7 +24,7 @@ printf '%s\\n' ${JSON.stringify(version)}
   await chmod(path, 0o755);
 }
 
-test('reports versions and each supported coding agent', async () => {
+test('reports Cursor as disabled when it cannot meet the review boundary', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'diffsplain-doctor-'));
   try {
     await fakeCommand(directory, 'git', 'git version 2.50.0');
@@ -39,16 +39,19 @@ test('reports versions and each supported coding agent', async () => {
       nodePath: '/test/node',
     });
 
-    assert.equal(report.ready, true);
+    assert.equal(report.ready, false);
     assert.match(report.text, /Node\s+v22\.13\.0/);
     assert.match(report.text, /Git\s+git version 2\.50\.0/);
     assert.match(report.text, /gh\s+gh version 2\.80\.0/);
-    assert.match(report.text, /Coding agents \(1 installed\)/);
-    assert.match(report.text, /✓ Cursor\s+2026\.07\.29-test/);
+    assert.match(report.text, /Coding agents \(none installed\)/);
+    assert.match(
+      report.text,
+      /! Cursor\s+disabled \(Cursor review is disabled: Cursor Agent has no supported read-only, no-network, no-tool mode\.\)/,
+    );
     for (const agent of ['Codex', 'Claude', 'Copilot', 'OpenCode']) {
       assert.match(report.text, new RegExp(`✗ ${agent}\\s+not found`));
     }
-    assert.match(report.text, /Agent notes are ready with Cursor/);
+    assert.match(report.text, /No supported coding agent is installed/);
     assert.match(report.text, /Platform: \S+ test-arch/);
   } finally {
     await rm(directory, { recursive: true, force: true });

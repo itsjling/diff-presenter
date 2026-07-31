@@ -224,7 +224,12 @@ test('rejects an unknown coding agent', () => {
         callerDirectory: cwd,
         pathExists: missing,
       }),
-    /unsupported agent/i,
+    (error) => {
+      assert.match(error.message, /unsupported agent/i);
+      assert.match(error.message, /Choose codex, claude, copilot, opencode/);
+      assert.doesNotMatch(error.message, /Choose .*cursor/);
+      return true;
+    },
   );
 });
 

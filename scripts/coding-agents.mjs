@@ -1,7 +1,6 @@
 import { constants } from 'node:fs';
 import { access } from 'node:fs/promises';
 import {
-  basename,
   delimiter,
   dirname,
   isAbsolute,
@@ -15,6 +14,18 @@ export const codingAgents = [
   'cursor',
   'opencode',
 ];
+
+const cursorDisabledReason =
+  'Cursor review is disabled: Cursor Agent has no supported read-only, no-network, no-tool mode.';
+
+export function agentDisabledReason(agent) {
+  if (agent === 'cursor') return cursorDisabledReason;
+  return undefined;
+}
+
+export const enabledCodingAgents = codingAgents.filter(
+  (agent) => !agentDisabledReason(agent),
+);
 
 async function executable(path) {
   try {
@@ -69,20 +80,22 @@ export async function selectCodingAgent(
   if (requested) {
     if (!codingAgents.includes(requested)) {
       throw new Error(
-        `Unsupported agent "${requested}". Choose ${codingAgents.join(', ')}.`,
+        `Unsupported agent "${requested}". Choose ${enabledCodingAgents.join(', ')}.`,
       );
     }
+    const disabled = agentDisabledReason(requested);
+    if (disabled) throw new Error(disabled);
     if (!(await available(requested))) {
       throw new Error(`Coding agent "${requested}" is not available.`);
     }
     return requested;
   }
 
-  for (const agent of codingAgents) {
+  for (const agent of enabledCodingAgents) {
     if (await available(agent)) return agent;
   }
   throw new Error(
-    `No coding agent is available. Install one of: ${codingAgents.join(', ')}.`,
+    `No coding agent is available. Install one of: ${enabledCodingAgents.join(', ')}. ${cursorDisabledReason}`,
   );
 }
 
@@ -160,6 +173,9 @@ export function agentCommand({
   workingDirectory,
   env = process.env,
 }) {
+  const disabled = agentDisabledReason(agent);
+  if (disabled) throw new Error(disabled);
+
   if (agent === 'codex') {
     const args = [
       'exec',
@@ -219,20 +235,6 @@ export function agentCommand({
       `${prompt}\n\nRead the snapshot from @${inputPath}. Return JSON that matches this schema:\n${schemaText}`,
     );
     return { command: binary, args, input: 'none' };
-  }
-
-  if (agent === 'cursor') {
-    const args = ['--print', '--trust', '--output-format', 'json'];
-    if (model) args.push('--model', model);
-    args.push(
-      `${prompt}\n\nRead the snapshot from @${basename(inputPath)}. Return only JSON that matches this schema:\n${JSON.stringify(schema)}`,
-    );
-    return {
-      command: binary,
-      args,
-      input: 'none',
-      cwd: dirname(inputPath),
-    };
   }
 
   let config = {};
