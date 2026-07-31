@@ -30,6 +30,7 @@ type DiffFile = {
   patch: string;
   snippet: string;
   sourceUrl?: string;
+  comparisonUrl?: string;
   summary: FileSummary;
   noteReady?: boolean;
 };
@@ -237,6 +238,11 @@ export default function Home() {
   const latestVersion = useRef<string | null>(null);
   const touchStart = useRef<number | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const session = useMemo(
+    () => new URLSearchParams(window.location.hash.slice(1)),
+    [],
+  );
+  const [access, setAccess] = useState(() => session.get("access"));
 
   const refresh = useCallback(async () => {
     if (demoUnavailable) return;
@@ -245,6 +251,7 @@ export default function Home() {
     try {
       const liveUrl = new URL("diff-data.json", document.baseURI);
       liveUrl.searchParams.set("t", String(Date.now()));
+      if (access) liveUrl.searchParams.set("access", access);
       const liveResponse = await fetch(liveUrl, {
         cache: "no-store",
       });
@@ -281,7 +288,7 @@ export default function Home() {
       }
       setLoadError(message);
     }
-  }, [demoUnavailable]);
+  }, [access, demoUnavailable]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => void refresh(), 0);
@@ -300,10 +307,9 @@ export default function Home() {
     };
     if ("EventSource" in window) {
       const eventsUrl = new URL("events", document.baseURI);
-      const project = new URLSearchParams(window.location.hash.slice(1)).get(
-        "project",
-      );
+      const project = session.get("project");
       if (project) eventsUrl.searchParams.set("project", project);
+      if (access) eventsUrl.searchParams.set("access", access);
       events = new EventSource(eventsUrl);
       events.addEventListener("ready", () => {
         stopPolling();
@@ -312,6 +318,13 @@ export default function Home() {
         void refresh();
       });
       events.addEventListener("update", () => void refresh());
+      events.addEventListener("access", (event) => {
+        const nextAccess = (event as MessageEvent<string>).data;
+        if (!/^[A-Za-z0-9_-]{32,}$/.test(nextAccess)) return;
+        session.set("access", nextAccess);
+        window.history.replaceState(null, "", `#${session}`);
+        setAccess(nextAccess);
+      });
       events.addEventListener("error", startPolling);
     } else {
       startPolling();
@@ -323,7 +336,7 @@ export default function Home() {
       events?.close();
       window.clearInterval(ticker);
     };
-  }, [refresh]);
+  }, [access, refresh, session]);
 
   const files = useMemo(() => snapshot?.files ?? [], [snapshot]);
   const currentIndex = Math.max(
@@ -589,6 +602,16 @@ export default function Home() {
                     rel="noreferrer"
                   >
                     Open file ↗
+                  </a>
+                ) : null}
+                {currentFile.comparisonUrl ? (
+                  <a
+                    className="text-button"
+                    href={currentFile.comparisonUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open comparison ↗
                   </a>
                 ) : null}
               </div>

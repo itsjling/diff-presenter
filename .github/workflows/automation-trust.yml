@@ -1,0 +1,64 @@
+name: Automation trust review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  trust-review:
+    name: Automation trust review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require review for repo-owned automation
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100,
+              },
+            );
+            const protectedPath = (path) =>
+              path === "AGENTS.md" ||
+              path === "skills-lock.json" ||
+              path === ".github/workflows/automation-trust.yml" ||
+              path.startsWith(".codex/") ||
+              path.startsWith(".agents/");
+            const changed = [
+              ...new Set(
+                files.flatMap((file) =>
+                  [file.filename, file.previous_filename].filter(
+                    (path) => path && protectedPath(path),
+                  ),
+                ),
+              ),
+            ];
+            let reviewed = context.payload.pull_request.labels.some(
+              (label) => label.name === "automation-reviewed",
+            );
+            if (
+              changed.length &&
+              reviewed &&
+              context.payload.action === "synchronize"
+            ) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: "automation-reviewed",
+              });
+              reviewed = false;
+            }
+            if (changed.length && !reviewed) {
+              core.setFailed(
+                `Review repo-owned automation, then add the automation-reviewed label: ${changed.join(", ")}`,
+              );
+            }
