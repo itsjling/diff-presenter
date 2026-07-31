@@ -14,8 +14,45 @@ export function agentRunNeeded(
   );
 }
 
+function agentRunStopped({ code, error, signal }) {
+  return Boolean(error || code || signal);
+}
+
 export function agentRunCompleted({ code, error, signal, superseded }) {
-  return !error && !code && !signal && !superseded;
+  if (superseded) return false;
+  return !agentRunStopped({ code, error, signal });
+}
+
+export function agentRunSuperseded(
+  queuedFingerprint,
+  finishedFingerprint,
+) {
+  return Boolean(
+    queuedFingerprint && queuedFingerprint !== finishedFingerprint,
+  );
+}
+
+export function agentFallbackRecordNeeded({
+  closing,
+  queuedFingerprint,
+  error,
+  signal,
+}) {
+  if (closing) return false;
+  if (queuedFingerprint) return false;
+  return Boolean(error || signal);
+}
+
+export function agentRunFailed({
+  closing,
+  code,
+  error,
+  signal,
+  superseded,
+}) {
+  if (closing) return false;
+  if (superseded) return false;
+  return agentRunStopped({ code, error, signal });
 }
 
 export function failedAgentRunForFingerprint(
@@ -26,6 +63,16 @@ export function failedAgentRunForFingerprint(
   return failedFingerprint === observedFingerprint
     ? failedFingerprint
     : undefined;
+}
+
+export function nextAgentFingerprint({
+  queuedFingerprint,
+  observedFingerprint,
+  finishedFingerprint,
+}) {
+  const latest = queuedFingerprint || observedFingerprint;
+  if (!latest || latest === finishedFingerprint) return undefined;
+  return latest;
 }
 
 export function browserCommand({ url, browser, platform = process.platform }) {

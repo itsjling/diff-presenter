@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import {
+  agentFallbackRecordNeeded,
   agentRunCompleted,
+  agentRunFailed,
   agentRunNeeded,
+  agentRunSuperseded,
   browserCommand,
   ensureBuiltAssets,
   failedAgentRunForFingerprint,
+  nextAgentFingerprint,
   openBrowser,
 } from '../scripts/presenter-runtime.mjs';
 
@@ -40,6 +44,72 @@ test('does not complete a superseded agent job that exits cleanly', () => {
       superseded: false,
     }),
     true,
+  );
+});
+
+test('classifies failed agent runs and selects pending work', () => {
+  const failure = new Error('agent failed');
+  assert.equal(agentRunSuperseded('next', 'current'), true);
+  assert.equal(agentRunSuperseded('current', 'current'), false);
+  assert.equal(
+    agentFallbackRecordNeeded({
+      closing: false,
+      error: failure,
+    }),
+    true,
+  );
+  assert.equal(
+    agentFallbackRecordNeeded({
+      closing: false,
+      queuedFingerprint: 'next',
+      error: failure,
+    }),
+    false,
+  );
+  assert.equal(
+    agentFallbackRecordNeeded({
+      closing: false,
+      code: 1,
+    }),
+    false,
+  );
+  assert.equal(
+    agentRunFailed({
+      closing: false,
+      code: 1,
+      superseded: false,
+    }),
+    true,
+  );
+  assert.equal(
+    agentRunFailed({
+      closing: false,
+      code: 1,
+      superseded: true,
+    }),
+    false,
+  );
+  assert.equal(
+    nextAgentFingerprint({
+      queuedFingerprint: 'next',
+      observedFingerprint: 'observed',
+      finishedFingerprint: 'current',
+    }),
+    'next',
+  );
+  assert.equal(
+    nextAgentFingerprint({
+      observedFingerprint: 'observed',
+      finishedFingerprint: 'current',
+    }),
+    'observed',
+  );
+  assert.equal(
+    nextAgentFingerprint({
+      observedFingerprint: 'current',
+      finishedFingerprint: 'current',
+    }),
+    undefined,
   );
 });
 

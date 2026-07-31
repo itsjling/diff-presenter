@@ -22,10 +22,14 @@ import {
 import { doctorReport } from './doctor.mjs';
 import { cacheStatus, clearCache, formatCacheStatus, pruneCache } from './cache.mjs';
 import {
+  agentFallbackRecordNeeded,
   agentRunCompleted,
+  agentRunFailed,
   agentRunNeeded,
+  agentRunSuperseded,
   ensureBuiltAssets,
   failedAgentRunForFingerprint,
+  nextAgentFingerprint,
   openBrowser,
 } from './presenter-runtime.mjs';
 import {
@@ -430,6 +434,56 @@ function snapshotFingerprint() {
   return snapshotState()?.fingerprint;
 }
 
+function recordAgentFallbackStage(needed, startedAt) {
+  if (!needed) return;
+  supportRecorder?.addStage(
+    'agent',
+    performance.now() - startedAt,
+    'failed',
+  );
+}
+
+function releaseAgentChild(child) {
+  if (agent === child) agent = undefined;
+  agentFingerprint = undefined;
+}
+
+function recordAgentRunResult({
+  closing,
+  code,
+  error,
+  signal,
+  superseded,
+  finishedFingerprint,
+}) {
+  if (agentRunCompleted({ code, error, signal, superseded })) {
+    completedAgentFingerprint = finishedFingerprint;
+  }
+  if (!agentRunFailed({ closing, code, error, signal, superseded })) return;
+  failedAgentFingerprint = finishedFingerprint;
+  if (error) console.error(error.message);
+  console.error(
+    'The coding agent could not write notes. It will retry after the diff changes or Diffsplain restarts.',
+  );
+}
+
+function scheduleNextAgentFingerprint({
+  pendingFingerprint,
+  finishedFingerprint,
+}) {
+  const nextFingerprint = nextAgentFingerprint({
+    queuedFingerprint: pendingFingerprint,
+    observedFingerprint: snapshotFingerprint(),
+    finishedFingerprint,
+  });
+  queuedFingerprint = undefined;
+  if (nextFingerprint) scheduleAgent(nextFingerprint);
+}
+
+function emitAgentFallbackRecord(needed, code) {
+  if (needed) emitSupportRecord(code || 1);
+}
+
 function runAgent(fingerprint) {
   if (closing || !agentEnabled) return;
   if (agent) {
@@ -451,34 +505,33 @@ function runAgent(fingerprint) {
   const finish = (code, signal, error) => {
     if (settled) return;
     settled = true;
-    const needsFallbackRecord =
-      !closing && !queuedFingerprint && Boolean(error || signal);
-    if (needsFallbackRecord) {
-      supportRecorder?.addStage(
-        'agent',
-        performance.now() - agentStarted,
-        'failed',
-      );
-    }
     const finishedFingerprint = agentFingerprint;
-    if (agent === child) agent = undefined;
-    agentFingerprint = undefined;
-    const superseded =
-      queuedFingerprint && queuedFingerprint !== finishedFingerprint;
-    if (agentRunCompleted({ code, error, signal, superseded })) {
-      completedAgentFingerprint = finishedFingerprint;
-    }
-    if (!closing && (error || code || signal) && !superseded) {
-      failedAgentFingerprint = finishedFingerprint;
-      if (error) console.error(error.message);
-      console.error(
-        'The coding agent could not write notes. It will retry after the diff changes or Diffsplain restarts.',
-      );
-    }
-    const latest = queuedFingerprint || snapshotFingerprint();
-    queuedFingerprint = undefined;
-    if (latest && latest !== finishedFingerprint) scheduleAgent(latest);
-    if (needsFallbackRecord) emitSupportRecord(code || 1);
+    const pendingFingerprint = queuedFingerprint;
+    const superseded = agentRunSuperseded(
+      pendingFingerprint,
+      finishedFingerprint,
+    );
+    const needsFallbackRecord = agentFallbackRecordNeeded({
+      closing,
+      queuedFingerprint: pendingFingerprint,
+      error,
+      signal,
+    });
+    recordAgentFallbackStage(needsFallbackRecord, agentStarted);
+    releaseAgentChild(child);
+    recordAgentRunResult({
+      closing,
+      code,
+      error,
+      signal,
+      superseded,
+      finishedFingerprint,
+    });
+    scheduleNextAgentFingerprint({
+      pendingFingerprint,
+      finishedFingerprint,
+    });
+    emitAgentFallbackRecord(needsFallbackRecord, code);
   };
   child.on('error', (error) => finish(1, undefined, error));
   child.on('exit', (code, signal) => finish(code, signal));
