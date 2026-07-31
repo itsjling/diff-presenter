@@ -9,8 +9,9 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { summaryPath } from '../scripts/summary-path.mjs';
 
 const script = new URL('../scripts/present.mjs', import.meta.url).pathname;
 
@@ -60,6 +61,22 @@ function waitForUrl(child) {
   });
 }
 
+function waitForText(stream, pattern) {
+  return new Promise((resolve, reject) => {
+    let output = '';
+    const timer = setTimeout(() => {
+      reject(new Error(`Did not find ${pattern}: ${output}`));
+    }, 12_000);
+    stream.on('data', (chunk) => {
+      output += chunk;
+      if (pattern.test(output)) {
+        clearTimeout(timer);
+        resolve(output);
+      }
+    });
+  });
+}
+
 async function waitFor(read, timeout = 8_000) {
   const deadline = Date.now() + timeout;
   let lastError;
@@ -81,6 +98,13 @@ function stop(child) {
     child.once('error', reject);
     child.kill('SIGTERM');
   });
+}
+
+function reviewUrl(base, path) {
+  const url = new URL(path, base);
+  const access = new URLSearchParams(new URL(base).hash.slice(1)).get('access');
+  if (access) url.searchParams.set('access', access);
+  return url;
 }
 
 test('keeps simultaneous presenters on separate ports and data files', async () => {
@@ -123,11 +147,11 @@ test('keeps simultaneous presenters on separate ports and data files', async () 
 
     const [firstData, secondData] = await Promise.all([
       waitFor(async () => {
-        const response = await fetch(new URL('diff-data.json', firstUrl));
+        const response = await fetch(reviewUrl(firstUrl, 'diff-data.json'));
         return response.ok ? response.json() : undefined;
       }),
       waitFor(async () => {
-        const response = await fetch(new URL('diff-data.json', secondUrl));
+        const response = await fetch(reviewUrl(secondUrl, 'diff-data.json'));
         return response.ok ? response.json() : undefined;
       }),
     ]);
@@ -144,6 +168,71 @@ test('keeps simultaneous presenters on separate ports and data files', async () 
   } finally {
     if (first && first.exitCode === null) await stop(first);
     if (second && second.exitCode === null) await stop(second);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('does not expose cached notes when --no-agent is set', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-no-agent-'));
+  let summaries;
+  let child;
+
+  try {
+    const repo = await makeRepo(root, 'repo', 'note.txt');
+    const cacheBase = join(root, 'cache');
+    summaries = summaryPath({
+      cacheRoot: join(cacheBase, 'diffsplain'),
+      callerDirectory: root,
+      repo,
+    });
+    await mkdir(dirname(summaries), { recursive: true });
+    await writeFile(
+      summaries,
+      JSON.stringify({
+        change: {
+          title: 'Seeded change title',
+          summary: 'Seeded change body',
+          why: 'Seeded reason',
+          highlights: [],
+          risks: [],
+        },
+        files: {
+          'note.txt': {
+            title: 'Seeded file title',
+            what: 'Seeded file body',
+            why: 'Seeded file reason',
+            details: [],
+            risks: [],
+          },
+        },
+      }),
+    );
+    child = spawn(
+      process.execPath,
+      [script, '--repo', repo, '--worktree', '--no-agent'],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          BROWSER: 'true',
+          XDG_CACHE_HOME: cacheBase,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const url = await waitForUrl(child);
+    const data = await waitFor(async () => {
+      const response = await fetch(reviewUrl(url, 'diff-data.json'));
+      return response.ok ? response.json() : undefined;
+    });
+
+    assert.doesNotMatch(JSON.stringify(data), /Seeded (change|file) (title|body)/);
+    assert.equal(data.notes.complete, false);
+    assert.equal(data.notes.completedFiles, 0);
+    assert.equal(data.notes.status, 'idle');
+  } finally {
+    if (child && child.exitCode === null) await stop(child);
+    if (summaries) await rm(summaries, { force: true });
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -209,7 +298,7 @@ test('does not serve an old snapshot while the first refresh runs', async () => 
     );
 
     const url = await waitForUrl(presenter);
-    const response = await fetch(new URL('diff-data.json', url));
+    const response = await fetch(reviewUrl(url, 'diff-data.json'));
     assert.equal(response.status, 200);
     const snapshot = await response.json();
     assert.equal(snapshot.repo.name, 'repo');
@@ -275,7 +364,10 @@ test('reuses a matching project tab when it reconnects', async () => {
       { cwd: root, env: environment, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     const secondUrl = new URL(await waitForUrl(second));
-    assert.equal(secondUrl.hash, firstUrl.hash);
+    const firstSession = new URLSearchParams(firstUrl.hash.slice(1));
+    const secondSession = new URLSearchParams(secondUrl.hash.slice(1));
+    assert.equal(secondSession.get('project'), firstSession.get('project'));
+    assert.notEqual(secondSession.get('access'), firstSession.get('access'));
 
     const reused = new Promise((resolve, reject) => {
       const timer = setTimeout(
@@ -289,14 +381,17 @@ test('reuses a matching project tab when it reconnects', async () => {
         }
       });
     });
-    const eventsUrl = new URL('events', secondUrl);
+    const eventsUrl = reviewUrl(secondUrl, 'events');
+    eventsUrl.searchParams.set('access', firstSession.get('access'));
     eventsUrl.searchParams.set(
       'project',
-      new URLSearchParams(secondUrl.hash.slice(1)).get('project'),
+      secondSession.get('project'),
     );
     const response = await fetch(eventsUrl);
     reader = response.body.getReader();
-    await reader.read();
+    const initialEvents = new TextDecoder().decode((await reader.read()).value);
+    assert.match(initialEvents, /event: access/);
+    assert.match(initialEvents, new RegExp(secondSession.get('access')));
     await reused;
 
     const opened = (await readFile(browserLog, 'utf8')).trim().split('\n');
@@ -305,6 +400,76 @@ test('reuses a matching project tab when it reconnects', async () => {
     await reader?.cancel();
     if (first && first.exitCode === null) await stop(first);
     if (second && second.exitCode === null) await stop(second);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('stays available when browser launch fails and skips it when asked', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-headless-'));
+  const browserLog = join(root, 'browser.log');
+  const browser = join(root, 'browser');
+  let failingPresenter;
+  let headlessPresenter;
+
+  try {
+    const repo = await makeRepo(root, 'repo', 'file.txt');
+    failingPresenter = spawn(
+      process.execPath,
+      [
+        script,
+        '--repo',
+        repo,
+        '--worktree',
+        '--no-agent',
+        '--port',
+        '0',
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, BROWSER: join(root, 'missing-browser') },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const browserFailure = waitForText(
+      failingPresenter.stderr,
+      /Could not open the browser:/,
+    );
+    const failingUrl = await waitForUrl(failingPresenter);
+    await browserFailure;
+    assert.equal((await fetch(new URL('health', failingUrl))).status, 200);
+    assert.equal(failingPresenter.exitCode, null);
+
+    await writeFile(browser, '#!/bin/sh\nprintf opened > "$BROWSER_LOG"\n');
+    await chmod(browser, 0o755);
+    headlessPresenter = spawn(
+      process.execPath,
+      [
+        script,
+        '--repo',
+        repo,
+        '--worktree',
+        '--no-agent',
+        '--no-browser',
+        '--port',
+        '0',
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, BROWSER: browser, BROWSER_LOG: browserLog },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const headlessUrl = await waitForUrl(headlessPresenter);
+    assert.equal((await fetch(new URL('health', headlessUrl))).status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    await assert.rejects(readFile(browserLog, 'utf8'));
+  } finally {
+    if (failingPresenter && failingPresenter.exitCode === null) {
+      await stop(failingPresenter);
+    }
+    if (headlessPresenter && headlessPresenter.exitCode === null) {
+      await stop(headlessPresenter);
+    }
     await rm(root, { recursive: true, force: true });
   }
 });

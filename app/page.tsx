@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { FileDiffOptions } from "@pierre/diffs";
 import { PatchDiff, Virtualizer } from "@pierre/diffs/react";
+import { useLiveSnapshot } from "./use-live-snapshot";
 
 type FileStatus = "added" | "modified" | "deleted" | "renamed" | "binary";
 
@@ -30,6 +31,7 @@ type DiffFile = {
   patch: string;
   snippet: string;
   sourceUrl?: string;
+  comparisonUrl?: string;
   summary: FileSummary;
   noteReady?: boolean;
 };
@@ -71,7 +73,11 @@ type DiffSnapshot = {
   };
 };
 
-const FALLBACK_POLL_MS = 1_500;
+const SWIPE_THRESHOLD = 48;
+const SWIPE_EXCLUDED_TARGETS =
+  ".diff-scroll, button, a, input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']";
+const PICKER_FOCUSABLE =
+  "button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex='-1'])";
 const DIFF_OPTIONS = {
   diffIndicators: "classic",
   diffStyle: "unified",
@@ -134,6 +140,98 @@ function statusLabel(status: FileStatus) {
   return "Modified";
 }
 
+function hasSelectedText() {
+  return window.getSelection()?.isCollapsed === false;
+}
+
+function canStartSwipe(target: EventTarget | null) {
+  return (
+    target instanceof Element && !target.closest(SWIPE_EXCLUDED_TARGETS)
+  );
+}
+
+function swipeStep(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+) {
+  const horizontal = end.x - start.x;
+  const vertical = end.y - start.y;
+  if (
+    Math.abs(horizontal) < SWIPE_THRESHOLD ||
+    Math.abs(horizontal) <= Math.abs(vertical) * 1.25
+  ) {
+    return 0;
+  }
+  return horizontal < 0 ? 1 : -1;
+}
+
+function pickerFocusableElements(dialog: HTMLElement | null) {
+  if (!dialog) return [];
+  return Array.from(
+    dialog.querySelectorAll<HTMLElement>(PICKER_FOCUSABLE),
+  ).filter((element) => element.offsetParent !== null);
+}
+
+function pickerEdgeTarget(
+  event: KeyboardEvent,
+  active: Element | null,
+  first: HTMLElement,
+  last: HTMLElement,
+) {
+  if (event.shiftKey) return active === first ? last : null;
+  return active === last ? first : null;
+}
+
+function pickerFocusTarget(
+  event: KeyboardEvent,
+  dialog: HTMLElement,
+  focusable: HTMLElement[],
+) {
+  if (focusable.length === 0) return null;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+  if (!dialog.contains(active)) return event.shiftKey ? last : first;
+  return pickerEdgeTarget(event, active, first, last);
+}
+
+function trapPickerFocus(event: KeyboardEvent, dialog: HTMLElement | null) {
+  if (event.key !== "Tab" || !dialog) return;
+  const target = pickerFocusTarget(
+    event,
+    dialog,
+    pickerFocusableElements(dialog),
+  );
+  if (!target) return;
+  event.preventDefault();
+  target.focus();
+}
+
+function fileNavigationStep(event: KeyboardEvent) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || hasSelectedText()) return 0;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return 0;
+  if (target !== document.body && !target.closest(".nav-button")) return 0;
+  if (event.key === "ArrowRight") return 1;
+  if (event.key === "ArrowLeft") return -1;
+  return 0;
+}
+
+function BrandBlock() {
+  return (
+    <div className="brand-block">
+      <div className="brand-mark" aria-hidden="true">
+        <span>D</span>
+        <span>S</span>
+      </div>
+      <div>
+        <p className="brand-name">Diffsplain</p>
+        <p className="brand-tag">Agent-made change notes</p>
+      </div>
+    </div>
+  );
+}
+
 function DiffLines({ patch }: { patch: string }) {
   const shellRef = useRef<HTMLDivElement>(null);
   const renderablePatch = useMemo(
@@ -193,16 +291,7 @@ function EmptyState({
   return (
     <main className="empty-shell">
       <div className="empty-topline">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">
-            <span>D</span>
-            <span>S</span>
-          </div>
-          <div>
-            <p className="brand-name">Diffsplain</p>
-            <p className="brand-tag">Agent-made change notes</p>
-          </div>
-        </div>
+        <BrandBlock />
         <div className={`sync-state ${loadError ? "sync-state--error" : ""}`}>
           <span className="live-dot" aria-hidden="true" />
           <div>
@@ -223,10 +312,27 @@ function EmptyState({
   );
 }
 
+function ConnectionNotice({
+  demoUnavailable,
+  message,
+}: {
+  demoUnavailable: boolean;
+  message: string | null;
+}) {
+  if (!message) return null;
+  return (
+    <div className="connection-error" role="status">
+      {message}
+      {demoUnavailable
+        ? ". Check public/demo-diff-data.json."
+        : " The last valid review stays visible while Diffsplain retries."}
+    </div>
+  );
+}
+
 export default function Home() {
-  const [snapshot, setSnapshot] = useState<DiffSnapshot | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [demoUnavailable, setDemoUnavailable] = useState(false);
+  const { demoUnavailable, loadError, snapshot } =
+    useLiveSnapshot<DiffSnapshot>();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -234,96 +340,26 @@ export default function Home() {
   const [motion, setMotion] = useState<"next" | "previous" | "pick">("pick");
   const [motionKey, setMotionKey] = useState(0);
   const [clock, setClock] = useState(0);
-  const latestVersion = useRef<string | null>(null);
-  const touchStart = useRef<number | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const pickerDialogRef = useRef<HTMLElement | null>(null);
+  const pickerReturnFocusRef = useRef<HTMLElement | null>(null);
+  const pickerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (demoUnavailable) return;
-
-    let usingBundledDemo = false;
-    try {
-      const liveUrl = new URL("diff-data.json", document.baseURI);
-      liveUrl.searchParams.set("t", String(Date.now()));
-      const liveResponse = await fetch(liveUrl, {
-        cache: "no-store",
-      });
-      usingBundledDemo =
-        liveResponse.status === 404 ||
-        liveResponse.headers.get("x-diffsplain-demo") === "true";
-      const response = usingBundledDemo
-        ? liveResponse.status === 404
-          ? await fetch(new URL("demo-diff-data.json", document.baseURI))
-          : liveResponse
-        : liveResponse;
-      if (!response.ok) throw new Error(`Snapshot returned ${response.status}`);
-      const next = (await response.json()) as DiffSnapshot;
-      if (!Array.isArray(next.files)) throw new Error("Snapshot has no files");
-
-      if (next.version !== latestVersion.current) {
-        latestVersion.current = next.version;
-        setSnapshot(next);
-        setSelectedPath((current) => {
-          if (current && next.files.some((file) => file.path === current)) {
-            return current;
-          }
-          return next.files[0]?.path ?? null;
-        });
-      }
-      setLoadError(null);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Could not read the snapshot";
-      if (usingBundledDemo) {
-        setDemoUnavailable(true);
-        setLoadError(`Bundled demo is unavailable: ${message}`);
-        return;
-      }
-      setLoadError(message);
-    }
-  }, [demoUnavailable]);
+  useEffect(() => {
+    const ticker = window.setInterval(() => setClock((value) => value + 1), 5_000);
+    return () => window.clearInterval(ticker);
+  }, []);
 
   useEffect(() => {
-    const initial = window.setTimeout(() => void refresh(), 0);
-    let poll: number | undefined;
-    let events: EventSource | undefined;
-    const startPolling = () => {
-      if (poll === undefined) {
-        poll = window.setInterval(() => void refresh(), FALLBACK_POLL_MS);
+    if (!snapshot) return;
+    setSelectedPath((current) => {
+      if (current && snapshot.files.some((file) => file.path === current)) {
+        return current;
       }
-    };
-    const stopPolling = () => {
-      if (poll !== undefined) {
-        window.clearInterval(poll);
-        poll = undefined;
-      }
-    };
-    if ("EventSource" in window) {
-      const eventsUrl = new URL("events", document.baseURI);
-      const project = new URLSearchParams(window.location.hash.slice(1)).get(
-        "project",
-      );
-      if (project) eventsUrl.searchParams.set("project", project);
-      events = new EventSource(eventsUrl);
-      events.addEventListener("ready", () => {
-        stopPolling();
-        latestVersion.current = null;
-        setSnapshot(null);
-        void refresh();
-      });
-      events.addEventListener("update", () => void refresh());
-      events.addEventListener("error", startPolling);
-    } else {
-      startPolling();
-    }
-    const ticker = window.setInterval(() => setClock((value) => value + 1), 5_000);
-    return () => {
-      window.clearTimeout(initial);
-      if (poll !== undefined) window.clearInterval(poll);
-      events?.close();
-      window.clearInterval(ticker);
-    };
-  }, [refresh]);
+      return snapshot.files[0]?.path ?? null;
+    });
+  }, [snapshot]);
 
   const files = useMemo(() => snapshot?.files ?? [], [snapshot]);
   const currentIndex = Math.max(
@@ -332,6 +368,22 @@ export default function Home() {
   );
   const currentFile = files[currentIndex];
 
+  const openPicker = useCallback(() => {
+    if (!pickerReturnFocusRef.current) {
+      const active =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      pickerReturnFocusRef.current =
+        active && active !== document.body ? active : pickerTriggerRef.current;
+    }
+    setPickerOpen(true);
+  }, []);
+
+  const closePicker = useCallback(() => {
+    setPickerOpen(false);
+  }, []);
+
   const chooseFile = useCallback(
     (index: number, direction: "next" | "previous" | "pick" = "pick") => {
       const file = files[index];
@@ -339,10 +391,10 @@ export default function Home() {
       setMotion(direction);
       setMotionKey((value) => value + 1);
       setSelectedPath(file.path);
-      setPickerOpen(false);
+      closePicker();
       setQuery("");
     },
-    [files],
+    [closePicker, files],
   );
 
   const move = useCallback(
@@ -356,32 +408,46 @@ export default function Home() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null;
-      const isTyping =
-        target?.tagName === "INPUT" ||
-        target?.tagName === "TEXTAREA" ||
-        target?.tagName === "SELECT";
-
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setPickerOpen(true);
+        if (!pickerOpen) openPicker();
         return;
       }
-      if (event.key === "Escape") {
-        setPickerOpen(false);
+
+      if (pickerOpen) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closePicker();
+          return;
+        }
+        trapPickerFocus(event, pickerDialogRef.current);
         return;
       }
-      if (isTyping || pickerOpen) return;
-      if (event.key === "ArrowRight") move(1);
-      if (event.key === "ArrowLeft") move(-1);
+
+      const step = fileNavigationStep(event);
+      if (!step) return;
+      event.preventDefault();
+      move(step);
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [move, pickerOpen]);
+  }, [closePicker, move, openPicker, pickerOpen]);
 
   useEffect(() => {
-    if (pickerOpen) searchRef.current?.focus();
+    const focusTarget = pickerOpen
+      ? searchRef.current
+      : pickerReturnFocusRef.current;
+    if (!focusTarget) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const connectedTarget = focusTarget.isConnected
+        ? focusTarget
+        : pickerTriggerRef.current;
+      connectedTarget?.focus();
+      if (!pickerOpen) pickerReturnFocusRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [pickerOpen]);
 
   const visibleFiles = useMemo(() => {
@@ -394,18 +460,24 @@ export default function Home() {
     return (
       <>
         <LoadingState />
-        {loadError ? (
-          <div className="connection-error" role="status">
-            {loadError}
-            {demoUnavailable ? ". Check public/demo-diff-data.json." : ". Retrying…"}
-          </div>
-        ) : null}
+        <ConnectionNotice
+          demoUnavailable={demoUnavailable}
+          message={loadError}
+        />
       </>
     );
   }
 
   if (!files.length) {
-    return <EmptyState snapshot={snapshot} loadError={loadError} />;
+    return (
+      <>
+        <EmptyState snapshot={snapshot} loadError={loadError} />
+        <ConnectionNotice
+          demoUnavailable={demoUnavailable}
+          message={loadError}
+        />
+      </>
+    );
   }
 
   if (!currentFile) return <LoadingState />;
@@ -439,32 +511,9 @@ export default function Home() {
       : relativeTime(snapshot.generatedAt);
 
   return (
-    <main
-      className="app-shell"
-      onTouchStart={(event) => {
-        touchStart.current = event.touches[0]?.clientX ?? null;
-      }}
-      onTouchEnd={(event) => {
-        if (touchStart.current === null) return;
-        const distance =
-          (event.changedTouches[0]?.clientX ?? touchStart.current) -
-          touchStart.current;
-        touchStart.current = null;
-        if (Math.abs(distance) < 70) return;
-        move(distance < 0 ? 1 : -1);
-      }}
-    >
+    <main className="app-shell">
       <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">
-            <span>D</span>
-            <span>S</span>
-          </div>
-          <div>
-            <p className="brand-name">Diffsplain</p>
-            <p className="brand-tag">Agent-made change notes</p>
-          </div>
-        </div>
+        <BrandBlock />
 
         <div className="change-block">
           <div className="change-meta">
@@ -504,6 +553,7 @@ export default function Home() {
       <section className="reader" aria-label="Changed file reader">
         <div className="reader-toolbar">
           <button
+            type="button"
             className="nav-button nav-button--previous"
             onClick={() => move(-1)}
             aria-label="Previous file"
@@ -513,10 +563,13 @@ export default function Home() {
           </button>
 
           <button
+            ref={pickerTriggerRef}
+            type="button"
             className="file-picker-trigger"
-            onClick={() => setPickerOpen(true)}
+            onClick={openPicker}
             aria-haspopup="dialog"
             aria-expanded={pickerOpen}
+            aria-label={`Choose file. Current file ${currentIndex + 1} of ${files.length}: ${currentFile.path}`}
           >
             <span className="file-count">
               {String(currentIndex + 1).padStart(2, "0")}
@@ -540,6 +593,7 @@ export default function Home() {
           </div>
 
           <button
+            type="button"
             className="nav-button nav-button--next"
             onClick={() => move(1)}
             aria-label="Next file"
@@ -552,6 +606,30 @@ export default function Home() {
         <div
           className={`page page--${motion}`}
           key={`${currentFile.path}-${motionKey}`}
+          onTouchStart={(event) => {
+            const touch = event.touches[0];
+            touchStart.current =
+              event.touches.length === 1 &&
+              touch &&
+              !hasSelectedText() &&
+              canStartSwipe(event.target)
+                ? { x: touch.clientX, y: touch.clientY }
+                : null;
+          }}
+          onTouchEnd={(event) => {
+            const start = touchStart.current;
+            touchStart.current = null;
+            const touch = event.changedTouches[0];
+            if (!start || !touch || hasSelectedText()) return;
+            const step = swipeStep(start, {
+              x: touch.clientX,
+              y: touch.clientY,
+            });
+            if (step) move(step);
+          }}
+          onTouchCancel={() => {
+            touchStart.current = null;
+          }}
         >
           <section className="diff-pane" aria-labelledby="diff-heading">
             <div className="pane-heading">
@@ -565,6 +643,7 @@ export default function Home() {
               <div className="diff-actions">
                 {currentFile.isTruncated ? (
                   <button
+                    type="button"
                     className="text-button"
                     onClick={() =>
                       setExpandedFiles((current) => {
@@ -589,6 +668,16 @@ export default function Home() {
                     rel="noreferrer"
                   >
                     Open file ↗
+                  </a>
+                ) : null}
+                {currentFile.comparisonUrl ? (
+                  <a
+                    className="text-button"
+                    href={currentFile.comparisonUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open comparison ↗
                   </a>
                 ) : null}
               </div>
@@ -758,10 +847,11 @@ export default function Home() {
           className="picker-backdrop"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setPickerOpen(false);
+            if (event.currentTarget === event.target) closePicker();
           }}
         >
           <section
+            ref={pickerDialogRef}
             className="picker-dialog"
             role="dialog"
             aria-modal="true"
@@ -773,8 +863,9 @@ export default function Home() {
                 <h2>Jump to a file</h2>
               </div>
               <button
+                type="button"
                 className="picker-close"
-                onClick={() => setPickerOpen(false)}
+                onClick={closePicker}
                 aria-label="Close file picker"
               >
                 Esc
@@ -789,18 +880,21 @@ export default function Home() {
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Filter by path…"
                 aria-label="Filter changed files"
+                aria-controls="file-picker-list"
               />
-              <small>{visibleFiles.length} files</small>
+              <small aria-live="polite">{visibleFiles.length} files</small>
             </label>
 
-            <div className="picker-list">
+            <div className="picker-list" id="file-picker-list">
               {visibleFiles.map((file) => {
                 const index = files.findIndex((item) => item.path === file.path);
                 const active = file.path === currentFile.path;
                 return (
                   <button
+                    type="button"
                     className={`picker-row ${active ? "picker-row--active" : ""}`}
                     key={file.path}
+                    aria-current={active ? "true" : undefined}
                     onClick={() =>
                       chooseFile(
                         index,
@@ -828,11 +922,17 @@ export default function Home() {
         </div>
       ) : null}
 
+      <ConnectionNotice
+        demoUnavailable={demoUnavailable}
+        message={loadError}
+      />
       <span className="sr-only" aria-live="polite">
         {clock >= 0
-          ? notesGenerating || notesFailed
-            ? `${syncLabel}: ${noteProgress}`
-            : relativeTime(snapshot.generatedAt)
+          ? `Showing ${currentFile.path}, file ${currentIndex + 1} of ${files.length}. ${
+              notesGenerating || notesFailed
+                ? `${syncLabel}: ${noteProgress}`
+                : relativeTime(snapshot.generatedAt)
+            }`
           : ""}
       </span>
     </main>

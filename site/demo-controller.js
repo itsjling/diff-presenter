@@ -23,9 +23,15 @@ export function focusLoopTarget(activeIndex, lastIndex, shiftKey) {
 export function shouldHandleFileArrow({
   pickerIsOpen,
   targetAcceptsText,
+  targetHandlesArrow,
   demoHasFocus,
 }) {
-  return !pickerIsOpen && !targetAcceptsText && demoHasFocus;
+  return (
+    !pickerIsOpen &&
+    !targetAcceptsText &&
+    !targetHandlesArrow &&
+    demoHasFocus
+  );
 }
 
 export function swipeDirection(distance, threshold = 48) {

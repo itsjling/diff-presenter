@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 async function json(path) {
   return JSON.parse(
     await readFile(new URL(`../${path}`, import.meta.url), 'utf8'),
   );
+}
+
+function listedTests(command) {
+  return command.match(/tests\/[^ ]+\.test\.mjs/g) || [];
 }
 
 test('keeps the test lanes separate and composes the complete test gate', async () => {
@@ -23,15 +27,36 @@ test('keeps the test lanes separate and composes the complete test gate', async 
   }
   assert.equal(
     scripts.test,
-    'npm run test:unit && npm run test:integration && npm run test:coverage && npm run test:browser',
+    'npm run test:unit && npm run test:integration && npm run test:coverage && npm run test:browser && npm run test:platform',
   );
   assert.doesNotMatch(scripts['test:unit'], /browser|npm run build/);
   assert.match(scripts['test:integration'], /npm run build/);
   assert.match(scripts['test:integration'], /--test-concurrency=1/);
   assert.match(scripts['test:coverage'], /npm run build/);
   assert.match(scripts['test:coverage'], /--test-concurrency=1/);
+  assert.equal(scripts['test:browser'], 'node --test tests/browser/*.test.mjs');
   assert.doesNotMatch(scripts['test:browser'], /playwright install/);
   assert.match(scripts['test:browser:install'], /playwright install chromium/);
+
+  const currentTests = (await readdir(new URL('../tests/', import.meta.url)))
+    .filter((name) => name.endsWith('.test.mjs'))
+    .map((name) => `tests/${name}`)
+    .sort();
+  const assignedTests = [
+    ...listedTests(scripts['test:unit']),
+    ...listedTests(scripts['test:integration']),
+    ...listedTests(scripts['test:platform']),
+  ];
+  assert.equal(
+    new Set(assignedTests).size,
+    assignedTests.length,
+    'unit, integration, and platform lanes must not overlap',
+  );
+  assert.deepEqual(
+    assignedTests.sort(),
+    currentTests,
+    'each top-level test file must belong to one complete-gate lane',
+  );
 });
 
 test('holds each core path to the documented coverage floor', async () => {
@@ -78,4 +103,6 @@ test('runs pull request lanes on Linux and scheduled shell checks elsewhere', as
   assert.match(workflow, /macos-15/);
   assert.match(workflow, /windows-2025/);
   assert.match(workflow, /run: npm ci/g);
+  assert.match(workflow, /permissions:\n  contents: read/);
+  assert.doesNotMatch(workflow, /pull_request_target:|secrets\.|write-all/);
 });

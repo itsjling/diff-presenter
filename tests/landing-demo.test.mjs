@@ -40,6 +40,7 @@ test("scopes arrow keys to the focused demo", () => {
     shouldHandleFileArrow({
       pickerIsOpen: false,
       targetAcceptsText: false,
+      targetHandlesArrow: false,
       demoHasFocus: true,
     }),
     true,
@@ -48,6 +49,7 @@ test("scopes arrow keys to the focused demo", () => {
     shouldHandleFileArrow({
       pickerIsOpen: false,
       targetAcceptsText: false,
+      targetHandlesArrow: false,
       demoHasFocus: false,
     }),
     false,
@@ -56,6 +58,16 @@ test("scopes arrow keys to the focused demo", () => {
     shouldHandleFileArrow({
       pickerIsOpen: true,
       targetAcceptsText: false,
+      targetHandlesArrow: false,
+      demoHasFocus: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldHandleFileArrow({
+      pickerIsOpen: false,
+      targetAcceptsText: false,
+      targetHandlesArrow: true,
       demoHasFocus: true,
     }),
     false,

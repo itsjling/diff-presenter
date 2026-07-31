@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { summaryPath } from "../scripts/summary-path.mjs";
 
 const script = new URL("../scripts/present.mjs", import.meta.url).pathname;
 
@@ -91,7 +92,12 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
   const output = join(root, "diff-data.json");
   const events = join(root, "events.log");
   const response = join(root, "response.json");
-  const summaries = join(repo, ".diffsplain", "summaries.json");
+  const cacheBase = join(root, "cache");
+  const summaries = summaryPath({
+    cacheRoot: join(cacheBase, "diffsplain"),
+    callerDirectory: root,
+    repo,
+  });
   let presenter;
 
   try {
@@ -128,12 +134,12 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
     await writeFile(
       join(bin, "codex"),
       "#!/bin/sh\n" +
-        "if [ -f \"$PRESENTER_OUTPUT\" ]; then\n" +
-        "  printf 'codex-after-feed\\n' >> \"$PRESENTER_EVENTS\"\n" +
+        `if [ -f ${JSON.stringify(output)} ]; then\n` +
+        `  printf 'codex-after-feed\\n' >> ${JSON.stringify(events)}\n` +
         "else\n" +
-        "  printf 'codex-before-feed\\n' >> \"$PRESENTER_EVENTS\"\n" +
+        `  printf 'codex-before-feed\\n' >> ${JSON.stringify(events)}\n` +
         "fi\n" +
-        "cat \"$PRESENTER_RESPONSE\"\n",
+        `cat ${JSON.stringify(response)}\n`,
     );
     await writeFile(
       join(bin, "npm"),
@@ -168,6 +174,7 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
           PRESENTER_EVENTS: events,
           PRESENTER_OUTPUT: output,
           PRESENTER_RESPONSE: response,
+          XDG_CACHE_HOME: cacheBase,
         },
         stdio: "pipe",
       },
@@ -207,6 +214,8 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
         "--repo",
         repo,
         "--worktree",
+        "--model",
+        "changed-model",
         "--output",
         output,
         "--port",
@@ -221,21 +230,70 @@ test("starts the note agent after the watch snapshot and stops cleanly", async (
           PRESENTER_EVENTS: events,
           PRESENTER_OUTPUT: output,
           PRESENTER_RESPONSE: response,
+          XDG_CACHE_HOME: cacheBase,
         },
         stdio: "pipe",
       },
     );
-    await waitForOutput(
-      presenter,
-      /^Reusing current agent notes\.$/m,
-    );
-    const restartLog = await readFile(events, "utf8");
-    assert.equal(agentCallCount(restartLog), firstRunCalls);
+    const restartLog = await waitFor(async () => {
+      const value = await readFile(events, "utf8");
+      return agentCallCount(value) === firstRunCalls + 2
+        ? value
+        : undefined;
+    });
+    assert.equal(agentCallCount(restartLog), firstRunCalls + 2);
+    const changedModelSnapshot = await waitFor(async () => {
+      const value = JSON.parse(await readFile(output, "utf8"));
+      const noteState = [
+        value.notes.complete,
+        value.notes.fresh,
+        value.notes.model,
+      ].join(":");
+      return noteState === "true:true:changed-model" ? value : undefined;
+    });
+    assert.equal(changedModelSnapshot.notes.agent, "codex");
 
     const restartResult = await stop(presenter);
     presenter = undefined;
     assert.equal(restartResult.code, 0);
     assert.equal(restartResult.signal, null);
+
+    presenter = spawn(
+      process.execPath,
+      [
+        script,
+        "--repo",
+        repo,
+        "--worktree",
+        "--model",
+        "changed-model",
+        "--output",
+        output,
+        "--port",
+        "0",
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          BROWSER: join(bin, "browser"),
+          PATH: `${bin}:${process.env.PATH}`,
+          PRESENTER_EVENTS: events,
+          PRESENTER_OUTPUT: output,
+          PRESENTER_RESPONSE: response,
+          XDG_CACHE_HOME: cacheBase,
+        },
+        stdio: "pipe",
+      },
+    );
+    await waitForOutput(presenter, /^Reusing current agent notes\.$/m);
+    const reuseLog = await readFile(events, "utf8");
+    assert.equal(agentCallCount(reuseLog), firstRunCalls + 2);
+
+    const reuseResult = await stop(presenter);
+    presenter = undefined;
+    assert.equal(reuseResult.code, 0);
+    assert.equal(reuseResult.signal, null);
   } finally {
     await stopIfRunning(presenter);
     await rm(root, { recursive: true, force: true });
