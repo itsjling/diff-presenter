@@ -37,11 +37,19 @@ function execNpm(args, options) {
   return execFileAsync(npm.command, [...npm.prefix, ...args], options);
 }
 
-async function runStage(name, run) {
+const proofFailure = process.env.DIFFSPLAIN_CHECK_PROOF_FAIL_STAGE;
+const proofMode = process.env.DIFFSPLAIN_CHECK_PROOF_MODE === '1';
+const executeStage = proofMode
+  ? (id) => {
+      if (proofFailure === id) throw new Error('proof failure');
+    }
+  : (_id, run) => run();
+
+async function runStage(id, name, run) {
   console.log(`\n==> ${name}`);
 
   try {
-    await run();
+    await executeStage(id, run);
   } catch (error) {
     throw new Error(`${name} failed: ${error.message}`);
   }
@@ -92,18 +100,18 @@ async function smokeTestPackage() {
 }
 
 const stages = [
-  ['React and TypeScript lint', () => runNpm(['run', 'lint'])],
-  ['Production app build', () => runNpm(['run', 'build'])],
-  ['Unit and integration tests', () => runNpm(['run', 'test:run'])],
-  ['Documentation checks', () => runNpm(['run', 'docs:check'])],
-  ['Production docs build', () => runNpm(['run', 'docs:build'])],
+  ['lint', 'React and TypeScript lint', () => runNpm(['run', 'lint'])],
+  ['build', 'Production app build', () => runNpm(['run', 'build'])],
+  ['test', 'Unit and integration tests', () => runNpm(['run', 'test:run'])],
+  ['docs', 'Documentation checks', () => runNpm(['run', 'docs:check'])],
+  ['docs', 'Production docs build', () => runNpm(['run', 'docs:build'])],
 ];
 
 try {
-  for (const [name, run] of stages) {
-    await runStage(name, run);
+  for (const [id, name, run] of stages) {
+    await runStage(id, name, run);
   }
-  await runStage('Packed-package smoke test', smokeTestPackage);
+  await runStage('package', 'Packed-package smoke test', smokeTestPackage);
 } catch (error) {
   console.error(`\nCheck stopped: ${error.message}`);
   process.exitCode = 1;
