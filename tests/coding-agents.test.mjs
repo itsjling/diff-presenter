@@ -1,13 +1,37 @@
 import assert from 'node:assert/strict';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import {
   agentDisabledReason,
   agentCommand,
   codingAgentBinary,
+  findCommand,
   parseAgentResponse,
   selectCodingAgent,
   summaryAgentEnvironment,
 } from '../scripts/coding-agents.mjs';
+
+test('discovers executable providers on the configured path', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'diffsplain-provider-'));
+  const executable = join(directory, 'summary-agent');
+  const plainFile = join(directory, 'plain-file');
+  try {
+    await writeFile(executable, '#!/bin/sh\nexit 0\n');
+    await chmod(executable, 0o755);
+    await writeFile(plainFile, 'not executable\n');
+    const options = {
+      env: { PATH: directory },
+      platform: 'linux',
+    };
+    assert.equal(await findCommand('summary-agent', options), executable);
+    assert.equal(await findCommand('plain-file', options), undefined);
+    assert.equal(await findCommand('missing-agent', options), undefined);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('selects the first available agent in fallback order', async () => {
   const checked = [];
