@@ -13,9 +13,10 @@ npx diffsplain
 
 The command opens a local page and compares the checkout with its default
 branch. It starts at port `2299` and uses the next free port when needed. You
-need Node.js 22.13 or newer and a signed-in Codex, Claude, Copilot, Cursor, or
-OpenCode CLI. Diffsplain tries them in that order. Pull requests also need a
-signed-in GitHub CLI.
+need Node.js 22.13 or newer and a signed-in Codex, Claude, Copilot, or OpenCode
+CLI. Diffsplain tries them in that order. Pull requests also need a signed-in
+GitHub CLI. Cursor reviews stay disabled because Cursor Agent has no supported
+read-only, no-network, no-tool mode.
 
 Common targets:
 
@@ -58,29 +59,29 @@ Arguments:
 ## Local development
 
 ```sh
-npm install
-npm run dev
+corepack enable
+corepack npm run setup
+corepack npm run dev
 ```
 
 Run the public CLI from this checkout:
 
 ```sh
-npm run diffsplain -- --worktree
-npm run diffsplain -- doctor
-npm run doctor
+corepack npm run diffsplain -- --worktree
+corepack npm run diffsplain -- doctor
+corepack npm run doctor
 ```
 
 Run the checks:
 
 ```sh
-npm run lint
-npm test
+corepack npm run check
 ```
 
 Run the Blume docs:
 
 ```sh
-npm run docs:dev
+corepack npm run docs:dev
 ```
 
 More guides are in [`docs/`](docs/).

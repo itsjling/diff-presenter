@@ -30,7 +30,11 @@ test('prints help with either help flag', () => {
     });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Usage: diffsplain/m);
-    assert.match(result.stdout, /doctor\s+Check Git/);
+    assert.match(result.stdout, /doctor \[--json\] \[--deep\]/);
+    assert.match(
+      result.stdout,
+      /Check review, agent, and pull request capabilities/,
+    );
     assert.match(result.stdout, /--support-record/);
     assert.match(result.stdout, /--support-record-file FILE/);
     assert.match(result.stdout, /-v, --version/);
@@ -48,6 +52,35 @@ test('prints the package version with either version flag', async () => {
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), `diffsplain ${packageJson.version}`);
+  }
+});
+
+test('reports missing option values before startup', () => {
+  for (const option of [
+    '--repo',
+    '--branch',
+    '--pr',
+    '--base',
+    '--head',
+    '--remote',
+    '--summaries',
+    '--output',
+    '--cache-dir',
+    '--codex-bin',
+    '--model',
+    '--reasoning',
+    '--batch-size',
+    '--jobs',
+    '--port',
+    '--agent',
+  ]) {
+    const result = spawnSync(process.execPath, [script, option], {
+      encoding: 'utf8',
+      env: { ...process.env, PATH: '' },
+    });
+    assert.equal(result.status, 2, `${option}: ${result.stderr}`);
+    assert.match(result.stderr, new RegExp(`${option} needs a value`));
+    assert.match(result.stderr, /diffsplain --help/);
   }
 });
 
