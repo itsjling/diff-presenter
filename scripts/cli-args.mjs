@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
   assertReasoningSupported,
   codingAgents,
+  enabledCodingAgents,
 } from './coding-agents.mjs';
 
 function defineCliOptions(records) {
@@ -32,12 +33,14 @@ export const cliOptions = defineCliOptions({
   '--batch-size': { kind: 'value', default: 12, min: 1, max: 50 },
   '--jobs': { kind: 'value', default: 3, min: 1, max: 8 },
   '--port': { kind: 'value', default: 2299, min: 0, max: 65_535 },
+  '--host': { kind: 'value', default: 'localhost' },
   '--help': { kind: 'flag' },
   '--version': { kind: 'flag' },
   '--agent': { kind: 'agent' },
   '--no-agent': { kind: 'no-agent' },
   '--force': { kind: 'flag' },
   '--worktree': { kind: 'flag' },
+  '--no-browser': { kind: 'flag' },
 });
 
 const valueOptions = new Set(
@@ -59,6 +62,7 @@ const pathOptions = new Set(
 const batchSizeOption = cliOptions['--batch-size'];
 const jobsOption = cliOptions['--jobs'];
 const portOption = cliOptions['--port'];
+const hostOption = cliOptions['--host'];
 
 export const helpText = `Usage: diffsplain [REPO] [options]
 
@@ -66,7 +70,8 @@ Show the current checkout against its default branch:
   diffsplain
 
 Commands:
-  doctor              Check Git, GitHub CLI, and coding agents
+  doctor [--json] [--deep]
+                      Check review, agent, and pull request capabilities
 
 Targets:
   --branch NAME       Show a remote branch against its default branch
@@ -78,7 +83,7 @@ Targets:
 Options:
   --repo PATH|URL|OWNER/NAME
                       Repo to review (default: current repo)
-  --agent NAME        Use codex, claude, copilot, cursor, or opencode
+  --agent NAME        Use codex, claude, copilot, or opencode
   --no-agent          Do not write agent notes
   --model NAME        Model for agent notes
   --reasoning LEVEL   Agent reasoning effort when supported
@@ -87,6 +92,8 @@ Options:
   --force             Regenerate all agent notes
   --remote NAME|URL   Git remote (default: origin)
   --port NUMBER       Local page port (default: ${portOption.default})
+  --host ADDRESS      Page bind address (default: ${hostOption.default})
+  --no-browser        Do not open the page in a browser
   --summaries FILE    Saved agent-note file
   --output FILE       Live snapshot file
   --cache-dir PATH    Bare Git cache folder
@@ -95,11 +102,16 @@ Options:
   -v, --version       Show the installed version
 
 Agent fallback:
-  codex, claude, copilot, cursor, opencode
+  codex, claude, copilot, opencode
+
+Cursor:
+  Disabled because Cursor Agent has no supported read-only, no-network,
+  no-tool mode
 
 Examples:
   diffsplain
   diffsplain doctor
+  diffsplain doctor --json
   diffsplain --repo owner/project --pr 42
   diffsplain owner/project --branch feature/search
   diffsplain --agent claude`;
@@ -131,6 +143,19 @@ function githubRepoFromPullRequest(value) {
   }
 }
 
+function validPullRequest(value) {
+  if (/^[1-9]\d*$/.test(value)) return true;
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === 'https:' || url.protocol === 'http:') &&
+      /^\/[^/]+\/[^/]+\/pull\/[1-9]\d*(?:\/|$)/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function remoteRepo(value, callerDirectory, pathExists) {
   if (pathExists(resolve(callerDirectory, value))) return undefined;
   if (
@@ -153,8 +178,16 @@ export function parseCliArgs(
   } = {},
 ) {
   if (rawArgs[0] === 'doctor') {
-    if (rawArgs.length > 1) fail('doctor does not take arguments or options');
-    return { doctor: true };
+    const options = new Set(rawArgs.slice(1));
+    for (const option of options) {
+      if (!['--json', '--deep'].includes(option)) {
+        fail('doctor only accepts --json and --deep');
+      }
+    }
+    if (options.size !== rawArgs.length - 1) {
+      fail('doctor options can only be passed once');
+    }
+    return { doctor: { json: options.has('--json'), deep: options.has('--deep') } };
   }
 
   const options = new Map();
@@ -167,32 +200,38 @@ export function parseCliArgs(
     const argument = rawArgs[index];
     const parsed = splitOption(argument);
     if (!parsed) {
+      if (argument.startsWith('-')) fail(`Unknown option: ${argument}`);
+      if (!argument) fail('Repo cannot be empty');
       positionals.push(argument);
       continue;
     }
 
     if (parsed.name === '--agent') {
+      if (agentSet) fail('--agent was passed more than once');
       agentSet = true;
       if (parsed.value !== undefined) {
         if (!parsed.value) fail('--agent needs a value');
         agent = parsed.value;
       } else {
         const next = rawArgs[index + 1];
-        if (next && !next.startsWith('-')) {
-          agent = next;
-          index += 1;
-        }
+        if (!next || splitOption(next)) fail('--agent needs a value');
+        agent = next;
+        index += 1;
       }
       continue;
     }
 
     if (parsed.name === '--no-agent') {
+      if (noAgent) fail('--no-agent was passed more than once');
       if (parsed.value !== undefined) fail('--no-agent does not take a value');
       noAgent = true;
       continue;
     }
 
     if (flagOptions.has(parsed.name)) {
+      if (options.has(parsed.name)) {
+        fail(`${parsed.name} was passed more than once`);
+      }
       if (parsed.value !== undefined) {
         fail(`${parsed.name} does not take a value`);
       }
@@ -208,7 +247,7 @@ export function parseCliArgs(
     let value = parsed.value;
     if (value === undefined) {
       value = rawArgs[index + 1];
-      if (!value || value.startsWith('--')) fail(`${parsed.name} needs a value`);
+      if (!value || splitOption(value)) fail(`${parsed.name} needs a value`);
       index += 1;
     }
     if (!value) fail(`${parsed.name} needs a value`);
@@ -227,7 +266,7 @@ export function parseCliArgs(
   }
   if (!noAgent && agent && !codingAgents.includes(agent)) {
     fail(
-      `Unsupported agent "${agent}". Choose ${codingAgents.join(', ')}.`,
+      `Unsupported agent "${agent}". Choose ${enabledCodingAgents.join(', ')}.`,
     );
   }
 
@@ -246,6 +285,9 @@ export function parseCliArgs(
   }
   if (!branch && !pullRequest && !worktree && Boolean(base) !== Boolean(head)) {
     fail('--base and --head must be used together');
+  }
+  if (pullRequest && !validPullRequest(pullRequest)) {
+    fail('--pr must be a positive number or a pull request URL');
   }
 
   const repoArgument = positionals[0] || options.get('--repo');
@@ -311,11 +353,13 @@ export function parseCliArgs(
       );
     }
   }
-  for (const name of ['--batch-size', '--jobs']) {
-    agentArgs.push(
-      name,
-      options.get(name) || String(cliOptions[name].default),
-    );
+  if (!noAgent) {
+    for (const name of ['--batch-size', '--jobs']) {
+      agentArgs.push(
+        name,
+        options.get(name) || String(cliOptions[name].default),
+      );
+    }
   }
 
   const reasoning = options.get('--reasoning');
@@ -380,6 +424,8 @@ export function parseCliArgs(
     agentArgs,
     port: Number(portValue),
     portWasPassed: options.has('--port'),
+    host: options.get('--host') || hostOption.default,
+    browserEnabled: !options.has('--no-browser'),
     forceSummaryRegeneration: options.has('--force'),
   };
 }
