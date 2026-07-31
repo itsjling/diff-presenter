@@ -43,8 +43,13 @@ if (cli.version) {
   process.exit(0);
 }
 if (cli.doctor) {
-  const report = await doctorReport();
-  console.log(report.text);
+  if (cli.doctor.deep) {
+    console.error(
+      'Warning: deep checks run local provider commands. They do not send a provider prompt.',
+    );
+  }
+  const report = await doctorReport({ deep: cli.doctor.deep });
+  console.log(cli.doctor.json ? JSON.stringify(report.json, null, 2) : report.text);
   process.exit(report.ready ? 0 : 1);
 }
 

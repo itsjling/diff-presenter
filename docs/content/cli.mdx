@@ -80,16 +80,26 @@ npx diffsplain \
 
 ## Check your setup
 
-Run the doctor command to see Node, Git, GitHub CLI, and coding agent paths and
-versions:
+Run the doctor command to see the separate local review, agent note, and pull
+request lookup capabilities:
 
 ```sh
 npx diffsplain doctor
 ```
 
-The report lists every supported agent, even when it is not installed. Its
-status says when no agent is available and whether pull request lookup can use
-`gh`.
+The report lists every supported agent, even when it is not installed. It keeps
+installation, compatibility, authentication, and smoke-test results separate.
+Missing agents do not stop a plain local review with `--no-agent`.
+
+Use JSON for setup checks in scripts or cloud jobs:
+
+```sh
+npx diffsplain doctor --json
+```
+
+The normal check does not send prompts to a provider. `--deep` runs local
+`--help` checks for installed providers after a warning; it does not send a
+provider prompt.
 
 ## Run from source
 

@@ -45,7 +45,8 @@ Show the current checkout against its default branch:
   diffsplain
 
 Commands:
-  doctor              Check Git, GitHub CLI, and coding agents
+  doctor [--json] [--deep]
+                      Check review, agent, and pull request capabilities
 
 Targets:
   --branch NAME       Show a remote branch against its default branch
@@ -81,6 +82,7 @@ Cursor:
 Examples:
   diffsplain
   diffsplain doctor
+  diffsplain doctor --json
   diffsplain --repo owner/project --pr 42
   diffsplain owner/project --branch feature/search
   diffsplain --agent claude`;
@@ -147,8 +149,16 @@ export function parseCliArgs(
   } = {},
 ) {
   if (rawArgs[0] === 'doctor') {
-    if (rawArgs.length > 1) fail('doctor does not take arguments or options');
-    return { doctor: true };
+    const options = new Set(rawArgs.slice(1));
+    for (const option of options) {
+      if (!['--json', '--deep'].includes(option)) {
+        fail('doctor only accepts --json and --deep');
+      }
+    }
+    if (options.size !== rawArgs.length - 1) {
+      fail('doctor options can only be passed once');
+    }
+    return { doctor: { json: options.has('--json'), deep: options.has('--deep') } };
   }
 
   const options = new Map();
