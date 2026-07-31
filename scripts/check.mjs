@@ -69,11 +69,12 @@ const requiredPackageFiles = [
   'scripts/doctor.mjs',
   'scripts/generate-summaries.mjs',
   'scripts/present.mjs',
+  'scripts/presenter-runtime.mjs',
   'scripts/serve-built.mjs',
   'scripts/summary-path.mjs',
   'scripts/support-record.mjs',
 ];
-const allowedPackageFile = /^(README(?:\.md)?|LICENSE(?:\.md)?|NOTICE(?:\.md)?|package\.json|dist\/.+|scripts\/(?:build-diff-data|cache|cli-args|coding-agents|doctor|generate-summaries|present|serve-built|summary-path|support-record)\.mjs)$/;
+const allowedPackageFile = /^(README(?:\.md)?|LICENSE(?:\.md)?|NOTICE(?:\.md)?|package\.json|dist\/.+|scripts\/(?:build-diff-data|cache|cli-args|coding-agents|doctor|generate-summaries|present|presenter-runtime|serve-built|summary-path|support-record)\.mjs)$/;
 const privatePackageFile = /(^|\/)(?:\.env|\.npmrc|\.git|\.github|\.agents|\.codex)(?:\/|$)|\.(?:pem|key)$/i;
 
 export function validatePackageManifest(pack) {

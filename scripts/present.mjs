@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -22,6 +21,17 @@ import {
 } from './coding-agents.mjs';
 import { doctorReport } from './doctor.mjs';
 import { cacheStatus, clearCache, formatCacheStatus, pruneCache } from './cache.mjs';
+import {
+  agentFallbackRecordNeeded,
+  agentRunCompleted,
+  agentRunFailed,
+  agentRunNeeded,
+  agentRunSuperseded,
+  ensureBuiltAssets,
+  failedAgentRunForFingerprint,
+  nextAgentFingerprint,
+  openBrowser,
+} from './presenter-runtime.mjs';
 import {
   createSupportRecorder,
   formatSupportRecord,
@@ -239,32 +249,18 @@ if (agentEnabled) {
 
 const snapshotStarted = performance.now();
 let snapshotReady = false;
-const builtPage = resolve(root, 'dist/index.html');
-if (!existsSync(builtPage)) {
-  const result = spawnSync(
-    process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    ['run', 'build'],
-    { cwd: root, stdio: 'inherit' },
+try {
+  ensureBuiltAssets({ root });
+} catch (error) {
+  const exitCode = Number.isInteger(error.exitCode) ? error.exitCode : 1;
+  supportRecorder?.addStage(
+    'snapshot',
+    performance.now() - snapshotStarted,
+    'failed',
   );
-  if (result.error) {
-    supportRecorder?.addStage(
-      'snapshot',
-      performance.now() - snapshotStarted,
-      'failed',
-    );
-    console.error(`Could not build the local page: ${result.error.message}`);
-    emitSupportRecord();
-    process.exit(1);
-  }
-  if (result.status !== 0) {
-    supportRecorder?.addStage(
-      'snapshot',
-      performance.now() - snapshotStarted,
-      'failed',
-    );
-    emitSupportRecord(result.status || 1);
-    process.exit(result.status || 1);
-  }
+  console.error(error.message);
+  emitSupportRecord(exitCode);
+  process.exit(exitCode);
 }
 
 const feed = spawn(
@@ -280,38 +276,13 @@ let site;
 let agent;
 let agentTimer;
 let agentFingerprint;
+let completedAgentFingerprint;
+let failedAgentFingerprint;
 let queuedFingerprint;
 let browserOpened = false;
 let browserOpenTimer;
 let siteReady = false;
 let siteStarted;
-
-function openBrowser(url) {
-  let command;
-  let args;
-  if (process.env.BROWSER) {
-    command = process.env.BROWSER;
-    args = [url];
-  } else if (process.platform === 'darwin') {
-    command = 'open';
-    args = [url];
-  } else if (process.platform === 'win32') {
-    command = 'cmd.exe';
-    args = ['/d', '/s', '/c', 'start', '', url];
-  } else {
-    command = 'xdg-open';
-    args = [url];
-  }
-
-  const opener = spawn(command, args, {
-    detached: true,
-    stdio: 'ignore',
-  });
-  opener.once('error', (error) => {
-    console.error(`Could not open the browser: ${error.message}`);
-  });
-  opener.unref();
-}
 
 function handleConnectedTab(line) {
   if (line !== 'Diffsplain tab: connected') return false;
@@ -338,7 +309,10 @@ function scheduleBrowserOpen(match) {
   browserOpenTimer = setTimeout(() => {
     browserOpenTimer = undefined;
     browserOpened = true;
-    openBrowser(match[1]);
+    openBrowser(match[1], {
+      onError: (error) =>
+        console.error(`Could not open the browser: ${error.message}`),
+    });
   }, 750);
 }
 
@@ -460,6 +434,56 @@ function snapshotFingerprint() {
   return snapshotState()?.fingerprint;
 }
 
+function recordAgentFallbackStage(needed, startedAt) {
+  if (!needed) return;
+  supportRecorder?.addStage(
+    'agent',
+    performance.now() - startedAt,
+    'failed',
+  );
+}
+
+function releaseAgentChild(child) {
+  if (agent === child) agent = undefined;
+  agentFingerprint = undefined;
+}
+
+function recordAgentRunResult({
+  closing,
+  code,
+  error,
+  signal,
+  superseded,
+  finishedFingerprint,
+}) {
+  if (agentRunCompleted({ code, error, signal, superseded })) {
+    completedAgentFingerprint = finishedFingerprint;
+  }
+  if (!agentRunFailed({ closing, code, error, signal, superseded })) return;
+  failedAgentFingerprint = finishedFingerprint;
+  if (error) console.error(error.message);
+  console.error(
+    'The coding agent could not write notes. It will retry after the diff changes or Diffsplain restarts.',
+  );
+}
+
+function scheduleNextAgentFingerprint({
+  pendingFingerprint,
+  finishedFingerprint,
+}) {
+  const nextFingerprint = nextAgentFingerprint({
+    queuedFingerprint: pendingFingerprint,
+    observedFingerprint: snapshotFingerprint(),
+    finishedFingerprint,
+  });
+  queuedFingerprint = undefined;
+  if (nextFingerprint) scheduleAgent(nextFingerprint);
+}
+
+function emitAgentFallbackRecord(needed, code) {
+  if (needed) emitSupportRecord(code || 1);
+}
+
 function runAgent(fingerprint) {
   if (closing || !agentEnabled) return;
   if (agent) {
@@ -481,28 +505,33 @@ function runAgent(fingerprint) {
   const finish = (code, signal, error) => {
     if (settled) return;
     settled = true;
-    const needsFallbackRecord =
-      !closing && !queuedFingerprint && Boolean(error || signal);
-    if (needsFallbackRecord) {
-      supportRecorder?.addStage(
-        'agent',
-        performance.now() - agentStarted,
-        'failed',
-      );
-    }
     const finishedFingerprint = agentFingerprint;
-    if (agent === child) agent = undefined;
-    agentFingerprint = finishedFingerprint;
-    if (!closing && (error || code || signal)) {
-      if (error) console.error(error.message);
-      console.error(
-        'The coding agent could not write notes. The diff page will stay open.',
-      );
-    }
-    const latest = queuedFingerprint || snapshotFingerprint();
-    queuedFingerprint = undefined;
-    if (latest && latest !== finishedFingerprint) scheduleAgent(latest);
-    if (needsFallbackRecord) emitSupportRecord(code || 1);
+    const pendingFingerprint = queuedFingerprint;
+    const superseded = agentRunSuperseded(
+      pendingFingerprint,
+      finishedFingerprint,
+    );
+    const needsFallbackRecord = agentFallbackRecordNeeded({
+      closing,
+      queuedFingerprint: pendingFingerprint,
+      error,
+      signal,
+    });
+    recordAgentFallbackStage(needsFallbackRecord, agentStarted);
+    releaseAgentChild(child);
+    recordAgentRunResult({
+      closing,
+      code,
+      error,
+      signal,
+      superseded,
+      finishedFingerprint,
+    });
+    scheduleNextAgentFingerprint({
+      pendingFingerprint,
+      finishedFingerprint,
+    });
+    emitAgentFallbackRecord(needsFallbackRecord, code);
   };
   child.on('error', (error) => finish(1, undefined, error));
   child.on('exit', (code, signal) => finish(code, signal));
@@ -511,16 +540,27 @@ function runAgent(fingerprint) {
 function scheduleAgent(fingerprint) {
   const state = snapshotState();
   const selectedFingerprint = fingerprint || state?.fingerprint;
+  failedAgentFingerprint = failedAgentRunForFingerprint(
+    failedAgentFingerprint,
+    selectedFingerprint,
+  );
   if (
     !cli.forceSummaryRegeneration &&
     !agentFingerprint &&
     state?.hasCurrentAgentNotes &&
     selectedFingerprint === state.fingerprint
   ) {
-    agentFingerprint = selectedFingerprint;
     return;
   }
-  if (!selectedFingerprint || selectedFingerprint === agentFingerprint) return;
+  if (
+    !agentRunNeeded(selectedFingerprint, {
+      activeFingerprint: agentFingerprint,
+      completedFingerprint: completedAgentFingerprint,
+      failedFingerprint: failedAgentFingerprint,
+    })
+  ) {
+    return;
+  }
   if (agent) {
     if (selectedFingerprint !== agentFingerprint) {
       queuedFingerprint = selectedFingerprint;

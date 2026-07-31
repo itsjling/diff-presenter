@@ -13,6 +13,7 @@ const requiredFiles = [
   'scripts/doctor.mjs',
   'scripts/generate-summaries.mjs',
   'scripts/present.mjs',
+  'scripts/presenter-runtime.mjs',
   'scripts/serve-built.mjs',
   'scripts/summary-path.mjs',
   'scripts/support-record.mjs',
