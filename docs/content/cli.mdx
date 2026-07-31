@@ -80,16 +80,26 @@ npx diffsplain \
 
 ## Check your setup
 
-Run the doctor command to see Node, Git, GitHub CLI, and coding agent paths and
-versions:
+Run the doctor command to see the separate local review, agent note, and pull
+request lookup capabilities:
 
 ```sh
 npx diffsplain doctor
 ```
 
-The report lists every supported agent, even when it is not installed. Its
-status says when no agent is available and whether pull request lookup can use
-`gh`.
+The report lists every supported agent, even when it is not installed. It keeps
+installation, compatibility, authentication, and smoke-test results separate.
+Missing agents do not stop a plain local review with `--no-agent`.
+
+Use JSON for setup checks in scripts or cloud jobs:
+
+```sh
+npx diffsplain doctor --json
+```
+
+The normal check does not send prompts to a provider. `--deep` runs local
+`--help` checks for installed providers after a warning; it does not send a
+provider prompt.
 
 ## Run from source
 
@@ -116,7 +126,7 @@ npm run doctor
 | `--branch NAME` | Compare a remote branch with its default branch. |
 | `--worktree` | Review tracked and untracked changes against `HEAD`. |
 | `--base REF --head REF` | Review an exact local range. |
-| `--agent NAME` | Use `codex`, `claude`, `copilot`, `cursor`, or `opencode`. |
+| `--agent NAME` | Use `codex`, `claude`, `copilot`, or `opencode`. |
 | `--no-agent` | Show the diff without agent notes. |
 | `--model NAME` | Choose the model used for notes. |
 | `--reasoning LEVEL` | Set `minimal`, `low`, `medium`, `high`, or `xhigh`. |
@@ -130,5 +140,7 @@ npm run doctor
 
 Remote repos need `--branch` or `--pr`. You cannot combine two target options.
 When you omit `--port`, Diffsplain increments from `2299` until it finds a free
-port. When you omit `--agent`, Diffsplain tries Codex, Claude, Copilot, Cursor,
-then OpenCode. It stops with an error if none are installed.
+port. When you omit `--agent`, Diffsplain tries Codex, Claude, Copilot, then
+OpenCode. It stops with an error if none are installed. Cursor reviews stay
+disabled because Cursor Agent has no supported read-only, no-network, no-tool
+mode. `--agent cursor` reports that boundary failure without starting Cursor.

@@ -39,7 +39,10 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "packageManager": "npm@10.9.2",
   "scripts": {
+    "cloud:check": "npm run check && npm run test:cloud",
+    "check": "node scripts/check.mjs",
     "dev": "vite --port 2299",
     "docs:dev": "cd docs && blume dev",
     "docs:build": "cd docs && blume build",
@@ -49,6 +52,7 @@
     "doctor": "node scripts/present.mjs doctor",
     "fallow:audit": "fallow audit",
     "present": "node scripts/present.mjs",
+    "package:verify": "node scripts/check.mjs --package-only",
     "release": "node scripts/release.mjs",
     "summarize": "node scripts/generate-summaries.mjs",
     "snapshot": "node scripts/build-diff-data.mjs",
@@ -56,7 +60,11 @@
     "build": "vite build && node scripts/clean-built-live-data.mjs",
     "start": "node scripts/serve-built.mjs",
     "prepack": "npm run build",
+    "setup": "npm ci",
+    "setup:smoke": "node scripts/setup-smoke.mjs",
     "test": "npm run build && node --test tests/*.test.mjs",
+    "test:cloud": "node --test tests/generate-summaries.test.mjs tests/present-agent.test.mjs",
+    "test:run": "node --test tests/*.test.mjs",
     "lint": "tsc --noEmit && eslint ."
   },
   "devDependencies": {

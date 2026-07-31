@@ -1,4 +1,4 @@
-name: Fallow audit
+name: Changed-code Fallow audit (not full project health)
 
 on:
   pull_request:
@@ -7,14 +7,14 @@ permissions:
   contents: read
 
 jobs:
-  audit:
+  changed-code-audit:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Audit changed code
+      - name: Audit changed code (not full project health)
         uses: fallow-rs/fallow@v3
         with:
           command: audit
