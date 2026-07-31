@@ -88,7 +88,8 @@ Options:
   --summaries FILE    Agent note file
   --output FILE       Rebuilt Diffsplain JSON
   --cache-dir PATH    Bare cache for fetched Git objects
-  --agent NAME        Use codex, claude, copilot, cursor, or opencode
+  --agent NAME        Use codex, claude, copilot, or opencode
+                      Cursor is disabled because it cannot meet the review boundary
   --codex-bin FILE    Codex CLI path (default: codex)
   --model NAME        Model passed to the coding agent
   --reasoning LEVEL   Agent reasoning effort when supported
@@ -108,6 +109,7 @@ let selectedAgent;
 let agentBinary;
 const model = option('--model');
 const reasoning = option('--reasoning');
+const requestedAgent = option('--agent');
 const batchSizeValue = option('--batch-size') || '12';
 const reasoningLevels = new Set([
   'minimal',
@@ -119,11 +121,21 @@ const reasoningLevels = new Set([
 if (reasoning && !reasoningLevels.has(reasoning)) {
   fail('--reasoning must be minimal, low, medium, high, or xhigh');
 }
+if (requestedAgent) {
+  try {
+    await selectCodingAgent(requestedAgent, async () => true);
+    assertReasoningSupported(requestedAgent, reasoning);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
 if (!/^[1-9]\d*$/.test(batchSizeValue) || Number(batchSizeValue) > 50) {
   fail('--batch-size must be a number from 1 to 50');
 }
 const batchSize = Number(batchSizeValue);
 const batchByteLimit = 180_000;
+const softFileByteLimit = 180_000;
+const hardInputByteLimit = 2_000_000;
 const jobsValue = option('--jobs') || '3';
 if (!/^[1-9]\d*$/.test(jobsValue) || Number(jobsValue) > 8) {
   fail('--jobs must be a number from 1 to 8');
@@ -236,8 +248,9 @@ function cleanSnapshot(snapshot) {
     .filter((file) => !excluded.has(file.path))
     .map((file) => {
       const fullPatch = typeof file.patch === 'string' ? file.patch : '';
-      const useSnippet = fullPatch.length > 180_000;
-      return {
+      const useSnippet =
+        Buffer.byteLength(fullPatch) > softFileByteLimit;
+      const summaryFile = {
         path: file.path,
         ...(file.oldPath ? { oldPath: file.oldPath } : {}),
         status: file.status,
@@ -246,6 +259,16 @@ function cleanSnapshot(snapshot) {
         isBinary: file.isBinary,
         patch: useSnippet ? file.snippet : fullPatch,
         patchIsExcerpt: useSnippet,
+      };
+      const inputBytes = Buffer.byteLength(JSON.stringify(summaryFile));
+      return {
+        ...summaryFile,
+        ...(inputBytes > hardInputByteLimit
+          ? {
+              summaryFailure:
+                `The file input is ${inputBytes} bytes after using its patch excerpt; the hard limit is ${hardInputByteLimit} bytes.`,
+            }
+          : {}),
       };
     });
 
@@ -287,12 +310,12 @@ function batchInput(snapshot, rawSnapshot, paths, existingFiles) {
     })),
     files: snapshot.files
       .filter((file) => selected.has(file.path))
-      .map((file) => ({ ...file })),
+      .map(({ summaryFailure: _summaryFailure, ...file }) => file),
     ...(Object.keys(existingFileNotes).length ? { existingFileNotes } : {}),
   };
 
   let encoded = JSON.stringify(result);
-  if (Buffer.byteLength(encoded) > 2_000_000) {
+  if (Buffer.byteLength(encoded) > hardInputByteLimit) {
     for (const file of result.files) {
       const source = rawSnapshot.files.find((item) => item.path === file.path);
       file.patch = source?.snippet || '';
@@ -300,9 +323,9 @@ function batchInput(snapshot, rawSnapshot, paths, existingFiles) {
     }
     encoded = JSON.stringify(result);
   }
-  if (Buffer.byteLength(encoded) > 2_000_000) {
+  if (Buffer.byteLength(encoded) > hardInputByteLimit) {
     throw new Error(
-      `The batch containing ${paths.join(', ')} is too large to summarize`,
+      `The agent input containing ${paths.join(', ')} is larger than the ${hardInputByteLimit}-byte hard limit`,
     );
   }
   return encoded;
@@ -421,97 +444,174 @@ function exactFields(value, fields, label) {
   }
 }
 
-function normalizeResponse(
-  value,
-  paths,
-  { includeChange = true } = {},
-) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+function isObject(value) {
+  return Boolean(value) &&
+    typeof value === 'object' &&
+    !Array.isArray(value);
+}
+
+function responseObject(value) {
+  if (!isObject(value)) {
     throw new Error('Agent response must be an object');
   }
-  const allowed = new Set(['change', 'files']);
-  if (Object.keys(value).some((field) => !allowed.has(field))) {
+  return value;
+}
+
+function unsupportedResponseFields(value) {
+  return Object.keys(value).filter(
+    (field) => !['change', 'files'].includes(field),
+  );
+}
+
+function normalizeChangeResponse(value) {
+  const response = responseObject(value);
+  if (unsupportedResponseFields(response).length) {
     throw new Error('Agent response has unsupported fields');
   }
-  if (includeChange) {
-    exactFields(
-      value.change,
-      ['title', 'summary', 'why', 'highlights', 'risks'],
-      'Change note',
-    );
-  }
-  let fileValues = {};
-  if (!paths.length) {
-    return {
-      ...(includeChange
-        ? {
-            change: {
-              title: normalizedText(value.change.title, 'change.title'),
-              summary: normalizedText(
-                value.change.summary,
-                'change.summary',
-              ),
-              why: normalizedText(value.change.why, 'change.why'),
-              highlights: normalizedList(
-                value.change.highlights,
-                'change.highlights',
-              ),
-              risks: normalizedList(value.change.risks, 'change.risks'),
-            },
-          }
-        : {}),
-      files: {},
-    };
-  }
-  if (Array.isArray(value.files)) {
-    fileValues = {};
-    for (const note of value.files) {
-      exactFields(
-        note,
-        ['path', 'title', 'what', 'why', 'details', 'risks'],
-        'File note',
-      );
-      const path = normalizedText(note.path, 'files.path');
-      if (fileValues[path]) throw new Error(`Duplicate file note: ${path}`);
-      fileValues[path] = note;
-    }
-  } else {
-    fileValues = value.files;
-  }
-  exactFields(fileValues, paths, 'File notes');
-
-  const files = {};
-  for (const path of paths) {
-    const note = fileValues[path];
-    if (!Array.isArray(value.files)) {
-      exactFields(note, ['title', 'what', 'why', 'details', 'risks'], path);
-    }
-    files[path] = {
-      title: normalizedText(note.title, `${path}.title`),
-      what: normalizedText(note.what, `${path}.what`),
-      why: normalizedText(note.why, `${path}.why`),
-      details: normalizedList(note.details, `${path}.details`),
-      risks: normalizedList(note.risks, `${path}.risks`),
-    };
-  }
-
+  exactFields(
+    response.change,
+    ['title', 'summary', 'why', 'highlights', 'risks'],
+    'Change note',
+  );
   return {
-    ...(includeChange
-      ? {
-          change: {
-            title: normalizedText(value.change.title, 'change.title'),
-            summary: normalizedText(value.change.summary, 'change.summary'),
-            why: normalizedText(value.change.why, 'change.why'),
-            highlights: normalizedList(
-              value.change.highlights,
-              'change.highlights',
-            ),
-            risks: normalizedList(value.change.risks, 'change.risks'),
-          },
-        }
-      : {}),
-    files,
+    title: normalizedText(response.change.title, 'change.title'),
+    summary: normalizedText(response.change.summary, 'change.summary'),
+    why: normalizedText(response.change.why, 'change.why'),
+    highlights: normalizedList(
+      response.change.highlights,
+      'change.highlights',
+    ),
+    risks: normalizedList(response.change.risks, 'change.risks'),
   };
+}
+
+function arrayFileEntry(note) {
+  if (!isObject(note)) {
+    return { error: 'Agent response has a malformed file note' };
+  }
+  const path = typeof note.path === 'string' ? note.path.trim() : '';
+  return path
+    ? { entry: { path, note, arrayForm: true } }
+    : { error: 'Agent response has a file note without a path' };
+}
+
+function arrayFileEntries(notes) {
+  const result = { entries: [], errors: [] };
+  for (const note of notes) {
+    const item = arrayFileEntry(note);
+    if (item.entry) result.entries.push(item.entry);
+    if (item.error) result.errors.push(item.error);
+  }
+  return result;
+}
+
+function fileResponseEntries(value) {
+  const response = responseObject(value);
+  const errors = unsupportedResponseFields(response).map(
+    (field) => `Agent response has unsupported field: ${field}`,
+  );
+  if (Array.isArray(response.files)) {
+    const arrayResult = arrayFileEntries(response.files);
+    return {
+      entries: arrayResult.entries,
+      errors: [...errors, ...arrayResult.errors],
+    };
+  }
+  if (!isObject(response.files)) {
+    throw new Error('Agent response has no file notes object');
+  }
+  return {
+    entries: Object.entries(response.files).map(([path, note]) => ({
+      path,
+      note,
+      arrayForm: false,
+    })),
+    errors,
+  };
+}
+
+function normalizeFileNote(note, path, arrayForm) {
+  exactFields(
+    note,
+    [
+      ...(arrayForm ? ['path'] : []),
+      'title',
+      'what',
+      'why',
+      'details',
+      'risks',
+    ],
+    path,
+  );
+  return {
+    title: normalizedText(note.title, `${path}.title`),
+    what: normalizedText(note.what, `${path}.what`),
+    why: normalizedText(note.why, `${path}.why`),
+    details: normalizedList(note.details, `${path}.details`),
+    risks: normalizedList(note.risks, `${path}.risks`),
+  };
+}
+
+function indexFileEntries(entries, expected) {
+  const byPath = new Map();
+  const failedFiles = [];
+  for (const entry of entries) {
+    if (!expected.has(entry.path)) {
+      failedFiles.push({
+        path: entry.path,
+        reason: 'Agent output included a file outside this batch.',
+      });
+      continue;
+    }
+    const values = byPath.get(entry.path) || [];
+    byPath.set(entry.path, [...values, entry]);
+  }
+  return { byPath, failedFiles };
+}
+
+function normalizeFileEntry(path, values) {
+  if (values.length !== 1) {
+    return {
+      failure: {
+        path,
+        reason: values.length
+          ? 'Agent output repeated this file.'
+          : 'Agent output omitted this file.',
+      },
+    };
+  }
+  try {
+    return {
+      note: normalizeFileNote(
+        values[0].note,
+        path,
+        values[0].arrayForm,
+      ),
+    };
+  } catch (error) {
+    return {
+      failure: {
+        path,
+        reason: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+function normalizeFileResponse(value, paths) {
+  const expected = new Set(paths);
+  const files = {};
+  const { entries, errors } = fileResponseEntries(value);
+  const indexed = indexFileEntries(entries, expected);
+  for (const path of paths) {
+    const result = normalizeFileEntry(
+      path,
+      indexed.byPath.get(path) || [],
+    );
+    if (result.note) files[path] = result.note;
+    if (result.failure) indexed.failedFiles.push(result.failure);
+  }
+  return { files, failedFiles: indexed.failedFiles, errors };
 }
 
 function writeJsonAtomic(file, value) {
@@ -519,6 +619,52 @@ function writeJsonAtomic(file, value) {
   const temporary = `${file}.${process.pid}.tmp`;
   writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
   renameSync(temporary, file);
+}
+
+function metadataList(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function summaryFailureState(snapshot, summaries) {
+  const failedFiles = metadataList(summaries.meta?.failedFiles);
+  const errors = metadataList(summaries.meta?.errors);
+  const emptyReviewComplete =
+    snapshot.files.length === 0 &&
+    summaries.meta?.status === 'complete' &&
+    summaries.meta?.reviewFingerprint ===
+      snapshot.notes?.reviewFingerprint;
+  const complete = [
+    failedFiles.length === 0,
+    errors.length === 0,
+    emptyReviewComplete ||
+      (completeChangeNote(summaries.change) &&
+        snapshot.files.every((file) =>
+          completeFileNote(summaries.files?.[file.path]),
+        )),
+  ].every(Boolean);
+  return { failedFiles, errors, complete };
+}
+
+function snapshotFileWithNote(file, summaries, failureByPath) {
+  const nextFile = { ...file };
+  delete nextFile.noteFailure;
+  const note = summaries.files?.[file.path];
+  if (completeFileNote(note)) {
+    return { ...nextFile, summary: note, noteReady: true };
+  }
+  const failure = failureByPath.get(file.path);
+  return {
+    ...nextFile,
+    noteReady: false,
+    ...(failure ? { noteFailure: failure } : {}),
+  };
+}
+
+function notesWithoutFailures(notes = {}) {
+  const nextNotes = { ...notes };
+  delete nextNotes.failedFiles;
+  delete nextNotes.errors;
+  return nextNotes;
 }
 
 function publishSnapshot(snapshot, summaries) {
@@ -532,22 +678,13 @@ function publishSnapshot(snapshot, summaries) {
     throw new Error('The diff changed while agent notes were being written');
   }
 
-  const emptyReviewComplete =
-    snapshot.files.length === 0 &&
-    summaries.meta?.status === 'complete' &&
-    summaries.meta?.reviewFingerprint === reviewFingerprint;
-  const complete =
-    emptyReviewComplete ||
-    (completeChangeNote(summaries.change) &&
-      snapshot.files.every((file) =>
-        completeFileNote(summaries.files?.[file.path]),
-      ));
-  const files = snapshot.files.map((file) => {
-    const note = summaries.files?.[file.path];
-    return completeFileNote(note)
-      ? { ...file, summary: note, noteReady: true }
-      : { ...file, noteReady: false };
-  });
+  const state = summaryFailureState(snapshot, summaries);
+  const failureByPath = new Map(
+    state.failedFiles.map((failure) => [failure.path, failure.reason]),
+  );
+  const files = snapshot.files.map((file) =>
+    snapshotFileWithNote(file, summaries, failureByPath),
+  );
   const content = {
     ...snapshot,
     ...(completeChangeNote(summaries.change)
@@ -555,16 +692,20 @@ function publishSnapshot(snapshot, summaries) {
       : {}),
     files,
     notes: {
-      ...snapshot.notes,
+      ...notesWithoutFailures(snapshot.notes),
       agent: selectedAgent,
       generatedFor: reviewFingerprint,
       fresh: true,
-      complete,
-      status: complete
+      complete: state.complete,
+      status: state.complete
         ? 'complete'
         : summaries.meta?.status || 'generating',
       completedFiles: files.filter((file) => file.noteReady).length,
       totalFiles: files.length,
+      ...(state.failedFiles.length
+        ? { failedFiles: state.failedFiles }
+        : {}),
+      ...(state.errors.length ? { errors: state.errors } : {}),
       ...(model ? { model } : {}),
       ...(reasoning ? { reasoning } : {}),
     },
@@ -614,22 +755,52 @@ function readSummaryState(file) {
 }
 
 async function selectAgentForNotes() {
-  selectedAgent = await selectCodingAgent(
-    option('--agent'),
-    (agent) => commandAvailable(codingAgentBinary(agent, { codexBin })),
+  try {
+    selectedAgent = await selectCodingAgent(
+      requestedAgent,
+      (agent) => commandAvailable(codingAgentBinary(agent, { codexBin })),
+    );
+    assertReasoningSupported(selectedAgent, reasoning);
+    agentBinary = codingAgentBinary(selectedAgent, { codexBin });
+  } catch (error) {
+    if (error instanceof Error) error.exitCode = 2;
+    throw error;
+  }
+}
+
+function addFailures(summaries, failedFiles = [], errors = []) {
+  const priorFailedFiles = metadataList(summaries.meta?.failedFiles);
+  const priorErrors = metadataList(summaries.meta?.errors);
+  const uniqueFailures = new Map(
+    [...priorFailedFiles, ...failedFiles].map((failure) => [
+      `${failure.path}\0${failure.reason}`,
+      failure,
+    ]),
   );
-  assertReasoningSupported(selectedAgent, reasoning);
-  agentBinary = codingAgentBinary(selectedAgent, { codexBin });
+  const nextErrors = [...new Set([...priorErrors, ...errors])];
+  return {
+    ...summaries,
+    meta: {
+      ...summaries.meta,
+      ...(uniqueFailures.size
+        ? { failedFiles: [...uniqueFailures.values()] }
+        : {}),
+      ...(nextErrors.length ? { errors: nextErrors } : {}),
+    },
+  };
+}
+
+function failureReason(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split('\n').find((line) => line.trim())?.trim() ||
+    'Agent note generation failed.';
 }
 
 function runAgent(invocation, input) {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(invocation.command, invocation.args, {
       cwd: invocation.cwd || root,
-      env: {
-        ...process.env,
-        ...invocation.env,
-      },
+      env: invocation.env || process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     activeAgentProcesses.add(child);
@@ -648,6 +819,9 @@ function runAgent(invocation, input) {
     };
     child.stdout.on('data', (chunk) => collect(stdout, chunk));
     child.stderr.on('data', (chunk) => collect(stderr, chunk));
+    child.stdin.on('error', (error) => {
+      if (error.code !== 'EPIPE') rejectPromise(error);
+    });
     child.once('error', (error) => {
       activeAgentProcesses.delete(child);
       rejectPromise(error);
@@ -679,7 +853,7 @@ function runAgent(invocation, input) {
         );
         return;
       }
-      resolvePromise(stdoutText);
+      resolvePromise({ stdout: stdoutText, stderr: stderrText });
     });
     if (invocation.input === 'stdin') child.stdin.end(input);
     else child.stdin.end();
@@ -817,8 +991,12 @@ try {
       previousSummaries.meta,
       generationSettings,
     );
+    const summaryFiles = new Map(
+      snapshot.files.map((file) => [file.path, file]),
+    );
     const reusableFiles = {};
     const changedPaths = [];
+    const inputFailures = [];
     for (const path of paths) {
       if (
         !force &&
@@ -827,6 +1005,11 @@ try {
         completeFileNote(previousFiles[path])
       ) {
         reusableFiles[path] = previousFiles[path];
+      } else if (summaryFiles.get(path)?.summaryFailure) {
+        inputFailures.push({
+          path,
+          reason: summaryFiles.get(path).summaryFailure,
+        });
       } else {
         changedPaths.push(path);
       }
@@ -840,7 +1023,7 @@ try {
     const needsGeneration = changedPaths.length > 0 || changeNeedsRefresh;
 
     workingSnapshot = rawSnapshot;
-    workingSummaries = {
+    workingSummaries = addFailures({
       ...(!changeNeedsRefresh ? { change: previousSummaries.change } : {}),
       files: reusableFiles,
       meta: {
@@ -852,11 +1035,15 @@ try {
           : previousSummaries.meta?.generatedAt
             ? { generatedAt: previousSummaries.meta.generatedAt }
             : {}),
-        status: needsGeneration ? 'generating' : 'complete',
+        status: needsGeneration
+          ? 'generating'
+          : inputFailures.length
+            ? 'failed'
+            : 'complete',
         ...(model ? { model } : {}),
         ...(reasoning ? { reasoning } : {}),
       },
-    };
+    }, inputFailures);
     writeJsonAtomic(summariesPath, workingSummaries);
     publish(rawSnapshot, workingSummaries);
 
@@ -880,8 +1067,7 @@ try {
     }
     if (batch.length) batches.push(batch);
     let nextBatch = 0;
-    const runBatch = async (index) => {
-      const batchPaths = batches[index];
+    const requestBatch = async (index, batchPaths) => {
       const schemaPath = resolve(
         temporaryDirectory,
         `summary-schema-${index + 1}.json`,
@@ -921,18 +1107,41 @@ try {
       console.error(
         `Asking ${selectedAgent} for batch ${index + 1} of ${batches.length} (${batchPaths.length} changed files)...`,
       );
-      const stdout = await runAgent(invocation, input);
-      const response = parseAgentResponse(selectedAgent, stdout);
-      const normalized = normalizeResponse(response, batchPaths, {
-        includeChange: false,
-      });
+      const result = await runAgent(invocation, input);
+      if (result.stderr.trim()) {
+        console.error(
+          `${selectedAgent} wrote diagnostic output:\n${result.stderr.trim()}`,
+        );
+      }
+      return normalizeFileResponse(
+        parseAgentResponse(selectedAgent, result.stdout),
+        batchPaths,
+      );
+    };
+    const runBatch = async (index) => {
+      const batchPaths = batches[index];
+      let outcome;
+      try {
+        outcome = await requestBatch(index, batchPaths);
+      } catch (error) {
+        if (interrupted) throw error;
+        const reason = failureReason(error);
+        console.error(
+          error instanceof Error ? error.message : String(error),
+        );
+        outcome = {
+          files: {},
+          failedFiles: batchPaths.map((path) => ({ path, reason })),
+          errors: [],
+        };
+      }
       workingSummaries = {
         ...(workingSummaries.change
           ? { change: workingSummaries.change }
           : {}),
         files: {
           ...workingSummaries.files,
-          ...normalized.files,
+          ...outcome.files,
         },
         meta: {
           ...workingSummaries.meta,
@@ -940,6 +1149,11 @@ try {
           generatedAt: new Date().toISOString(),
         },
       };
+      workingSummaries = addFailures(
+        workingSummaries,
+        outcome.failedFiles,
+        outcome.errors,
+      );
       writeJsonAtomic(summariesPath, workingSummaries);
       publish(rawSnapshot, workingSummaries);
       if (batchPaths.length) {
@@ -951,7 +1165,7 @@ try {
     const workers = Array.from(
       { length: Math.min(jobs, batches.length) },
       async () => {
-        while (nextBatch < batches.length) {
+        while (!interrupted && nextBatch < batches.length) {
           const index = nextBatch;
           nextBatch += 1;
           await runBatch(index);
@@ -960,92 +1174,114 @@ try {
     );
     await Promise.all(workers);
     if (changeNeedsRefresh) {
-      const schemaPath = resolve(
-        temporaryDirectory,
-        'change-summary-schema.json',
-      );
-      const schema = outputSchema([]);
-      writeFileSync(
-        schemaPath,
-        `${JSON.stringify(schema, null, 2)}\n`,
-      );
-      const input = batchInput(
-        snapshot,
-        rawSnapshot,
-        [],
-        workingSummaries.files,
-      );
-      const inputPath = resolve(
-        temporaryDirectory,
-        'change-summary-input.json',
-      );
-      writeFileSync(inputPath, input);
-      const invocation = agentCommand({
-        agent: selectedAgent,
-        binary: agentBinary,
-        model,
-        reasoning,
-        prompt: promptFor([]),
-        schema,
-        schemaPath,
-        inputPath,
-        workingDirectory: root,
-      });
-      console.error(`Asking ${selectedAgent} for the change note...`);
-      const stdout = await runAgent(invocation, input);
-      const normalized = normalizeResponse(
-        parseAgentResponse(selectedAgent, stdout),
-        [],
-      );
-      workingSummaries = {
-        change: normalized.change,
-        files: workingSummaries.files,
-        meta: {
-          ...workingSummaries.meta,
-          status: 'complete',
-          generatedAt: new Date().toISOString(),
-        },
-      };
-      writeJsonAtomic(summariesPath, workingSummaries);
-      publish(rawSnapshot, workingSummaries);
-      console.log(`Updated the change note in ${summariesPath}`);
-    } else if (batches.length) {
-      workingSummaries = {
-        ...workingSummaries,
-        meta: {
-          ...workingSummaries.meta,
-          status: 'complete',
-          generatedAt: new Date().toISOString(),
-        },
-      };
-      writeJsonAtomic(summariesPath, workingSummaries);
-      publish(rawSnapshot, workingSummaries);
+      try {
+        const schemaPath = resolve(
+          temporaryDirectory,
+          'change-summary-schema.json',
+        );
+        const schema = outputSchema([]);
+        writeFileSync(
+          schemaPath,
+          `${JSON.stringify(schema, null, 2)}\n`,
+        );
+        const input = batchInput(
+          snapshot,
+          rawSnapshot,
+          [],
+          workingSummaries.files,
+        );
+        const inputPath = resolve(
+          temporaryDirectory,
+          'change-summary-input.json',
+        );
+        writeFileSync(inputPath, input);
+        const invocation = agentCommand({
+          agent: selectedAgent,
+          binary: agentBinary,
+          model,
+          reasoning,
+          prompt: promptFor([]),
+          schema,
+          schemaPath,
+          inputPath,
+          workingDirectory: root,
+        });
+        console.error(`Asking ${selectedAgent} for the change note...`);
+        const result = await runAgent(invocation, input);
+        if (result.stderr.trim()) {
+          console.error(
+            `${selectedAgent} wrote diagnostic output:\n${result.stderr.trim()}`,
+          );
+        }
+        const normalized = normalizeChangeResponse(
+          parseAgentResponse(selectedAgent, result.stdout),
+        );
+        workingSummaries = {
+          change: normalized,
+          files: workingSummaries.files,
+          meta: workingSummaries.meta,
+        };
+        console.log(`Updated the change note in ${summariesPath}`);
+      } catch (error) {
+        if (interrupted) throw error;
+        console.error(
+          error instanceof Error ? error.message : String(error),
+        );
+        workingSummaries = addFailures(
+          workingSummaries,
+          [],
+          [`Change note: ${failureReason(error)}`],
+        );
+      }
     }
-    if (batches.length === 0) {
+    const failedFiles = workingSummaries.meta.failedFiles || [];
+    const generationErrors = workingSummaries.meta.errors || [];
+    const complete =
+      failedFiles.length === 0 &&
+      generationErrors.length === 0 &&
+      completeChangeNote(workingSummaries.change) &&
+      paths.every((path) =>
+        completeFileNote(workingSummaries.files[path]),
+      );
+    workingSummaries = {
+      ...workingSummaries,
+      meta: {
+        ...workingSummaries.meta,
+        status: complete ? 'complete' : 'failed',
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    writeJsonAtomic(summariesPath, workingSummaries);
+    publish(rawSnapshot, workingSummaries);
+    if (batches.length === 0 && inputFailures.length === 0) {
       console.log('No file summaries changed.');
     }
+    for (const failure of failedFiles) {
+      console.error(`${failure.path}: ${failure.reason}`);
+    }
+    for (const error of generationErrors) console.error(error);
+    if (!complete) process.exitCode = 1;
     console.log(`Rebuilt ${outputPath}`);
   }
 } catch (error) {
   if (!interrupted && workingSummaries && workingSnapshot) {
     try {
-      workingSummaries = {
+      workingSummaries = addFailures({
         ...workingSummaries,
         meta: {
           ...workingSummaries.meta,
           status: 'failed',
           generatedAt: new Date().toISOString(),
         },
-      };
+      }, [], [failureReason(error)]);
       writeJsonAtomic(summariesPath, workingSummaries);
       publish(workingSnapshot, workingSummaries);
     } catch {}
   }
-  if (interrupted) {
-    process.exitCode = 130;
-  } else {
+  if (!interrupted) {
     console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    process.exitCode =
+      error instanceof Error && error.exitCode === 2 ? 2 : 1;
   }
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

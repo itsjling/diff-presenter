@@ -26,14 +26,16 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
+      - name: Enable the pinned npm version
+        run: corepack enable
       - name: Install dependencies
-        run: npm ci
+        run: corepack npm run setup
       - name: Check docs
-        run: npm run docs:check
+        run: corepack npm run docs:check
       - name: Build docs
-        run: npm run docs:build
+        run: corepack npm run docs:build
       - name: Assemble site
         run: |
           mkdir -p _site/docs

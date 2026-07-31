@@ -191,6 +191,10 @@ Spacing runs from tight `4px` control details to `28px`–`34px` section insets.
 
 At `980px` and below, the panes stack, the change summary leaves the top bar, and the diff keeps a bounded height. At `680px` and below, the reader reaches both screen edges, minor toolbar metadata hides, the picker becomes a bottom sheet, and the code grid keeps its working width inside a horizontal scroll area.
 
+The responsive review contract starts at `320px` wide. It covers mouse,
+keyboard, and touch review; see `docs/content/mobile.mdx` for the tested sizes,
+browsers, device path, and required review flows.
+
 ## Elevation & Depth
 
 The system is mostly flat and uses borders, background shifts, and fixed regions for depth. The large reader and modal receive ambient shadows because they sit above the desk canvas; inner notes, rows, and controls stay flat.

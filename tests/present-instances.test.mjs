@@ -61,6 +61,22 @@ function waitForUrl(child) {
   });
 }
 
+function waitForText(stream, pattern) {
+  return new Promise((resolve, reject) => {
+    let output = '';
+    const timer = setTimeout(() => {
+      reject(new Error(`Did not find ${pattern}: ${output}`));
+    }, 12_000);
+    stream.on('data', (chunk) => {
+      output += chunk;
+      if (pattern.test(output)) {
+        clearTimeout(timer);
+        resolve(output);
+      }
+    });
+  });
+}
+
 async function waitFor(read, timeout = 8_000) {
   const deadline = Date.now() + timeout;
   let lastError;
@@ -371,6 +387,76 @@ test('reuses a matching project tab when it reconnects', async () => {
     await reader?.cancel();
     if (first && first.exitCode === null) await stop(first);
     if (second && second.exitCode === null) await stop(second);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('stays available when browser launch fails and skips it when asked', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-headless-'));
+  const browserLog = join(root, 'browser.log');
+  const browser = join(root, 'browser');
+  let failingPresenter;
+  let headlessPresenter;
+
+  try {
+    const repo = await makeRepo(root, 'repo', 'file.txt');
+    failingPresenter = spawn(
+      process.execPath,
+      [
+        script,
+        '--repo',
+        repo,
+        '--worktree',
+        '--no-agent',
+        '--port',
+        '0',
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, BROWSER: join(root, 'missing-browser') },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const browserFailure = waitForText(
+      failingPresenter.stderr,
+      /Could not open the browser:/,
+    );
+    const failingUrl = await waitForUrl(failingPresenter);
+    await browserFailure;
+    assert.equal((await fetch(new URL('health', failingUrl))).status, 200);
+    assert.equal(failingPresenter.exitCode, null);
+
+    await writeFile(browser, '#!/bin/sh\nprintf opened > "$BROWSER_LOG"\n');
+    await chmod(browser, 0o755);
+    headlessPresenter = spawn(
+      process.execPath,
+      [
+        script,
+        '--repo',
+        repo,
+        '--worktree',
+        '--no-agent',
+        '--no-browser',
+        '--port',
+        '0',
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, BROWSER: browser, BROWSER_LOG: browserLog },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    const headlessUrl = await waitForUrl(headlessPresenter);
+    assert.equal((await fetch(new URL('health', headlessUrl))).status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    await assert.rejects(readFile(browserLog, 'utf8'));
+  } finally {
+    if (failingPresenter && failingPresenter.exitCode === null) {
+      await stop(failingPresenter);
+    }
+    if (headlessPresenter && headlessPresenter.exitCode === null) {
+      await stop(headlessPresenter);
+    }
     await rm(root, { recursive: true, force: true });
   }
 });
