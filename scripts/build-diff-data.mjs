@@ -12,7 +12,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { basename, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { summaryPath } from './summary-path.mjs';
 
@@ -1090,7 +1090,7 @@ function build() {
   const change = changeSummary(sourceSummaries.change, target.changeDefaults);
   const content = {
     repo: {
-      name: remoteRepository?.name || repo.split('/').pop(),
+      name: remoteRepository?.name || basename(repo),
       root: localWorkspace ? repo : target.remote?.url || repo,
       base: target.base,
       head: target.head,
