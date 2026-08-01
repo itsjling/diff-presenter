@@ -34,6 +34,7 @@ test('keeps the test lanes separate and composes the complete test gate', async 
   assert.match(scripts['test:integration'], /--test-concurrency=1/);
   assert.match(scripts['test:coverage'], /pnpm run build/);
   assert.match(scripts['test:coverage'], /--test-concurrency=1/);
+  assert.match(scripts['test:coverage'], /tests\/serve-built\.test\.mjs/);
   assert.equal(
     scripts['test:browser'],
     'pnpm run build && node --test tests/browser/*.test.mjs',
@@ -73,6 +74,7 @@ test('holds each core path to the documented coverage floor', async () => {
     'scripts/build-diff-data.mjs',
     'scripts/generate-summaries.mjs',
     'scripts/present.mjs',
+    'scripts/serve-built.mjs',
   ]);
   assert.deepEqual(
     {
