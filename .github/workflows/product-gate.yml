@@ -17,12 +17,14 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+      - name: Enable the pinned pnpm version
+        run: corepack enable
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Enable the pinned pnpm version
-        run: corepack enable
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install lockfile dependencies
         run: pnpm install --frozen-lockfile
       - name: Run product gate

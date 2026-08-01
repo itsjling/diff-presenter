@@ -12,6 +12,12 @@ function listedTests(command) {
   return command.match(/tests\/[^ ]+\.test\.mjs/g) || [];
 }
 
+function workflowSteps(workflow) {
+  return [...workflow.matchAll(
+    /^(?<indent> *)- name: (?<name>.+)\n(?<body>(?:^\k<indent> {2}.+(?:\n|$))*)/gm,
+  )].map(({ groups }) => groups);
+}
+
 test('keeps the test lanes separate and composes the complete test gate', async () => {
   const packageJson = await json('package.json');
   const scripts = packageJson.scripts;
@@ -111,4 +117,31 @@ test('runs pull request lanes on Linux and scheduled shell checks elsewhere', as
   assert.match(workflow, /run: corepack pnpm install --frozen-lockfile/g);
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.doesNotMatch(workflow, /pull_request_target:|secrets\.|write-all/);
+});
+
+test('caches pnpm dependencies before each Node setup', async () => {
+  const workflows = await Promise.all([
+    'product-gate.yml',
+    'test-lanes.yml',
+  ].map(async (name) => ({
+    name,
+    steps: workflowSteps(await readFile(
+      new URL(`../.github/workflows/${name}`, import.meta.url),
+      'utf8',
+    )),
+  })));
+
+  for (const { name, steps } of workflows) {
+    const nodeSetups = steps
+      .map((step, index) => ({ ...step, index }))
+      .filter(({ body }) => body.includes('uses: actions/setup-node@v6'));
+    const expectedSetups = name === 'product-gate.yml' ? 1 : 5;
+
+    assert.equal(nodeSetups.length, expectedSetups);
+    for (const { body, index } of nodeSetups) {
+      assert.match(body, /^\s+cache: pnpm$/m);
+      assert.match(body, /^\s+cache-dependency-path: pnpm-lock.yaml$/m);
+      assert.match(steps[index - 1]?.body ?? '', /^\s+run: corepack enable$/m);
+    }
+  }
 });
