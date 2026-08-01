@@ -6,8 +6,11 @@ sidebar:
 ---
 
 A coding agent writes short notes for each changed file by default. Diffsplain
-tries Codex, Claude, Copilot, Cursor, then OpenCode, and uses the first installed
-CLI. Each CLI uses its current login.
+tries Codex, Claude, Copilot, then OpenCode, and uses the first installed CLI.
+Each CLI uses its current login. Cursor detection does not mean support:
+Diffsplain detects it only to give a clear unsupported-provider result. Cursor
+stays disabled for note generation because it has no supported read-only,
+no-network, no-tool mode.
 
 Use a plain diff when you do not want notes:
 
