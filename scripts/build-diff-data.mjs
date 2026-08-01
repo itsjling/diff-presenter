@@ -4,8 +4,10 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   renameSync,
   statSync,
   writeFileSync,
@@ -1146,6 +1148,29 @@ function build() {
   return true;
 }
 
+function untrackedFileKind(stat) {
+  if (stat.isFile()) return 'file';
+  if (stat.isSymbolicLink()) return 'symlink';
+  if (stat.isDirectory()) return 'directory';
+  return 'other';
+}
+
+function fingerprintUntrackedPath(content, path) {
+  const stat = lstatSync(resolve(repo, path), { bigint: true });
+  content.update(path);
+  content.update('\0');
+  content.update(untrackedFileKind(stat));
+  content.update('\0');
+  content.update(String(stat.size));
+  content.update('\0');
+  content.update(String(stat.mtimeNs));
+  content.update('\0');
+  if (stat.isSymbolicLink()) {
+    content.update(readlinkSync(resolve(repo, path)));
+    content.update('\0');
+  }
+}
+
 function fingerprint() {
   let summariesTime = '';
   if (!ignoreSummaryWatch && !noSummaries) {
@@ -1163,7 +1188,7 @@ function fingerprint() {
   }
   const content = createHash('sha256');
   content.update(
-    tryRepo(['diff', '--no-ext-diff', '--binary', 'HEAD', '--']),
+    tryRepo(['diff', '--no-ext-diff', '--no-textconv', '--binary', 'HEAD', '--']),
   );
   const untracked = tryRepo([
     'ls-files',
@@ -1175,10 +1200,7 @@ function fingerprint() {
     .filter((path) => path && !excludedPaths.has(path))
     .sort();
   for (const path of untracked) {
-    content.update('\0');
-    content.update(path);
-    content.update('\0');
-    content.update(readFileSync(resolve(repo, path)));
+    fingerprintUntrackedPath(content, path);
   }
   return [
     tryRepo(['rev-parse', 'HEAD']),
@@ -1202,18 +1224,38 @@ const refresh = () => {
 
 const started = refresh();
 if (watching && started) {
-  let last = fingerprint();
+  let last;
   let remoteWait = 0;
-  const watcher = setInterval(() => {
-    const next = fingerprint();
-    remoteWait += watchInterval;
-    const remoteDue = remoteMode && remoteWait >= remoteRefreshInterval;
-    if (next !== last || remoteDue || watchContent) {
-      last = next;
-      remoteWait = 0;
-      if (!refresh()) clearInterval(watcher);
+  let watcher;
+  const stopWatching = (error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+    if (watcher) clearInterval(watcher);
+  };
+  const poll = () => {
+    try {
+      const next = fingerprint();
+      if (last === undefined) {
+        last = next;
+        return true;
+      }
+      remoteWait += watchInterval;
+      const remoteDue = remoteMode && remoteWait >= remoteRefreshInterval;
+      if (next !== last || remoteDue || watchContent) {
+        last = next;
+        remoteWait = 0;
+        if (!refresh()) {
+          clearInterval(watcher);
+          return false;
+        }
+      }
+      return true;
+    } catch (error) {
+      stopWatching(error);
+      return false;
     }
-  }, watchInterval);
+  };
+  if (poll()) watcher = setInterval(poll, watchInterval);
 } else if (watching) {
   process.exitCode = 1;
 }
