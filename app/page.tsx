@@ -480,8 +480,11 @@ export default function Home() {
 
   const visibleFiles = useMemo(() => {
     const cleanQuery = query.trim().toLowerCase();
-    if (!cleanQuery) return files;
-    return files.filter((file) => file.path.toLowerCase().includes(cleanQuery));
+    return files.flatMap((file, index) =>
+      !cleanQuery || file.path.toLowerCase().includes(cleanQuery)
+        ? [{ file, index }]
+        : [],
+    );
   }, [files, query]);
 
   if (!snapshot) {
@@ -918,8 +921,7 @@ export default function Home() {
               className="picker-list"
               id="file-picker-list"
             >
-              {visibleFiles.map((file) => {
-                const index = files.findIndex((item) => item.path === file.path);
+              {visibleFiles.map(({ file, index }) => {
                 const active = file.path === currentFile.path;
                 return (
                   <button
