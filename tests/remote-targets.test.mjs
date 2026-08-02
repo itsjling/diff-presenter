@@ -8,6 +8,7 @@ import {
   readFile,
   rm,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -722,6 +723,45 @@ test("does not run text converters while watching local changes", async () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.equal(existsSync(marker), false);
     assert.equal(watched.child.exitCode, null);
+  } finally {
+    await stopIfRunning(watched);
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("watches same-size untracked rewrites with a fixed timestamp", async () => {
+  const fixture = await makeRemoteRepo();
+  const localOutput = join(fixture.root, "same-time-watch.json");
+  const watchedPath = join(fixture.repo, "same-time.txt");
+  const fixedTime = new Date("2020-01-02T03:04:05.000Z");
+  const firstContent = "first value\n";
+  const secondContent = "later value\n";
+  let watched;
+
+  try {
+    assert.equal(Buffer.byteLength(firstContent), Buffer.byteLength(secondContent));
+    await writeFile(watchedPath, firstContent);
+    await utimes(watchedPath, fixedTime, fixedTime);
+    watched = startWatcher(fixture.repo, ["--checkout", "--watch", "--output", localOutput]);
+    await waitForSnapshot(
+      localOutput,
+      watched,
+      (payload) => payload.files
+        .find((file) => file.path === "same-time.txt")
+        ?.patch.includes("first value"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    await writeFile(watchedPath, secondContent);
+    await utimes(watchedPath, fixedTime, fixedTime);
+    const refreshed = await waitForSnapshot(
+      localOutput,
+      watched,
+      (payload) => payload.files
+        .find((file) => file.path === "same-time.txt")
+        ?.patch.includes("later value"),
+    );
+    assert.equal(refreshed.repo.target.kind, "checkout");
   } finally {
     await stopIfRunning(watched);
     await rm(fixture.root, { recursive: true, force: true });

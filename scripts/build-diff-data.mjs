@@ -3,9 +3,13 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readlinkSync,
   renameSync,
@@ -1156,7 +1160,8 @@ function untrackedFileKind(stat) {
 }
 
 function fingerprintUntrackedPath(content, path) {
-  const stat = lstatSync(resolve(repo, path), { bigint: true });
+  const absolutePath = resolve(repo, path);
+  const stat = lstatSync(absolutePath, { bigint: true });
   content.update(path);
   content.update('\0');
   content.update(untrackedFileKind(stat));
@@ -1165,8 +1170,27 @@ function fingerprintUntrackedPath(content, path) {
   content.update('\0');
   content.update(String(stat.mtimeNs));
   content.update('\0');
-  if (stat.isSymbolicLink()) {
-    content.update(readlinkSync(resolve(repo, path)));
+  if (stat.isFile()) {
+    const descriptor = openSync(
+      absolutePath,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+    try {
+      const opened = fstatSync(descriptor, { bigint: true });
+      if (
+        !opened.isFile()
+        || opened.dev !== stat.dev
+        || opened.ino !== stat.ino
+      ) {
+        throw new Error(`${path} changed while its fingerprint was read`);
+      }
+      content.update(readFileSync(descriptor));
+    } finally {
+      closeSync(descriptor);
+    }
+    content.update('\0');
+  } else if (stat.isSymbolicLink()) {
+    content.update(readlinkSync(absolutePath));
     content.update('\0');
   }
 }

@@ -17,8 +17,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-      - name: Enable the pinned pnpm version
-        run: corepack enable
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
       - name: Set up Node
         uses: actions/setup-node@v6
         with:

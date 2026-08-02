@@ -28,10 +28,10 @@ function assertPnpmCacheSetup(workflow, expectedCount) {
   for (const { body, index } of nodeSetups) {
     assert.match(body, /^\s+cache: pnpm$/m);
     assert.match(body, /^\s+cache-dependency-path: pnpm-lock.yaml$/m);
-    assert.ok(index > 0, 'Node setup must follow Corepack');
-    assert.match(steps[index - 1].body, /^\s+run: corepack enable$/m);
+    assert.ok(index > 0, 'Node setup must follow pnpm setup');
+    assert.match(steps[index - 1].body, /^\s+uses: pnpm\/action-setup@v4$/m);
   }
-  assert.doesNotMatch(workflow, /^\s+run: corepack pnpm\b/m);
+  assert.doesNotMatch(workflow, /^\s+run: corepack(?: pnpm)?\b/m);
 }
 
 test('keeps the test lanes separate and composes the complete test gate', async () => {
@@ -138,7 +138,7 @@ test('runs pull request lanes on Linux and scheduled shell checks elsewhere', as
   assert.doesNotMatch(workflow, /pull_request_target:|secrets\.|write-all/);
 });
 
-test('caches pnpm dependencies before each Node setup', async () => {
+test('installs pnpm before each Node setup and caches dependencies', async () => {
   const productGate = await readFile(
     new URL('../.github/workflows/product-gate.yml', import.meta.url),
     'utf8',
