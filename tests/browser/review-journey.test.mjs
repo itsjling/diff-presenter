@@ -120,6 +120,21 @@ function longFileListFixture() {
   );
 }
 
+function filteredFileListFixture() {
+  return snapshot(
+    "filtered-file-list",
+    Array.from({ length: 60 }, (_, index) => {
+      const number = String(index + 1).padStart(2, "0");
+      return textFile(
+        index % 2 === 1
+          ? `src/match-file-${String((index + 1) / 2).padStart(2, "0")}.ts`
+          : `src/other-file-${number}.ts`,
+        `Explain file ${number}`,
+      );
+    }),
+  );
+}
+
 async function writeSnapshot(value) {
   await writeFile(output, `${JSON.stringify(value, null, 2)}\n`);
 }
@@ -877,6 +892,60 @@ test("centers the selected file when reopening the picker", async () => {
         const activeCenter = activeBounds.top + activeBounds.height / 2;
         return Math.abs(listCenter - activeCenter) <= 1;
       });
+    },
+  );
+});
+
+test("keeps filtered picker indexes and full-snapshot keyboard navigation aligned", async () => {
+  await runReviewJourney(
+    "filtered picker indexes",
+    { viewport: { width: 1280, height: 800 } },
+    async (page) => {
+      await writeSnapshot(filteredFileListFixture());
+      await page.goto(serverUrl);
+      await page.getByRole("heading", { name: "Explain file 01" }).waitFor();
+
+      const controls = pickerControls(page);
+      await controls.trigger.click();
+      await controls.search.fill("match-file");
+      const selectedRow = page.getByRole("button", {
+        name: /src\/match-file-30\.ts/i,
+      });
+      assert.equal(
+        await page.locator(".picker-row").first().locator(".picker-index").textContent(),
+        "02",
+      );
+      assert.equal(await selectedRow.locator(".picker-index").textContent(), "60");
+      await selectedRow.click();
+      await page.getByRole("heading", { name: "Explain file 60" }).waitFor();
+      assert.match(
+        await controls.trigger.getAttribute("aria-label"),
+        /Current file 60 of 60: src\/match-file-30\.ts/,
+      );
+
+      await controls.trigger.click();
+      await controls.dialog.waitFor();
+      await page.waitForFunction(() => {
+        const list = document.querySelector(".picker-list");
+        const active = document.querySelector(".picker-row--active");
+        if (!list || !active) return false;
+        const listBounds = list.getBoundingClientRect();
+        const activeBounds = active.getBoundingClientRect();
+        const listCenter = listBounds.top + listBounds.height / 2;
+        const activeCenter = activeBounds.top + activeBounds.height / 2;
+        return Math.abs(listCenter - activeCenter) <= 1;
+      });
+      assert.match(
+        await page.locator(".picker-row--active").textContent(),
+        /src\/match-file-30\.ts/,
+      );
+
+      await controls.close.click();
+      await controls.dialog.waitFor({ state: "hidden" });
+      await controls.trigger.press("ArrowLeft");
+      await page.getByRole("heading", { name: "Explain file 59" }).waitFor();
+      await controls.trigger.press("ArrowRight");
+      await page.getByRole("heading", { name: "Explain file 60" }).waitFor();
     },
   );
 });

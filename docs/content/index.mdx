@@ -11,8 +11,11 @@ patch on the left and a short coding agent note on the right.
 
 ## Start a review
 
-You need Node.js 22.13 or newer and a signed-in Codex, Claude, Copilot, Cursor,
-or OpenCode CLI.
+You need Node.js 22.13 or newer and a signed-in Codex, Claude, Copilot, or
+OpenCode CLI. Diffsplain tries Codex, Claude, Copilot, then OpenCode when you
+do not choose one. Cursor detection does not mean support: it is detected only
+to report that Cursor is unsupported. Cursor has no supported read-only,
+no-network, no-tool mode required for note generation, so it stays disabled.
 
 ```sh
 npx diffsplain

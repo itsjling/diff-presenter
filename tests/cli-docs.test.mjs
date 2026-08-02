@@ -6,11 +6,18 @@ import {
   helpText,
   parseCliArgs,
 } from '../scripts/cli-args.mjs';
+import {
+  agentDisabledReason,
+  enabledCodingAgents,
+} from '../scripts/coding-agents.mjs';
 
-const [docs, agentNotes, packageText] = await Promise.all([
+const [docs, agentNotes, development, index, packageText, product] = await Promise.all([
   readFile(new URL('../docs/content/cli.mdx', import.meta.url), 'utf8'),
   readFile(new URL('../docs/content/agent-notes.mdx', import.meta.url), 'utf8'),
+  readFile(new URL('../docs/content/development.mdx', import.meta.url), 'utf8'),
+  readFile(new URL('../docs/content/index.mdx', import.meta.url), 'utf8'),
   readFile(new URL('../package.json', import.meta.url), 'utf8'),
+  readFile(new URL('../PRODUCT.md', import.meta.url), 'utf8'),
 ]);
 
 test('lists each accepted option in public help and the CLI reference', () => {
@@ -42,6 +49,32 @@ test('documents provider inputs and limits', () => {
   assert.match(docs, /Only Codex and OpenCode accept `--reasoning`/);
   assert.match(agentNotes, /only Codex and\s+OpenCode accept `--reasoning`/);
   assert.doesNotMatch(agentNotes, /--agent claude[\s\S]{0,100}--reasoning/);
+});
+
+test('documents the enabled provider order and Cursor boundary', () => {
+  const providerNames = enabledCodingAgents.map(
+    (agent) => (agent === 'opencode'
+      ? 'OpenCode'
+      : agent[0].toUpperCase() + agent.slice(1)),
+  );
+  const providerOrder =
+    `${providerNames.slice(0, -1).join(', ')}, then ${providerNames.at(-1)}`;
+  const cursorBoundary = agentDisabledReason('cursor')
+    ?.match(/read-only, no-network, no-tool mode/)?.[0];
+  assert.ok(cursorBoundary);
+
+  for (const document of [product, index, agentNotes, development]) {
+    const text = document.replace(/\s+/g, ' ');
+    assert.match(text, new RegExp(providerOrder));
+    assert.match(text, /Cursor detection does not mean support/i);
+    assert.match(text, /Cursor.{0,100}unsupported/i);
+    assert.match(text, new RegExp(cursorBoundary));
+  }
+
+  assert.doesNotMatch(
+    development.replace(/\s+/g, ' '),
+    /Cursor.{0,100}(?:sign in|login)/i,
+  );
 });
 
 test('derives documented numeric defaults and bounds from the parser', () => {

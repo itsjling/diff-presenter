@@ -4,7 +4,8 @@
     "scripts/cli-args.mjs",
     "scripts/build-diff-data.mjs",
     "scripts/generate-summaries.mjs",
-    "scripts/present.mjs"
+    "scripts/present.mjs",
+    "scripts/serve-built.mjs"
   ],
   "reporter": [
     "text",

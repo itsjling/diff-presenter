@@ -32,7 +32,7 @@ test('fences a delayed writer after stale-lease recovery', async () => {
     const older = acquireLease(lock, {
       token: 'older',
       now,
-      pid: 999_999,
+      pid: process.pid,
     });
     publishLeaseFile(older, note, 'older result');
     await utimes(lock, new Date(now - leaseDurationMs - 1), new Date(now - leaseDurationMs - 1));
@@ -45,6 +45,28 @@ test('fences a delayed writer after stale-lease recovery', async () => {
     assert.equal(await readFile(lock, 'utf8').then(JSON.parse).then((lease) => lease.token), 'newer');
     releaseLease(newer);
   } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('keeps a fresh lease active when its recorded PID is dead', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diffsplain-cache-'));
+  const lock = join(root, 'summaries', 'target.json.lock');
+  const now = Date.now();
+  let lease;
+  try {
+    lease = acquireLease(lock, {
+      token: 'fresh-dead-pid',
+      now,
+      pid: 999_999,
+    });
+
+    assert.throws(
+      () => acquireLease(lock, { token: 'newer', now }),
+      /already being generated/i,
+    );
+  } finally {
+    if (lease) releaseLease(lease);
     await rm(root, { recursive: true, force: true });
   }
 });
