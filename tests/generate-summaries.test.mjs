@@ -2171,17 +2171,32 @@ process.stdout.write(JSON.stringify(input.files.length ? { files: input.files.ma
     }));
     later.notes.reviewFingerprint = "b".repeat(64);
     await writeFile(input, JSON.stringify(later));
+    await writeFile(output, JSON.stringify(later));
     const rerun = run(directory, args);
     assert.equal(rerun.status, 0, rerun.stderr);
-    const selected = (await readFile(calls, "utf8")).trim().split("\n").map(JSON.parse)
-      .findLast((value) => value.files.length === 1);
+    const requests = (await readFile(calls, "utf8")).trim().split("\n").map(JSON.parse);
+    const capped = requests.find((value) => value.files.length === 0);
+    const cappedContext = capped.existingFileNotes;
+    const cappedPaths = Object.keys(cappedContext);
+    assert.ok(Buffer.byteLength(JSON.stringify(cappedContext)) <= 250_000);
+    assert.ok(cappedPaths.length > 0);
+    assert.ok(cappedPaths.length < files.length);
+    assert.deepEqual(
+      cappedPaths,
+      files.slice(0, cappedPaths.length).map((file) => file.path),
+    );
+    const selected = requests.findLast((value) => value.files.length === 1);
     const context = selected.existingFileNotes;
+    const contextPaths = Object.keys(context);
     assert.ok(Buffer.byteLength(JSON.stringify(selected)) <= 2_000_000);
     assert.ok(Buffer.byteLength(JSON.stringify(context)) <= 250_000);
     assert.ok(Buffer.byteLength(JSON.stringify(context)) < 250_000);
-    assert.ok(Object.keys(context).length > 0);
+    assert.ok(contextPaths.length > 0);
     assert.ok(!Object.hasOwn(context, "file-000.txt"));
-    assert.deepEqual(Object.keys(context), [...Object.keys(context)].sort());
+    assert.deepEqual(
+      contextPaths,
+      files.slice(1, contextPaths.length + 1).map((file) => file.path),
+    );
     assert.ok(Object.values(context).every((note) =>
       JSON.stringify(Object.keys(note).sort()) === JSON.stringify(["risks", "title", "what"]),
     ));
