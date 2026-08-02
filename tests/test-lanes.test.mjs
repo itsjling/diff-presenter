@@ -31,6 +31,7 @@ function assertPnpmCacheSetup(workflow, expectedCount) {
     assert.ok(index > 0, 'Node setup must follow Corepack');
     assert.match(steps[index - 1].body, /^\s+run: corepack enable$/m);
   }
+  assert.doesNotMatch(workflow, /^\s+run: corepack pnpm\b/m);
 }
 
 test('keeps the test lanes separate and composes the complete test gate', async () => {
@@ -129,7 +130,10 @@ test('runs pull request lanes on Linux and scheduled shell checks elsewhere', as
   assert.match(workflow, /schedule:/);
   assert.match(workflow, /macos-15/);
   assert.match(workflow, /windows-2025/);
-  assert.match(workflow, /run: corepack pnpm install --frozen-lockfile/g);
+  assert.equal(
+    workflow.match(/run: pnpm install --frozen-lockfile/g)?.length,
+    5,
+  );
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.doesNotMatch(workflow, /pull_request_target:|secrets\.|write-all/);
 });

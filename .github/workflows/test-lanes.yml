@@ -29,9 +29,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Run fast unit tests
-        run: corepack pnpm run test:unit
+        run: pnpm run test:unit
 
   integration:
     if: github.event_name != 'schedule'
@@ -48,9 +48,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Run Git and server tests
-        run: corepack pnpm run test:integration
+        run: pnpm run test:integration
 
   coverage:
     if: github.event_name != 'schedule'
@@ -67,9 +67,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Check core coverage
-        run: corepack pnpm run test:coverage
+        run: pnpm run test:coverage
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v6
@@ -93,11 +93,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Install browser system packages
         run: npx playwright install --with-deps chromium
       - name: Run the browser journey
-        run: corepack pnpm run test:browser
+        run: pnpm run test:browser
 
   platform:
     if: github.event_name != 'pull_request'
@@ -120,6 +120,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: Check host shell assumptions
-        run: corepack pnpm run test:platform
+        run: pnpm run test:platform
