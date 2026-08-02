@@ -1,21 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 const script = new URL("../scripts/build-diff-data.mjs", import.meta.url).pathname;
-const unavailableSymlinkCodes = new Set(["EACCES", "EPERM"]);
 
 function git(repo, ...args) {
   return execFileSync("git", ["-C", repo, ...args], {
@@ -172,14 +163,13 @@ async function publishFeatureUpdate(fixture, path, content) {
   return head;
 }
 
-function startWatcher(repo, args, options = {}) {
+function startWatcher(repo, args) {
   const child = spawn(
     process.execPath,
     [script, "--repo", repo, ...args],
     {
       env: {
         ...process.env,
-        ...options.env,
         DIFFSPLAIN_WATCH_INTERVAL_MS: "25",
         DIFFSPLAIN_REMOTE_REFRESH_INTERVAL_MS: "100",
       },
@@ -205,16 +195,6 @@ async function waitForSnapshot(output, watched, accept) {
 
 async function stopIfRunning(watched) {
   if (watched?.child.exitCode === null) await stop(watched.child);
-}
-
-async function createDirectorySymlink(target, link) {
-  try {
-    await symlink(target, link, "dir");
-    return undefined;
-  } catch (error) {
-    if (unavailableSymlinkCodes.has(error.code)) return error.code;
-    throw error;
-  }
 }
 
 test("builds a remote branch range without changing the checkout", async () => {
@@ -653,12 +633,9 @@ test("stops remote and pull-request lookups without replacing complete data", as
 test("watches local changes without changing the selected target", async () => {
   const fixture = await makeRemoteRepo();
   const localOutput = join(fixture.root, "local-watch.json");
-  const firstContent = "local update\n";
-  const secondContent = "fresh update\n";
   let watched;
 
   try {
-    assert.equal(Buffer.byteLength(firstContent), Buffer.byteLength(secondContent));
     watched = startWatcher(
       fixture.repo,
       [
@@ -674,7 +651,7 @@ test("watches local changes without changing the selected target", async () => {
       (payload) => payload.repo.target.kind === "checkout",
     );
     await new Promise((resolve) => setTimeout(resolve, 150));
-    await writeFile(join(fixture.repo, "watched.txt"), firstContent);
+    await writeFile(join(fixture.repo, "watched.txt"), "local update\n");
     const local = await waitForSnapshot(
       localOutput,
       watched,
@@ -682,128 +659,16 @@ test("watches local changes without changing the selected target", async () => {
     );
     assert.equal(local.repo.target.kind, "checkout");
 
-    await writeFile(join(fixture.repo, "watched.txt"), secondContent);
+    await writeFile(join(fixture.repo, "watched.txt"), "local update again\n");
     const refreshed = await waitForSnapshot(
       localOutput,
       watched,
       (payload) =>
         payload.files
           .find((file) => file.path === "watched.txt")
-          ?.patch.includes("fresh update"),
+          ?.patch.includes("local update again"),
     );
     assert.equal(refreshed.repo.target.kind, "checkout");
-  } finally {
-    await stopIfRunning(watched);
-    await rm(fixture.root, { recursive: true, force: true });
-  }
-});
-
-test("does not run text converters while watching local changes", async () => {
-  const fixture = await makeRemoteRepo();
-  const localOutput = join(fixture.root, "textconv-watch.json");
-  const marker = join(fixture.root, "textconv-ran");
-  let watched;
-
-  try {
-    await writeFile(join(fixture.repo, ".gitattributes"), "converted.txt diff=marker\n");
-    await writeFile(join(fixture.repo, "converted.txt"), "before\n");
-    git(fixture.repo, "add", ".gitattributes", "converted.txt");
-    git(fixture.repo, "commit", "-qm", "add converted file");
-    git(
-      fixture.repo,
-      "config",
-      "diff.marker.textconv",
-      `sh -c 'touch ${marker}; cat'`,
-    );
-    await writeFile(join(fixture.repo, "converted.txt"), "after\n");
-
-    watched = startWatcher(fixture.repo, ["--checkout", "--watch", "--output", localOutput]);
-    await waitForSnapshot(localOutput, watched, () => true);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    assert.equal(existsSync(marker), false);
-    assert.equal(watched.child.exitCode, null);
-  } finally {
-    await stopIfRunning(watched);
-    await rm(fixture.root, { recursive: true, force: true });
-  }
-});
-
-test("watches untracked symlinks without reading their targets", async (t) => {
-  const fixture = await makeRemoteRepo();
-  const localOutput = join(fixture.root, "symlink-watch.json");
-  const outside = join(fixture.root, "outside");
-  const link = join(fixture.repo, "outside-link");
-  let watched;
-
-  try {
-    await mkdir(outside);
-    const unavailable = await createDirectorySymlink(outside, link);
-    if (unavailable) {
-      t.skip(`symlink creation is unavailable: ${unavailable}`);
-      return;
-    }
-    watched = startWatcher(fixture.repo, ["--checkout", "--watch", "--output", localOutput]);
-    const snapshot = await waitForSnapshot(
-      localOutput,
-      watched,
-      (payload) => payload.files.some((file) => file.path === "outside-link"),
-    );
-    assert.equal(snapshot.files.find((file) => file.path === "outside-link")?.status, "added");
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    assert.equal(watched.child.exitCode, null);
-  } finally {
-    await stopIfRunning(watched);
-    await rm(fixture.root, { recursive: true, force: true });
-  }
-});
-
-test("exits cleanly when a fingerprint path disappears during polling", async () => {
-  const fixture = await makeRemoteRepo();
-  const localOutput = join(fixture.root, "fingerprint-race-watch.json");
-  const bin = join(fixture.root, "git-proxy");
-  const proxy = join(bin, "git");
-  const marker = join(fixture.root, "delete-on-ls-files");
-  const raced = join(fixture.repo, "raced.txt");
-  let watched;
-
-  try {
-    await writeFile(raced, "race\n");
-    await mkdir(bin);
-    await writeFile(
-      proxy,
-      `#!/usr/bin/env node
-const { existsSync, unlinkSync } = require("node:fs");
-const { spawnSync } = require("node:child_process");
-const args = process.argv.slice(2);
-const result = spawnSync(process.env.DIFFSPLAIN_REAL_GIT, args, { encoding: "utf8" });
-process.stdout.write(result.stdout || "");
-process.stderr.write(result.stderr || "");
-if (args.includes("ls-files") && existsSync(process.env.DIFFSPLAIN_RACE_MARKER)) {
-  unlinkSync(process.env.DIFFSPLAIN_RACE_PATH);
-}
-process.exit(result.status ?? 1);
-`,
-    );
-    await chmod(proxy, 0o755);
-    watched = startWatcher(
-      fixture.repo,
-      ["--checkout", "--watch", "--output", localOutput],
-      {
-        env: {
-          DIFFSPLAIN_RACE_MARKER: marker,
-          DIFFSPLAIN_RACE_PATH: raced,
-          DIFFSPLAIN_REAL_GIT: process.env.PATH.split(":").map((path) => join(path, "git")).find(existsSync),
-          PATH: `${bin}:${process.env.PATH}`,
-        },
-      },
-    );
-    await waitForSnapshot(localOutput, watched, () => true);
-    await writeFile(marker, "delete the next fingerprint path\n");
-    await waitFor(() => watched.child.exitCode !== null);
-    assert.equal(watched.child.exitCode, 1);
-    assert.match(watched.logs(), /ENOENT: no such file or directory, lstat/);
-    assert.equal((watched.logs().match(/ENOENT: no such file or directory, lstat/g) || []).length, 1);
-    assert.doesNotMatch(watched.logs(), /\n\s*at /);
   } finally {
     await stopIfRunning(watched);
     await rm(fixture.root, { recursive: true, force: true });

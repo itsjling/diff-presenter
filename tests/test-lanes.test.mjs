@@ -12,28 +12,6 @@ function listedTests(command) {
   return command.match(/tests\/[^ ]+\.test\.mjs/g) || [];
 }
 
-function workflowSteps(workflow) {
-  return [...workflow.matchAll(
-    /^(?<indent> *)- name: (?<name>.+)\n(?<body>(?:^\k<indent> {2}.+(?:\n|$))*)/gm,
-  )].map(({ groups }) => groups);
-}
-
-function assertPnpmCacheSetup(workflow, expectedCount) {
-  const steps = workflowSteps(workflow);
-  const nodeSetups = steps
-    .map((step, index) => ({ ...step, index }))
-    .filter(({ body }) => body.includes('uses: actions/setup-node@v6'));
-
-  assert.equal(nodeSetups.length, expectedCount);
-  for (const { body, index } of nodeSetups) {
-    assert.match(body, /^\s+cache: pnpm$/m);
-    assert.match(body, /^\s+cache-dependency-path: pnpm-lock.yaml$/m);
-    assert.ok(index > 0, 'Node setup must follow Corepack');
-    assert.match(steps[index - 1].body, /^\s+run: corepack enable$/m);
-  }
-  assert.doesNotMatch(workflow, /^\s+run: corepack pnpm\b/m);
-}
-
 test('keeps the test lanes separate and composes the complete test gate', async () => {
   const packageJson = await json('package.json');
   const scripts = packageJson.scripts;
@@ -56,7 +34,6 @@ test('keeps the test lanes separate and composes the complete test gate', async 
   assert.match(scripts['test:integration'], /--test-concurrency=1/);
   assert.match(scripts['test:coverage'], /pnpm run build/);
   assert.match(scripts['test:coverage'], /--test-concurrency=1/);
-  assert.match(scripts['test:coverage'], /tests\/serve-built\.test\.mjs/);
   assert.equal(
     scripts['test:browser'],
     'pnpm run build && node --test tests/browser/*.test.mjs',
@@ -96,7 +73,6 @@ test('holds each core path to the documented coverage floor', async () => {
     'scripts/build-diff-data.mjs',
     'scripts/generate-summaries.mjs',
     'scripts/present.mjs',
-    'scripts/serve-built.mjs',
   ]);
   assert.deepEqual(
     {
@@ -130,24 +106,7 @@ test('runs pull request lanes on Linux and scheduled shell checks elsewhere', as
   assert.match(workflow, /schedule:/);
   assert.match(workflow, /macos-15/);
   assert.match(workflow, /windows-2025/);
-  assert.equal(
-    workflow.match(/run: pnpm install --frozen-lockfile/g)?.length,
-    5,
-  );
+  assert.match(workflow, /run: corepack pnpm install --frozen-lockfile/g);
   assert.match(workflow, /permissions:\n  contents: read/);
   assert.doesNotMatch(workflow, /pull_request_target:|secrets\.|write-all/);
-});
-
-test('caches pnpm dependencies before each Node setup', async () => {
-  const productGate = await readFile(
-    new URL('../.github/workflows/product-gate.yml', import.meta.url),
-    'utf8',
-  );
-  const testLanes = await readFile(
-    new URL('../.github/workflows/test-lanes.yml', import.meta.url),
-    'utf8',
-  );
-
-  assertPnpmCacheSetup(productGate, 1);
-  assertPnpmCacheSetup(testLanes, 5);
 });

@@ -40,11 +40,29 @@ function leaseRecord(path) {
   }
 }
 
+function leaseOwnerIsActive(record) {
+  return (
+    record?.hostname === hostname() &&
+    Number.isSafeInteger(record.pid) &&
+    processIsAlive(record.pid)
+  );
+}
+
 function leaseIsActive(path, now = Date.now(), duration = leaseDurationMs) {
   try {
+    if (leaseOwnerIsActive(leaseRecord(path))) return true;
     return now - statSync(path).mtimeMs < duration;
   } catch {
     return false;
+  }
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === 'EPERM';
   }
 }
 
@@ -98,6 +116,7 @@ function rejectActiveLease(active, path) {
 function handleLeaseConflict(error, path, now, duration) {
   rejectNonConflict(error);
   const observed = leaseRecord(path);
+  rejectActiveLease(leaseOwnerIsActive(observed), path);
   rejectActiveLease(leaseIsActive(path, now, duration), path);
   removeStaleLease(path, observed?.token);
 }
