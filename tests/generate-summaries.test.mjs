@@ -66,21 +66,30 @@ async function makeRepo() {
   return repo;
 }
 
-async function fakeCodex(root, response) {
+async function fakeCodex(root, response, { captureSchema = false } = {}) {
   const bin = join(root, "fake-codex.mjs");
   const argsFile = join(root, "codex-args.json");
+  const schemaFile = join(root, "codex-schema.json");
   const responseFile = join(root, "codex-response.json");
   await writeFile(responseFile, JSON.stringify(response));
   await writeFile(
     bin,
     `#!/usr/bin/env node
-import { writeFileSync, readFileSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync } from "node:fs";
 writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));
+${captureSchema ? `const schema = process.argv[process.argv.indexOf("--output-schema") + 1];
+if (schema) {
+  const schemas = existsSync(${JSON.stringify(schemaFile)})
+    ? JSON.parse(readFileSync(${JSON.stringify(schemaFile)}, "utf8"))
+    : [];
+  schemas.push(JSON.parse(readFileSync(schema, "utf8")));
+  writeFileSync(${JSON.stringify(schemaFile)}, JSON.stringify(schemas));
+}` : ""}
 process.stdout.write(readFileSync(${JSON.stringify(responseFile)}, "utf8"));
 `,
   );
   await chmod(bin, 0o755);
-  return { bin, argsFile };
+  return { bin, argsFile, schemaFile };
 }
 
 async function recordingCodex(root) {
@@ -234,6 +243,7 @@ const note = (path) => ({
   details: [],
   risks: [],
 });
+
 const response = input.files.length
   ? { files: input.files.map((file) => note(file.path)) }
   : {
@@ -464,6 +474,94 @@ test("generates notes with Codex and rebuilds a selected range", async () => {
     assert.equal((await stat(output)).mode & 0o777, 0o640);
     assert.equal((await stat(summaries)).mode & 0o077, 0);
     await assert.rejects(stat(supportFile), { code: "ENOENT" });
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+
+});
+
+test("enforces note output limits in schemas and saved file notes", async () => {
+  const cases = [
+    ["title", "x".repeat(161), /added\.txt\.title.*160/],
+    ["what", "x".repeat(1201), /added\.txt\.what.*1200/],
+    ["details", Array(5).fill("detail"), /added\.txt\.details.*4 items/],
+    ["risks", Array(4).fill("risk"), /added\.txt\.risks.*3 items/],
+    ["details", ["x".repeat(501)], /added\.txt\.details items.*500/],
+    ["title", "😀".repeat(161), /added\.txt\.title.*160/],
+  ];
+  for (const [field, value, error] of cases) {
+    const repo = await makeRepo();
+    const summaries = join(repo, "notes.json");
+    const output = join(repo, "diff-data.json");
+    try {
+      const response = notes({
+        "added.txt": {
+          title: "Add text",
+          what: "Adds text.",
+          why: "Tests note limits.",
+          details: [],
+          risks: [],
+          [field]: value,
+        },
+        "changed.txt": {
+          title: "Change text",
+          what: "Changes text.",
+          why: "Keeps one valid note.",
+          details: [],
+          risks: [],
+        },
+      });
+      const codex = await fakeCodex(repo, response);
+      const result = run(repo, [
+        "--range", "HEAD~1..HEAD", "--codex-bin", codex.bin,
+        "--summaries", summaries, "--output", output,
+      ]);
+      assert.equal(result.status, 1, result.stderr);
+      const written = JSON.parse(await readFile(summaries, "utf8"));
+      assert.ok(!Object.hasOwn(written.files, "added.txt"));
+      assert.ok(Object.hasOwn(written.files, "changed.txt"));
+      assert.match(
+        written.meta.failedFiles.find((failure) => failure.path === "added.txt").reason,
+        error,
+      );
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  }
+
+  const repo = await makeRepo();
+  const summaries = join(repo, "notes.json");
+  const output = join(repo, "diff-data.json");
+  try {
+    const boundary = {
+      title: "😀".repeat(160),
+      what: "w".repeat(1200),
+      why: "y".repeat(1200),
+      details: Array(4).fill("d".repeat(500)),
+      risks: Array(3).fill("r".repeat(500)),
+    };
+    const codex = await fakeCodex(repo, notes({
+      "added.txt": boundary,
+      "changed.txt": boundary,
+    }), { captureSchema: true });
+    const result = run(repo, [
+      "--range", "HEAD~1..HEAD", "--codex-bin", codex.bin,
+      "--summaries", summaries, "--output", output,
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    const written = JSON.parse(await readFile(summaries, "utf8"));
+    assert.equal(Array.from(written.files["added.txt"].title).length, 160);
+    assert.equal(written.files["added.txt"].details.length, 4);
+    const schemas = JSON.parse(await readFile(codex.schemaFile, "utf8"));
+    const fileSchema = schemas.find((schema) => schema.properties.files);
+    const changeSchema = schemas.find((schema) => schema.properties.change);
+    assert.equal(fileSchema.properties.files.items.properties.title.maxLength, 160);
+    assert.equal(fileSchema.properties.files.items.properties.what.maxLength, 1200);
+    assert.equal(fileSchema.properties.files.items.properties.details.maxItems, 4);
+    assert.equal(fileSchema.properties.files.items.properties.risks.maxItems, 3);
+    assert.equal(fileSchema.properties.files.items.properties.details.items.maxLength, 500);
+    assert.equal(changeSchema.properties.change.properties.summary.maxLength, 1200);
+    assert.equal(changeSchema.properties.change.properties.highlights.maxItems, 4);
   } finally {
     await rm(repo, { recursive: true, force: true });
   }
@@ -2022,5 +2120,87 @@ process.stdout.write("{}");
   } finally {
     if (child && !child.killed) child.kill("SIGTERM");
     await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("rejects an oversized change note through the change failure path", async () => {
+  const repo = await makeRepo();
+  try {
+    const codex = await fakeCodex(repo, {
+      change: {
+        title: "Change", summary: "x".repeat(1201), why: "Tests limits.", highlights: [], risks: [],
+      },
+      files: {
+        "added.txt": { title: "Add", what: "Adds.", why: "Tests.", details: [], risks: [] },
+        "changed.txt": { title: "Change", what: "Changes.", why: "Tests.", details: [], risks: [] },
+      },
+    });
+    const result = run(repo, ["--range", "HEAD~1..HEAD", "--codex-bin", codex.bin]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /change\.summary must be at most 1200 Unicode code points/);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+  }
+});
+
+test("bounds hostile prior note context in snapshot order", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "diffsplain-prior-context-"));
+  const input = join(directory, "input.json");
+  const summaries = join(directory, "notes.json");
+  const output = join(directory, "output.json");
+  const bin = join(directory, "prior-context-codex.mjs");
+  const calls = join(directory, "calls.jsonl");
+  try {
+    await writeFile(bin, `#!/usr/bin/env node
+import { appendFileSync, readFileSync } from "node:fs";
+const input = JSON.parse(readFileSync(0, "utf8"));
+appendFileSync(${JSON.stringify(calls)}, JSON.stringify(input) + "\\n");
+const note = (path) => ({ path, title: "t".repeat(160), what: "w".repeat(1200), why: "y".repeat(1200), details: [], risks: Array(3).fill("r".repeat(500)) });
+process.stdout.write(JSON.stringify(input.files.length ? { files: input.files.map((file) => note(file.path)) } : { change: { title: "Change", summary: "Summary.", why: "Why.", highlights: [], risks: [] } }));
+`);
+    await chmod(bin, 0o755);
+    const files = Array.from({ length: 100 }, (_, index) => ({
+      path: `file-${String(index).padStart(3, "0")}.txt`, patch: "old", snippet: "old",
+    }));
+    await writeFile(input, JSON.stringify(snapshot(files)));
+    const args = ["--snapshot", input, "--codex-bin", bin, "--batch-size", "50", "--jobs", "1", "--summaries", summaries, "--output", output];
+    const first = run(directory, args);
+    assert.equal(first.status, 0, first.stderr);
+    const later = snapshot(files.map((file, index) => index ? file : {
+      ...file, patch: "p".repeat(1_800_000), snippet: "p".repeat(1_800_000),
+    }));
+    later.notes.reviewFingerprint = "b".repeat(64);
+    await writeFile(input, JSON.stringify(later));
+    await writeFile(output, JSON.stringify(later));
+    const rerun = run(directory, args);
+    assert.equal(rerun.status, 0, rerun.stderr);
+    const requests = (await readFile(calls, "utf8")).trim().split("\n").map(JSON.parse);
+    const capped = requests.find((value) => value.files.length === 0);
+    const cappedContext = capped.existingFileNotes;
+    const cappedPaths = Object.keys(cappedContext);
+    assert.ok(Buffer.byteLength(JSON.stringify(cappedContext)) <= 250_000);
+    assert.ok(cappedPaths.length > 0);
+    assert.ok(cappedPaths.length < files.length);
+    assert.deepEqual(
+      cappedPaths,
+      files.slice(0, cappedPaths.length).map((file) => file.path),
+    );
+    const selected = requests.findLast((value) => value.files.length === 1);
+    const context = selected.existingFileNotes;
+    const contextPaths = Object.keys(context);
+    assert.ok(Buffer.byteLength(JSON.stringify(selected)) <= 2_000_000);
+    assert.ok(Buffer.byteLength(JSON.stringify(context)) <= 250_000);
+    assert.ok(Buffer.byteLength(JSON.stringify(context)) < 250_000);
+    assert.ok(contextPaths.length > 0);
+    assert.ok(!Object.hasOwn(context, "file-000.txt"));
+    assert.deepEqual(
+      contextPaths,
+      files.slice(1, contextPaths.length + 1).map((file) => file.path),
+    );
+    assert.ok(Object.values(context).every((note) =>
+      JSON.stringify(Object.keys(note).sort()) === JSON.stringify(["risks", "title", "what"]),
+    ));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

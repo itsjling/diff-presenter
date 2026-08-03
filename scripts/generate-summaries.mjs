@@ -167,6 +167,12 @@ const batchSize = Number(batchSizeValue);
 const batchByteLimit = 180_000;
 const softFileByteLimit = 180_000;
 const hardInputByteLimit = 2_000_000;
+const priorNoteByteLimit = 250_000;
+const titleCodePointLimit = 160;
+const proseCodePointLimit = 1_200;
+const detailItemLimit = 4;
+const riskItemLimit = 3;
+const listItemCodePointLimit = 500;
 const jobsValue = option('--jobs') || '3';
 if (!/^[1-9]\d*$/.test(jobsValue) || Number(jobsValue) > 8) {
   fail('--jobs must be a number from 1 to 8');
@@ -361,11 +367,35 @@ function cleanSnapshot(snapshot) {
   };
 }
 
+// fallow-ignore-next-line complexity
+function compactExistingFileNotes(snapshot, existingFiles, selected, baseBytes) {
+  const existingFileNotes = {};
+  const propertyBytes = Buffer.byteLength(',"existingFileNotes":');
+  const maximumBytes = Math.min(
+    priorNoteByteLimit,
+    hardInputByteLimit - baseBytes - propertyBytes,
+  );
+  let contextBytes = Buffer.byteLength('{}');
+  let hasEntries = false;
+  for (const file of snapshot.files) {
+    const path = file.path;
+    const note = existingFiles[path];
+    if (selected.has(path) || !note) continue;
+    const compactNote = { title: note.title, what: note.what, risks: note.risks };
+    const entryBytes = Buffer.byteLength(
+      `${hasEntries ? ',' : ''}${JSON.stringify(path)}:${JSON.stringify(compactNote)}`,
+    );
+    if (contextBytes + entryBytes <= maximumBytes) {
+      existingFileNotes[path] = compactNote;
+      contextBytes += entryBytes;
+      hasEntries = true;
+    }
+  }
+  return existingFileNotes;
+}
+
 function batchInput(snapshot, rawSnapshot, paths, existingFiles) {
   const selected = new Set(paths);
-  const existingFileNotes = Object.fromEntries(
-    Object.entries(existingFiles).filter(([path]) => !selected.has(path)),
-  );
   const result = {
     repo: snapshot.repo,
     change: snapshot.change,
@@ -380,36 +410,58 @@ function batchInput(snapshot, rawSnapshot, paths, existingFiles) {
     files: snapshot.files
       .filter((file) => selected.has(file.path))
       .map(({ summaryFailure: _summaryFailure, ...file }) => file),
-    ...(Object.keys(existingFileNotes).length ? { existingFileNotes } : {}),
   };
 
-  let encoded = JSON.stringify(result);
-  if (Buffer.byteLength(encoded) > hardInputByteLimit) {
+  let baseInput = JSON.stringify(result);
+  if (Buffer.byteLength(baseInput) > hardInputByteLimit) {
     for (const file of result.files) {
       const source = rawSnapshot.files.find((item) => item.path === file.path);
       file.patch = source?.snippet || '';
       file.patchIsExcerpt = true;
     }
-    encoded = JSON.stringify(result);
+    baseInput = JSON.stringify(result);
   }
-  if (Buffer.byteLength(encoded) > hardInputByteLimit) {
+  const baseBytes = Buffer.byteLength(baseInput);
+  if (baseBytes > hardInputByteLimit) {
     throw new Error(
       `The agent input containing ${paths.join(', ')} is larger than the ${hardInputByteLimit}-byte hard limit`,
     );
   }
-  return encoded;
+  const existingFileNotes = compactExistingFileNotes(
+    snapshot,
+    existingFiles,
+    selected,
+    baseBytes,
+  );
+  return Object.keys(existingFileNotes).length
+    ? `${baseInput.slice(0, -1)},"existingFileNotes":${JSON.stringify(existingFileNotes)}}`
+    : baseInput;
 }
 
-const text = { type: 'string' };
-const list = { type: 'array', items: text };
+function textSchema(maxLength) {
+  return { type: 'string', minLength: 1, maxLength };
+}
+
+function listSchema(maxItems) {
+  return {
+    type: 'array',
+    maxItems,
+    items: textSchema(listItemCodePointLimit),
+  };
+}
+
+const title = textSchema(titleCodePointLimit);
+const prose = textSchema(proseCodePointLimit);
+const details = listSchema(detailItemLimit);
+const risks = listSchema(riskItemLimit);
 const fileNote = {
   type: 'object',
   properties: {
-    title: text,
-    what: text,
-    why: text,
-    details: list,
-    risks: list,
+    title,
+    what: prose,
+    why: prose,
+    details,
+    risks,
   },
   required: ['title', 'what', 'why', 'details', 'risks'],
   additionalProperties: false,
@@ -421,11 +473,11 @@ function outputSchema(paths, { includeChange = true } = {}) {
     properties.change = {
       type: 'object',
       properties: {
-        title: text,
-        summary: text,
-        why: text,
-        highlights: list,
-        risks: list,
+        title,
+        summary: prose,
+        why: prose,
+        highlights: details,
+        risks,
       },
       required: ['title', 'summary', 'why', 'highlights', 'risks'],
       additionalProperties: false,
@@ -480,18 +532,34 @@ risks to at most three concrete items. Use an empty list when there is no useful
 detail or risk. For binary files, describe only the change shown by the metadata.`;
 }
 
-function normalizedText(value, field) {
+function normalizedText(value, field, limit) {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`${field} must be a non-empty string`);
   }
-  return value.trim();
+  const text = value.trim();
+  if (Array.from(text).length > limit) {
+    throw new Error(`${field} must be at most ${limit} Unicode code points`);
+  }
+  return text;
 }
 
-function normalizedList(value, field) {
+// fallow-ignore-next-line complexity
+function normalizedList(value, field, maxItems) {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
     throw new Error(`${field} must be a list of strings`);
   }
-  return value.map((item) => item.trim()).filter(Boolean);
+  if (value.length > maxItems) {
+    throw new Error(`${field} must contain at most ${maxItems} items`);
+  }
+  const list = value.map((item) => item.trim()).filter(Boolean);
+  for (const item of list) {
+    if (Array.from(item).length > listItemCodePointLimit) {
+      throw new Error(
+        `${field} items must be at most ${listItemCodePointLimit} Unicode code points`,
+      );
+    }
+  }
+  return list;
 }
 
 function exactFields(value, fields, label) {
@@ -543,14 +611,14 @@ function normalizeChangeResponse(value) {
     'Change note',
   );
   return {
-    title: normalizedText(response.change.title, 'change.title'),
-    summary: normalizedText(response.change.summary, 'change.summary'),
-    why: normalizedText(response.change.why, 'change.why'),
+    title: normalizedText(response.change.title, 'change.title', titleCodePointLimit),
+    summary: normalizedText(response.change.summary, 'change.summary', proseCodePointLimit),
+    why: normalizedText(response.change.why, 'change.why', proseCodePointLimit),
     highlights: normalizedList(
       response.change.highlights,
-      'change.highlights',
+      'change.highlights', detailItemLimit,
     ),
-    risks: normalizedList(response.change.risks, 'change.risks'),
+    risks: normalizedList(response.change.risks, 'change.risks', riskItemLimit),
   };
 }
 
@@ -613,11 +681,11 @@ function normalizeFileNote(note, path, arrayForm) {
     path,
   );
   return {
-    title: normalizedText(note.title, `${path}.title`),
-    what: normalizedText(note.what, `${path}.what`),
-    why: normalizedText(note.why, `${path}.why`),
-    details: normalizedList(note.details, `${path}.details`),
-    risks: normalizedList(note.risks, `${path}.risks`),
+    title: normalizedText(note.title, `${path}.title`, titleCodePointLimit),
+    what: normalizedText(note.what, `${path}.what`, proseCodePointLimit),
+    why: normalizedText(note.why, `${path}.why`, proseCodePointLimit),
+    details: normalizedList(note.details, `${path}.details`, detailItemLimit),
+    risks: normalizedList(note.risks, `${path}.risks`, riskItemLimit),
   };
 }
 
