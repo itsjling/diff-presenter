@@ -270,32 +270,52 @@ same bounded canary from an authenticated checkout with:
 ```sh
 pnpm run benchmark:canary -- --runs 1 --reasoning minimal
 ```
+
 ## Publish a release
 
-Publish from the protected **npm-publish** GitHub environment. It runs the
-product gate before versioning, verifies the exact tarball in a temporary
-consumer, then uses npm trusted publishing and provenance. Start the
-**Publish verified package** workflow on `main` with a version argument such
-as `patch`, `minor`, or `1.0.0`.
-
-Configure npmjs.com for trusted publishing from `itsjling/diffsplain`,
-workflow file `release.yml`, and environment `npm-publish`. In GitHub, require
-approval for that environment and protect `main` and release tags. Do not add
-an npm token to this repo or to the workflow.
-
-The workflow output names the tested commit, version, and registry result. If
-publication succeeds but pushing fails, inspect the release commit and tag,
-then push them without publishing again. If a check fails, fix it and restart
-the workflow before versioning.
+Publish releases by hand from a clean `main` checkout. First update the version
+and create its commit and tag. Pass `patch`, `minor`, an exact version, or any
+other value accepted by `pnpm version`:
 
 ```sh
-corepack pnpm run package:verify
+corepack pnpm version patch
 ```
 
-This local command checks the built tarball without publishing it. The
-production audit has no findings. `pnpm audit` reports three high and one low
-finding below the Blume docs tool. We accept this limited risk while docs builds
-use only committed docs and do not handle user content.
+Do not push yet. Verify the tagged commit and build the release tarball:
+
+```sh
+corepack pnpm run release:verify
+```
+
+This command requires a clean tree and a `v<version>` tag on `HEAD`. It runs the
+full product gate, installs and tests the exact tarball in a temporary consumer,
+and records the commit and tarball hash in `.cache/`.
+
+Sign in to npm when needed, then publish by naming the exact version again:
+
+```sh
+COREPACK_ENABLE_PROJECT_SPEC=0 corepack npm@11.5.1 login --auth-type=web
+corepack pnpm run release:publish -- 1.0.0
+```
+
+The publish command checks the clean tree, tag, commit, tarball hash, npm login,
+and registry before it publishes. Stable versions use the `latest` npm tag;
+prereleases use `next`. Local publication does not add npm provenance.
+
+After npm confirms the version, push the version commit and tag:
+
+```sh
+git push origin main --follow-tags
+```
+
+If verification fails, fix the cause and run it again. If publication fails,
+keep the same version and tag, fix the npm login or named error, and rerun only
+`release:publish`. If npm accepted the package but the Git push failed, push the
+existing commit and tag without publishing again.
+
+The production audit has no findings. `pnpm audit` reports three high and one
+low finding below the Blume docs tool. We accept this limited risk while docs
+builds use only committed docs and do not handle user content.
 
 ## Refresh the demo
 

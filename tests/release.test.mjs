@@ -1,25 +1,49 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { runRelease } from '../scripts/release.mjs';
+import {
+  publishRelease,
+  validateReceipt,
+  validateReleaseState,
+  verifyRelease,
+} from '../scripts/release.mjs';
 
 const releaseScript = new URL('../scripts/release.mjs', import.meta.url).pathname;
+const cleanState = {
+  branch: 'main',
+  status: '',
+  commit: 'abc123',
+  tag: 'v1.2.3',
+  tagCommit: 'abc123',
+};
+const receipt = {
+  schemaVersion: 1,
+  package: 'diffsplain',
+  version: '1.2.3',
+  tag: 'v1.2.3',
+  commit: 'abc123',
+  tarball: '.cache/diffsplain-release.tgz',
+  sha256: 'verified-hash',
+  verifiedAt: '2026-08-05T00:00:00.000Z',
+};
 
-test('checks, versions, verifies, and publishes with provenance', () => {
+test('verifies a tagged release and records the exact tarball', async () => {
   const calls = [];
-  const status = runRelease(
-    ['prerelease', '--preid', 'beta'],
-    (args) => {
-      calls.push(args);
-      return 0;
+  let writtenReceipt;
+  const result = await verifyRelease({
+    now: () => '2026-08-05T00:00:00.000Z',
+    readPackage: async () => ({ name: 'diffsplain', version: '1.2.3' }),
+    readState: () => cleanState,
+    runPnpm: (args) => calls.push(args),
+    sha256: async () => 'verified-hash',
+    writeReceipt: async (value) => {
+      writtenReceipt = value;
     },
-  );
+  });
 
-  assert.equal(status, 0);
   assert.deepEqual(calls, [
     ['run', 'check'],
-    ['version', 'prerelease', '--preid', 'beta'],
     [
       'run',
       'package:verify',
@@ -27,83 +51,130 @@ test('checks, versions, verifies, and publishes with provenance', () => {
       '--release-tarball',
       '.cache/diffsplain-release.tgz',
     ],
+  ]);
+  assert.deepEqual(result, receipt);
+  assert.deepEqual(writtenReceipt, receipt);
+});
+
+test('rejects the wrong branch, a dirty tree, and a mismatched tag', () => {
+  assert.throws(
+    () => validateReleaseState({ ...cleanState, branch: 'release-test' }),
+    /Releases must run from main/,
+  );
+  assert.throws(
+    () => validateReleaseState({ ...cleanState, status: ' M package.json' }),
+    /working tree must be clean/,
+  );
+  assert.throws(
+    () => validateReleaseState({ ...cleanState, tagCommit: 'def456' }),
+    /v1\.2\.3 must point to the checked-out commit/,
+  );
+});
+
+test('rejects a stale verification receipt', () => {
+  assert.throws(
+    () => validateReceipt(receipt, { ...receipt, sha256: 'changed-hash' }),
+    /sha256 does not match/,
+  );
+});
+
+test('publishes a verified stable release under the default tag', async () => {
+  const calls = [];
+  const result = await publishRelease('1.2.3', {
+    publish: (args) => calls.push(args),
+    readPackage: async () => ({ name: 'diffsplain', version: '1.2.3' }),
+    readReceipt: async () => receipt,
+    readState: () => cleanState,
+    registryVersionExists: () => false,
+    requireNpmLogin: () => 'jling',
+    sha256: async () => 'verified-hash',
+    verifyPublished: () => '1.2.3',
+  });
+
+  assert.deepEqual(calls, [
     [
       'publish',
       '.cache/diffsplain-release.tgz',
       '--access',
       'public',
-      '--provenance',
-      '--tag',
-      'next',
+      '--registry',
+      'https://registry.npmjs.org',
     ],
   ]);
+  assert.deepEqual(result, {
+    account: 'jling',
+    package: 'diffsplain',
+    version: '1.2.3',
+  });
 });
 
-test('publishes stable versions under the default dist-tag', () => {
+test('publishes a verified prerelease under the next tag', async () => {
   const calls = [];
-  const status = runRelease(['1.2.3'], (args) => {
-    calls.push(args);
-    return 0;
+  const prerelease = {
+    ...receipt,
+    version: '1.2.3-beta.1',
+    tag: 'v1.2.3-beta.1',
+  };
+  await publishRelease('1.2.3-beta.1', {
+    publish: (args) => calls.push(args),
+    readPackage: async () => ({
+      name: 'diffsplain',
+      version: '1.2.3-beta.1',
+    }),
+    readReceipt: async () => prerelease,
+    readState: () => ({
+      ...cleanState,
+      tag: 'v1.2.3-beta.1',
+    }),
+    registryVersionExists: () => false,
+    requireNpmLogin: () => 'jling',
+    sha256: async () => 'verified-hash',
+    verifyPublished: () => '1.2.3-beta.1',
   });
 
-  assert.equal(status, 0);
-  assert.deepEqual(calls.at(-1), [
-    'publish',
-    '.cache/diffsplain-release.tgz',
-    '--access',
-    'public',
-    '--provenance',
-  ]);
+  assert.deepEqual(calls[0].slice(-2), ['--tag', 'next']);
 });
 
-test('stops before versioning when the product gate fails', () => {
-  const calls = [];
-  const status = runRelease(['patch'], (args) => {
-    calls.push(args);
-    return args[0] === 'run' && args[1] === 'check' ? 1 : 0;
-  });
+test('stops when the requested or registry version is not publishable', async () => {
+  const common = {
+    publish: () => assert.fail('publish should not run'),
+    readPackage: async () => ({ name: 'diffsplain', version: '1.2.3' }),
+    readReceipt: async () => receipt,
+    readState: () => cleanState,
+    requireNpmLogin: () => 'jling',
+    sha256: async () => 'verified-hash',
+    verifyPublished: () => '1.2.3',
+  };
 
-  assert.equal(status, 1);
-  assert.deepEqual(calls, [['run', 'check']]);
-});
-
-test('requires the version before any npm version options', () => {
-  assert.throws(
-    () => runRelease([]),
-    /npm run release -- <version>/,
+  await assert.rejects(
+    publishRelease('1.2.4', common),
+    /package\.json contains 1\.2\.3/,
   );
-  assert.throws(
-    () => runRelease(['--preid', 'beta', 'prerelease']),
-    /npm run release -- <version>/,
+  await assert.rejects(
+    publishRelease('1.2.3', {
+      ...common,
+      registryVersionExists: () => true,
+    }),
+    /already exists on npm/,
   );
 });
 
-test('rejects a local release before it can version or publish', () => {
-  const result = spawnSync(process.execPath, [releaseScript, 'patch'], {
+test('exposes only the two manual release commands', async () => {
+  const pkg = JSON.parse(
+    await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+  );
+  assert.equal(pkg.scripts.release, undefined);
+  assert.equal(pkg.scripts['release:verify'], 'node scripts/release.mjs verify');
+  assert.equal(pkg.scripts['release:publish'], 'node scripts/release.mjs publish');
+  await assert.rejects(
+    access(new URL('../.github/workflows/release.yml', import.meta.url)),
+    { code: 'ENOENT' },
+  );
+
+  const result = spawnSync(process.execPath, [releaseScript], {
     encoding: 'utf8',
-    env: { ...process.env, GITHUB_ACTIONS: 'false' },
   });
-
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /Releases run only in the protected GitHub Actions workflow/);
-});
-
-test('uses a protected trusted-publishing workflow', async () => {
-  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
-
-  assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
-  assert.match(workflow, /environment: npm-publish/);
-  assert.match(workflow, /group: npm-release/);
-  assert.match(workflow, /cancel-in-progress: false/);
-  assert.match(workflow, /id-token: write/);
-  assert.match(workflow, /git fetch --no-tags origin main/);
-  assert.match(
-    workflow,
-    /git rev-parse HEAD.*git rev-parse origin\/main/,
-  );
-  assert.match(workflow, /RELEASE_VERSION: \$\{\{ inputs\.version \}\}/);
-  assert.match(workflow, /run: corepack npm@11\.5\.1 run release -- "\$RELEASE_VERSION"/);
-  assert.match(workflow, /corepack npm@11\.5\.1 run release/);
-  assert.match(workflow, /git push origin HEAD:main --follow-tags/);
+  assert.match(result.stderr, /release:verify/);
+  assert.match(result.stderr, /release:publish/);
 });

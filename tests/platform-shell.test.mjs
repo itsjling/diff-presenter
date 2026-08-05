@@ -7,7 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { findCommand } from '../scripts/coding-agents.mjs';
 import { doctorReport } from '../scripts/doctor.mjs';
-import { npmCommand } from '../scripts/release.mjs';
+import { corepackCommand } from '../scripts/release.mjs';
 
 const builder = fileURLToPath(
   new URL('../scripts/build-diff-data.mjs', import.meta.url),
@@ -66,10 +66,10 @@ test('finds deterministic fake tools with the host shell rules', async () => {
   }
 });
 
-test('uses the host npm launcher without a shell wrapper', () => {
-  assert.equal(npmCommand('linux'), 'npm');
-  assert.equal(npmCommand('darwin'), 'npm');
-  assert.equal(npmCommand('win32'), 'npm.cmd');
+test('uses the host Corepack launcher without a shell wrapper', () => {
+  assert.equal(corepackCommand('linux'), 'corepack');
+  assert.equal(corepackCommand('darwin'), 'corepack');
+  assert.equal(corepackCommand('win32'), 'corepack.cmd');
 });
 
 test('uses the checkout basename in builder output', async () => {

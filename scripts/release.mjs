@@ -1,89 +1,293 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-export function npmCommand(platform = process.platform) {
-  return platform === 'win32' ? 'npm.cmd' : 'npm';
-}
-
+const registry = 'https://registry.npmjs.org';
 const verifiedTarball = '.cache/diffsplain-release.tgz';
+const verificationReceipt = '.cache/diffsplain-release.json';
 
-function npmInvocation(args) {
-  return process.env.npm_execpath
-    ? [process.execPath, [process.env.npm_execpath, ...args]]
-    : [npmCommand(), args];
+function platformCommand(command, platform = process.platform) {
+  return platform === 'win32' ? `${command}.cmd` : command;
 }
 
-function runNpm(args) {
-  const [command, commandArgs] = npmInvocation(args);
-  const result = spawnSync(command, commandArgs, {
+export function corepackCommand(platform = process.platform) {
+  return platformCommand('corepack', platform);
+}
+
+function run(command, args, { allowFailure = false, capture = false, env } = {}) {
+  const result = spawnSync(command, args, {
     cwd: root,
-    stdio: 'inherit',
+    encoding: capture ? 'utf8' : undefined,
+    stdio: capture ? 'pipe' : 'inherit',
+    env: env ? { ...process.env, ...env } : process.env,
   });
   if (result.error) throw result.error;
-  return result.status ?? 1;
+  const status = result.status ?? 1;
+  if (!allowFailure && status !== 0) {
+    throw new Error(`${command} ${args.join(' ')} failed with exit code ${status}.`);
+  }
+  return {
+    status,
+    stdout: capture ? result.stdout.trim() : '',
+    stderr: capture ? result.stderr.trim() : '',
+  };
 }
 
-function releaseSteps(versionArgs) {
-  const prerelease =
-    versionArgs[0].startsWith('pre') ||
-    /^[v=]?\d+\.\d+\.\d+-/.test(versionArgs[0]);
-  const publishArgs = [
+function runGit(args) {
+  return run('git', args, { capture: true }).stdout;
+}
+
+function runPnpm(args) {
+  run(platformCommand('pnpm'), args);
+}
+
+function runNpm(args, options = {}) {
+  return run(corepackCommand(), ['npm@11.5.1', ...args], {
+    ...options,
+    env: { COREPACK_ENABLE_PROJECT_SPEC: '0', ...options.env },
+  });
+}
+
+async function readPackage() {
+  return JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
+}
+
+async function sha256(path) {
+  const contents = await readFile(resolve(root, path));
+  return createHash('sha256').update(contents).digest('hex');
+}
+
+function releaseTag(version) {
+  return `v${version}`;
+}
+
+function readReleaseState(version) {
+  const tag = releaseTag(version);
+  let tagCommit;
+  try {
+    tagCommit = runGit(['rev-parse', `refs/tags/${tag}^{}`]);
+  } catch {
+    throw new Error(`Missing release tag ${tag}. Create the version commit and tag first.`);
+  }
+  return {
+    branch: runGit(['branch', '--show-current']),
+    status: runGit(['status', '--porcelain']),
+    commit: runGit(['rev-parse', 'HEAD']),
+    tag,
+    tagCommit,
+  };
+}
+
+export function validateReleaseState({ branch, status, commit, tag, tagCommit }) {
+  if (branch !== 'main') {
+    throw new Error(`Releases must run from main, not ${branch || 'a detached HEAD'}.`);
+  }
+  if (status) {
+    throw new Error('The working tree must be clean before a release.');
+  }
+  if (commit !== tagCommit) {
+    throw new Error(`${tag} must point to the checked-out commit ${commit}.`);
+  }
+}
+
+export function validateReceipt(receipt, expected) {
+  for (const key of ['package', 'version', 'tag', 'commit', 'tarball', 'sha256']) {
+    if (receipt[key] !== expected[key]) {
+      throw new Error(`Release verification is stale: ${key} does not match.`);
+    }
+  }
+}
+
+function isPrerelease(version) {
+  return /^\d+\.\d+\.\d+-/.test(version);
+}
+
+function publishArgs(version) {
+  return [
     'publish',
     verifiedTarball,
     '--access',
     'public',
-    '--provenance',
-    ...(prerelease ? ['--tag', 'next'] : []),
-  ];
-  return [
-    ['run', 'check'],
-    ['version', ...versionArgs],
-    [
-      'run',
-      'package:verify',
-      '--',
-      '--release-tarball',
-      verifiedTarball,
-    ],
-    publishArgs,
+    '--registry',
+    registry,
+    ...(isPrerelease(version) ? ['--tag', 'next'] : []),
   ];
 }
 
-export function runRelease(versionArgs, run = runNpm) {
-  if (!versionArgs[0] || versionArgs[0].startsWith('-')) {
+function registryVersionExists(name, version) {
+  const result = runNpm(
+    ['view', `${name}@${version}`, 'version', '--json', '--registry', registry],
+    { allowFailure: true, capture: true },
+  );
+  if (result.status === 0) return true;
+  if (/E404|404 Not Found|No match found/.test(`${result.stdout}\n${result.stderr}`)) {
+    return false;
+  }
+  throw new Error(result.stderr || 'Could not check the npm registry.');
+}
+
+function requireNpmLogin() {
+  const result = runNpm(['whoami', '--registry', registry], {
+    allowFailure: true,
+    capture: true,
+  });
+  if (result.status !== 0) {
     throw new Error(
-      'Usage: npm run release -- <version> [npm version options]',
+      'Not signed in to npm. Run: COREPACK_ENABLE_PROJECT_SPEC=0 corepack npm@11.5.1 login --auth-type=web',
+    );
+  }
+  return result.stdout;
+}
+
+const defaults = {
+  now: () => new Date().toISOString(),
+  publish: (args) => runNpm(args),
+  readPackage,
+  readReceipt: async () => {
+    try {
+      return JSON.parse(
+        await readFile(resolve(root, verificationReceipt), 'utf8'),
+      );
+    } catch (error) {
+      if (error && typeof error === 'object' && error.code === 'ENOENT') {
+        throw new Error('No verified release found. Run pnpm run release:verify first.');
+      }
+      throw error;
+    }
+  },
+  readState: readReleaseState,
+  registryVersionExists,
+  requireNpmLogin,
+  runPnpm,
+  sha256,
+  verifyPublished: (name, version) => {
+    const result = runNpm(
+      ['view', `${name}@${version}`, 'version', '--json', '--registry', registry],
+      { capture: true },
+    );
+    return result.stdout.replace(/^"|"$/g, '');
+  },
+  writeReceipt: (receipt) =>
+    writeFile(
+      resolve(root, verificationReceipt),
+      `${JSON.stringify(receipt, null, 2)}\n`,
+      'utf8',
+    ),
+};
+
+function dependencies(overrides) {
+  return { ...defaults, ...overrides };
+}
+
+export async function verifyRelease(overrides = {}) {
+  const deps = dependencies(overrides);
+  const pkg = await deps.readPackage();
+  const initialState = deps.readState(pkg.version);
+  validateReleaseState(initialState);
+
+  deps.runPnpm(['run', 'check']);
+  deps.runPnpm([
+    'run',
+    'package:verify',
+    '--',
+    '--release-tarball',
+    verifiedTarball,
+  ]);
+
+  const state = deps.readState(pkg.version);
+  validateReleaseState(state);
+  if (state.commit !== initialState.commit) {
+    throw new Error('The checked-out commit changed while the release was verified.');
+  }
+
+  const receipt = {
+    schemaVersion: 1,
+    package: pkg.name,
+    version: pkg.version,
+    tag: state.tag,
+    commit: state.commit,
+    tarball: verifiedTarball,
+    sha256: await deps.sha256(verifiedTarball),
+    verifiedAt: deps.now(),
+  };
+  await deps.writeReceipt(receipt);
+  return receipt;
+}
+
+export async function publishRelease(expectedVersion, overrides = {}) {
+  if (!expectedVersion) {
+    throw new Error('Usage: pnpm run release:publish -- <version>');
+  }
+
+  const deps = dependencies(overrides);
+  const pkg = await deps.readPackage();
+  if (expectedVersion !== pkg.version) {
+    throw new Error(
+      `Expected version ${expectedVersion}, but package.json contains ${pkg.version}.`,
     );
   }
 
-  for (const args of releaseSteps(versionArgs)) {
-    const status = run(args);
-    if (status !== 0) return status;
+  const state = deps.readState(pkg.version);
+  validateReleaseState(state);
+  const expected = {
+    package: pkg.name,
+    version: pkg.version,
+    tag: state.tag,
+    commit: state.commit,
+    tarball: verifiedTarball,
+    sha256: await deps.sha256(verifiedTarball),
+  };
+  const receipt = await deps.readReceipt();
+  validateReceipt(receipt, expected);
+
+  const account = deps.requireNpmLogin();
+  if (deps.registryVersionExists(pkg.name, pkg.version)) {
+    throw new Error(`${pkg.name}@${pkg.version} already exists on npm.`);
   }
-  return 0;
+
+  deps.publish(publishArgs(pkg.version));
+  const publishedVersion = deps.verifyPublished(pkg.name, pkg.version);
+  if (publishedVersion !== pkg.version) {
+    throw new Error(
+      `npm returned ${publishedVersion || 'no version'} after publishing ${pkg.version}.`,
+    );
+  }
+  return { account, package: pkg.name, version: pkg.version };
+}
+
+function commandArguments(argv) {
+  return argv.filter((argument) => argument !== '--');
+}
+
+async function main(argv) {
+  const [command, ...args] = commandArguments(argv);
+  if (command === 'verify' && args.length === 0) {
+    const receipt = await verifyRelease();
+    console.log(
+      `Verified ${receipt.package}@${receipt.version} from ${receipt.commit}.\nTarball: ${receipt.tarball}\nSHA-256: ${receipt.sha256}`,
+    );
+    return;
+  }
+  if (command === 'publish' && args.length === 1) {
+    const result = await publishRelease(args[0]);
+    console.log(
+      `Published ${result.package}@${result.version} to npm as ${result.account}. Push the release commit and tag with: git push origin main --follow-tags`,
+    );
+    return;
+  }
+  throw new Error(
+    'Usage: pnpm run release:verify\n   or: pnpm run release:publish -- <version>',
+  );
 }
 
 if (resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    if (process.env.GITHUB_ACTIONS !== 'true') {
-      throw new Error('Releases run only in the protected GitHub Actions workflow.');
-    }
-    console.log(`Tested commit: ${spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim()}`);
-    process.exitCode = runRelease(process.argv.slice(2));
-    if (process.exitCode === 0) {
-      const [command, commandArgs] = npmInvocation(['pkg', 'get', 'version']);
-      const version = spawnSync(command, commandArgs, { cwd: root, encoding: 'utf8' }).stdout.trim();
-      console.log(
-        `Registry result: published diffsplain ${version} with provenance. Recovery: if the later Git push fails, inspect the release commit and tag, then push them without republishing.`,
-      );
-    } else {
-      console.error('Registry result: not published. Recovery: fix the named stage, then restart the protected workflow. If versioning already ran, inspect the local commit and tag before retrying.');
-    }
+    await main(process.argv.slice(2));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 2;
