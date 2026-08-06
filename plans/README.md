@@ -5,6 +5,8 @@ the order below unless the dependency notes allow parallel work. Each executor
 must read its plan in full, honor its STOP conditions, run every required
 check, and update its status row.
 
+Last reconciled on 2026-08-06 at commit `452080f`.
+
 These plans cover all seven accepted documentation findings. They use current
 official npm, Wrangler, GitHub CLI, Vercel CLI, Docker CLI, and Terraform CLI
 manuals as structure references. The plans do not copy features that
@@ -31,20 +33,23 @@ Status values: `TODO` | `IN PROGRESS` | `RECONCILED` (with current evidence) |
 
 ## Reconciliation
 
-Verified on 2026-07-30. The former plan stack at `9a2dd36` is not an ancestor
-of the reconciled product work. Do not treat a plan status as proof that its
-old branch was merged. A reconciled row names the replacement PR; it becomes
-evidence on `main` only after that PR lands.
+Re-verified on 2026-08-06 at `452080f`. The former plan stack at `9a2dd36` is
+not an ancestor of the reconciled product work. PRs #43, #44, #66, and #69 are
+now ancestors of `main`. `RECONCILED` remains a terminal status: replacement
+work meets the accepted outcome, but the old plan branch did not merge.
 
 | Plan | Decision | Current evidence or reason |
 | --- | --- | --- |
-| 001 | Reconciled | PR #43 keeps note state outside the target, hides old notes in no-agent mode, and keys reuse to review settings. |
-| 002 | Reconciled | PRs #43 and #66 supply stable cache identity, target-preservation tests, and the data boundary guide without importing the old docs stack. |
-| 003 | Reconciled | PR #44 supplies the doctor capability report, JSON output, explicit deep check, and tests. |
-| 004 | Reconciled | PR #66 supplies the target table and runtime Git contract tests. |
-| 005 | Rejected | The old branch mixed navigation changes with source-only examples. PRs #66 and #69 keep public commands in product docs without changing site navigation. |
-| 006 | Reconciled | PR #69 supplies the first-run and shutdown guidance in the CLI guide. |
-| 007 | Rejected | The old branch introduced a second option-data system. PR #69 keeps the parser authoritative and checks the hand-written guide for drift. |
+| 001 | Reconciled | Verified at `452080f`. PR #43 keeps note state outside the target, hides old notes in no-agent mode, and keys reuse to review settings. Parser, provider, cache-reuse, and live no-agent checks pass. |
+| 002 | Reconciled | Verified at `452080f`. PRs #43 and #66 supply stable user-cache identity, target-preservation tests, and the data boundary guide. Cache-path, clean-target, and data-contract checks pass. |
+| 003 | Reconciled | Verified at `452080f`. PR #44 supplies the doctor capability report, JSON output, explicit deep check, and tests. All seven doctor checks pass. |
+| 004 | Reconciled | Verified at `452080f`. PR #66 supplies the target table and runtime Git contract tests. Current checkout, worktree, range, branch, pull request, and conflict checks pass. |
+| 005 | Rejected | Still rejected at `452080f`. The old branch mixed navigation changes with source-only examples. PRs #66 and #69 keep public commands in product docs without changing site navigation. |
+| 006 | Reconciled | Verified at `452080f`. PR #69 supplies the first-run and shutdown guidance in the CLI guide. The CLI docs contract check passes. |
+| 007 | Rejected | Still rejected at `452080f`. The old branch introduced a second option-data system. PR #69 keeps the parser authoritative and checks the hand-written guide for drift. |
+
+No plan is `TODO`, `IN PROGRESS`, or `BLOCKED`. Nothing in this plan set is
+ready for execution; all accepted findings have a terminal outcome.
 
 ## Worktree audit
 
